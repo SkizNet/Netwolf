@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 using System;
 using System.Collections.Generic;
@@ -54,7 +55,8 @@ namespace Netwolf.Transport.Client
             var optionFactory = Configurations[name];
             var options = new NetworkOptions();
             optionFactory(options);
-            var network = new Network(name, options);
+            var logger = provider.GetRequiredService<ILogger<Network>>();
+            var network = new Network(name, options, logger);
             Networks.Add(provider, network);
             return network;
         }

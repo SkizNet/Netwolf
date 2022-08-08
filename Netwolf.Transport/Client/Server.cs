@@ -45,6 +45,12 @@ namespace Netwolf.Transport.Client
 
         internal Server(string hostName, int port, bool? secure)
         {
+            ArgumentNullException.ThrowIfNull(hostName);
+            if (port < 1 || port > 65535)
+            {
+                throw new ArgumentOutOfRangeException(nameof(port), port, "Port number must be between 1 and 65535.");
+            }
+
             HostName = hostName;
             Port = port;
             if (secure != null)

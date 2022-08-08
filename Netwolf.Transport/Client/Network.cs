@@ -1,7 +1,13 @@
 ﻿
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
+using Netwolf.Transport.Internal;
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading.Tasks;
@@ -13,85 +19,34 @@ namespace Netwolf.Transport.Client
     /// </summary>
     public class Network : INetwork
     {
-        public string Name { get; set; }
+        private bool _disposed;
 
         /// <summary>
-        /// Primary nickname we attempt to use when connecting to this network
+        /// Network options defined by the user
         /// </summary>
-        /// <remarks>
-        /// <seealso cref="SecondaryNick"/>
-        /// </remarks>
-        public string PrimaryNick { get; set; }
+        protected NetworkOptions Options { get; set; }
 
         /// <summary>
-        /// Secondary nickname we attempt to use when connecting to this network,
-        /// in the event <see cref="PrimaryNick"/> is in use.
+        /// Logger for this Network
         /// </summary>
-        public string? SecondaryNick { get; set; }
+        protected ILogger<Network> Logger { get; init; }
 
-        private string? _ident;
+        private Connection? _connection;
 
         /// <summary>
-        /// Ident to use. Defaults to <see cref="PrimaryNick"/> if not explicitly set.
+        /// A connection to the network
         /// </summary>
-        public string Ident
-        {
-            get => _ident ?? PrimaryNick;
-            set => _ident = value;
-        }
+        protected Connection Connection => _connection ?? throw new InvalidOperationException("");
 
         /// <summary>
-        /// Password required to connect to the network, if any.
+        /// User-defined network name (not necessarily what the network actually calls itself)
         /// </summary>
-        public string? ServerPassword { get; set; }
-
-        /// <summary>
-        /// Local host to bind to when connecting. If unset, use default outbound IP.
-        /// </summary>
-        public string? BindHost { get; set; }
-
-        /// <summary>
-        /// List of servers to try when connecting (in order of preference).
-        /// </summary>
-        public List<Server> ServerList { get; init; } = new List<Server>();
-
-        private string? _accountName;
-
-        /// <summary>
-        /// Account name to use. Defaults to <see cref="PrimaryNick"/> if not explicitly set.
-        /// </summary>
-        public string AccountName
-        {
-            get => _accountName ?? PrimaryNick;
-            set => _accountName = value;
-        }
-
-        /// <summary>
-        /// Password to log into the user's account.
-        /// </summary>
-        public string? AccountPassword { get; set; }
+        public string Name { get; init; }
 
         /// <summary>
         /// TLS client certificate used to log into the user's account.
         /// </summary>
-        public X509Certificate? AccountCertificate { get; set; }
-
-        /// <summary>
-        /// Authentication type to use. If unset, uses the most secure method available
-        /// to us based on the network's SASL support and whether <see cref="AccountCertificate"/> or
-        /// <see cref="AccountPassword"/> are defined. The following are tried (in order):
-        /// <list type="number">
-        /// <item><description>SASL EXTERNAL</description></item>
-        /// <item><description>SASL SCRAM-SHA256</description></item>
-        /// <item><description>SASL PLAIN</description></item>
-        /// <item><description>NickServ IDENTIFY</description></item>
-        /// <item><description>None</description></item>
-        /// </list>
-        /// Note that NickServ CertFP is not on the autodetection list, as we have no means
-        /// of verifying whether or not the remote NickServ supports CertFP. If the remote
-        /// network does not have services, ensure that <see cref="AccountPassword"/> is <c>null</c>.
-        /// </summary>
-        public AuthType? AuthType { get; set; }
+        protected internal X509Certificate2? AccountCertificate { get; private set; }
 
         /// <summary>
         /// Create a new Network that can be connected to.
@@ -100,14 +55,70 @@ namespace Netwolf.Transport.Client
         /// Name of the network, for the caller's internal tracking purposes.
         /// The name does not need to be unique.
         /// </param>
-        /// <param name="primaryNick">Primary nickname to use when connecting to the network.</param>
-        public Network(string name, string primaryNick)
+        /// <param name="options">Network options.</param>
+        /// <param name="logger">Logger to use.</param>
+        public Network(string name, NetworkOptions options, ILogger<Network> logger)
         {
             ArgumentNullException.ThrowIfNull(name);
-            ArgumentNullException.ThrowIfNull(primaryNick);
+            ArgumentNullException.ThrowIfNull(options);
 
             Name = name;
-            PrimaryNick = primaryNick;
+            Options = options;
+            Logger = logger;
+
+            if (!String.IsNullOrEmpty(Options.AccountCertificateFile))
+            {
+                try
+                {
+                    AccountCertificate = new X509Certificate2(Options.AccountCertificateFile, Options.AccountCertificatePassword);
+                }
+                catch (CryptographicException ex)
+                {
+                    Logger.LogWarning("Cannot load TLS client certificate {AccountCertificateFile}: {Message}", Options, ex);
+                }
+                finally
+                {
+                    Options.AccountCertificatePassword = null;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Perform cleanup of managed resources asynchronously.
+        /// </summary>
+        /// <returns>Awaitable ValueTask for the async cleanup operation</returns>
+        protected virtual async ValueTask DisposeAsyncCore()
+        {
+            await NullableHelper.DisposeAsyncIfNotNull(_connection).ConfigureAwait(false);
+            AccountCertificate?.Dispose();
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await DisposeAsyncCore().ConfigureAwait(false);
+            Dispose(disposing: false);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    AccountCertificate?.Dispose();
+                }
+
+                AccountCertificate = null;
+                _disposed = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
         }
     }
 }

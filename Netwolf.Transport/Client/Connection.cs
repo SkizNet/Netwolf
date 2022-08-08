@@ -31,45 +31,32 @@ namespace Netwolf.Transport.Client
 
         private bool CheckOnlineRevocation { get; init; }
 
-        private X509Certificate? ClientCertificate { get; set; }
+        private X509Certificate2? ClientCertificate { get; set; }
 
         private EndPoint? BindHost { get; init; }
 
-        internal Connection(string hostName, int port, SecurityPolicy securityPolicy, EndPoint? bindHost)
+        internal Connection(Network network, Server server, NetworkOptions options)
         {
-            ArgumentNullException.ThrowIfNull(hostName);
-            if (port < 1 || port > 65535)
+            HostName = server.HostName;
+            Port = server.Port;
+
+            if (options.BindHost != null)
             {
-                throw new ArgumentOutOfRangeException(nameof(port), port, "Port number must be between 1 and 65535.");
+                BindHost = IPEndPoint.Parse(options.BindHost);
             }
 
-            HostName = hostName;
-            Port = port;
-            BindHost = bindHost;
-
-            // copy security policy by value so that future changes by the client do not impact this Connection.
-            Secure = securityPolicy.Secure;
-            AcceptAllCertificates = securityPolicy.AcceptAllCertificates;
+            Secure = server.SecureConnection;
+            AcceptAllCertificates = options.AcceptAllCertificates;
             // normalize our trusted fingerprints to all-uppercase with no colon separators
-            TrustedFingerprints.AddRange(from fp in securityPolicy.TrustedFingerprints
-                                         select fp.Replace(":", string.Empty).ToUpperInvariant());
+            TrustedFingerprints.AddRange(from fp in options.TrustedFingerprints
+                                         select fp.Replace(":", String.Empty).ToUpperInvariant());
             // additionally disable online revocation checks if we're trusting everything or if we have a
             // fingerprint list
-            CheckOnlineRevocation = securityPolicy.CheckOnlineRevocation
+            CheckOnlineRevocation = options.CheckOnlineRevocation
                 || AcceptAllCertificates
                 || TrustedFingerprints.Count > 0;
-            ClientCertificate = securityPolicy.ClientCertificate;
+            ClientCertificate = network.AccountCertificate;
         }
-
-        /* Uncomment the following if we have unmanaged resources (and therefore need a finalizer)
-        /// <summary>
-        /// Perform cleanup of unmanaged resources.
-        /// </summary>
-        ~Connection()
-        {
-            Dispose(disposing: false);
-        }
-        */
 
         /// <summary>
         /// Connect with the default timeout (15 seconds).
