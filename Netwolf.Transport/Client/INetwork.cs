@@ -1,9 +1,9 @@
-﻿namespace Netwolf.Transport
+﻿namespace Netwolf.Transport.Client
 {
     /// <summary>
     /// Represents a Network
     /// </summary>
-    public interface INetwork
+    public interface INetwork : IDisposable, IAsyncDisposable
     {
         /// <summary>
         /// Network name

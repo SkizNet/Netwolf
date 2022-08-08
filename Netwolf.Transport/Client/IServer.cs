@@ -1,4 +1,4 @@
-﻿namespace Netwolf.Transport
+﻿namespace Netwolf.Transport.Client
 {
     /// <summary>
     /// Represents a Server on a Network.
@@ -9,10 +9,5 @@
         /// Server hostname
         /// </summary>
         public string HostName { get; }
-
-        /// <summary>
-        /// Network this server belongs to
-        /// </summary>
-        public INetwork Network { get; }
     }
 }

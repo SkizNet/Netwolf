@@ -1,4 +1,5 @@
-﻿using System;
+﻿
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -19,13 +20,6 @@ namespace Netwolf.Transport.Client
         /// <seealso cref="SecureConnection"/>
         /// </remarks>
         public string HostName { get; set; }
-
-        /// <summary>
-        /// Reference to the <see cref="Client.Network"/> this server belongs to.
-        /// </summary>
-        public Network Network { get; init; }
-
-        INetwork IServer.Network => Network;
 
         /// <summary>
         /// Port number to connect to.
@@ -49,11 +43,10 @@ namespace Netwolf.Transport.Client
             set => _secureConnection = value;
         }
 
-        internal Server(string hostName, int port, bool? secure, Network network)
+        internal Server(string hostName, int port, bool? secure)
         {
             HostName = hostName;
             Port = port;
-            Network = network;
             if (secure != null)
             {
                 SecureConnection = secure.Value;
