@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 
 namespace Netwolf.Transport.Client
 {
-    public class Connection : IDisposable, IAsyncDisposable
+    public class IrcConnection : IConnection
     {
         private bool _disposed = false;
 
@@ -35,7 +35,7 @@ namespace Netwolf.Transport.Client
 
         private EndPoint? BindHost { get; init; }
 
-        internal Connection(Network network, Server server, NetworkOptions options)
+        internal IrcConnection(Network network, Server server, NetworkOptions options)
         {
             HostName = server.HostName;
             Port = server.Port;

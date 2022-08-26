@@ -21,6 +21,7 @@ namespace Netwolf.Transport.Extensions.DependencyInjection
         {
             // Client services
             services.AddSingleton<Client.INetworkFactory, Client.NetworkFactory>();
+            services.AddSingleton<Client.ICommandFactory, Client.CommandFactory>();
             services.AddScoped<Client.INetwork>(provider => provider.GetRequiredService<Client.INetworkFactory>().GetFromScope(provider));
 
             return services;

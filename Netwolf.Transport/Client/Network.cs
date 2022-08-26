@@ -31,12 +31,12 @@ namespace Netwolf.Transport.Client
         /// </summary>
         protected ILogger<Network> Logger { get; init; }
 
-        private Connection? _connection;
+        private IrcConnection? _connection;
 
         /// <summary>
         /// A connection to the network
         /// </summary>
-        protected Connection Connection => _connection ?? throw new InvalidOperationException("");
+        protected IrcConnection Connection => _connection ?? throw new InvalidOperationException("Network is disconnected.");
 
         /// <summary>
         /// User-defined network name (not necessarily what the network actually calls itself)
