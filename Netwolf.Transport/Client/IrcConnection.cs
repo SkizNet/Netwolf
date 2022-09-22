@@ -17,6 +17,8 @@ namespace Netwolf.Transport.Client
     {
         private bool _disposed = false;
 
+        private Socket? Socket { get; set; }
+
         private Stream? Stream { get; set; }
 
         private string HostName { get; init; }
@@ -59,24 +61,7 @@ namespace Netwolf.Transport.Client
         }
 
         /// <summary>
-        /// Connect with the default timeout (15 seconds).
-        /// Throws TimeoutException if a connection cannot be made in time.
-        /// </summary>
-        /// <returns></returns>
-        public async Task ConnectAsync()
-        {
-            using var source = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            await ExceptionHelper.SuppressAsync<OperationCanceledException>(
-                () => ConnectAsync(source.Token));
-
-            if (source.IsCancellationRequested)
-            {
-                throw new TimeoutException("A timeout occurred while connecting to the remote host.");
-            }
-        }
-
-        /// <summary>
-        /// Connect to the remote host, with a user-controlled cancellation policy.
+        /// Connect to the remote host
         /// </summary>
         /// <param name="cancellationToken">
         /// Cancellation token; passing <see cref="CancellationToken.None"/>
@@ -85,31 +70,35 @@ namespace Netwolf.Transport.Client
         /// <returns></returns>
         public async Task ConnectAsync(CancellationToken cancellationToken)
         {
+            if (Socket != null || Stream != null)
+            {
+                throw new InvalidOperationException("Connection has already been established.");
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
 
-            var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+            Socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+
             // Attempt to set socket options; these may not be supported on all platforms so gracefully fail if
             // we cannot set these options.
             ExceptionHelper.Suppress<SocketException>(
-                () => socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontLinger, true));
-            ExceptionHelper.Suppress<SocketException>(
-                () => socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseUnicastPort, true));
+                () => Socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseUnicastPort, true));
 
             if (BindHost != null)
             {
-                socket.Bind(BindHost);
+                Socket.Bind(BindHost);
             }
 
-            await socket.ConnectAsync(HostName, Port, cancellationToken);
-            if (!socket.Connected || cancellationToken.IsCancellationRequested)
+            await Socket.ConnectAsync(HostName, Port, cancellationToken);
+            if (!Socket.Connected || cancellationToken.IsCancellationRequested)
             {
                 // connect was canceled
-                socket.Close();
+                Socket.Close();
+                Socket = null;
+                throw new OperationCanceledException();
             }
 
-            cancellationToken.ThrowIfCancellationRequested();
-
-            Stream = new NetworkStream(socket, ownsSocket: true);
+            Stream = new NetworkStream(Socket, ownsSocket: false);
 
             // establish TLS if desired
             if (Secure)
@@ -175,14 +164,30 @@ namespace Netwolf.Transport.Client
         }
 
         /// <summary>
+        /// Close the underlying connection and free up related resources;
+        /// this task cannot be cancelled.
+        /// </summary>
+        /// <returns></returns>
+        public async Task DisconnectAsync()
+        {
+            Socket?.Shutdown(SocketShutdown.Both);
+            Socket?.Close();
+            await NullableHelper.DisposeAsyncIfNotNull(Stream).ConfigureAwait(false);
+
+            Socket = null;
+            Stream = null;
+        }
+
+        /// <summary>
         /// Perform cleanup of managed resources asynchronously.
         /// </summary>
         /// <returns>Awaitable ValueTask for the async cleanup operation</returns>
         protected virtual async ValueTask DisposeAsyncCore()
         {
-            await NullableHelper.DisposeAsyncIfNotNull(Stream).ConfigureAwait(false);
+            await DisconnectAsync();
             ClientCertificate?.Dispose();
 
+            Socket = null;
             Stream = null;
             ClientCertificate = null;
         }
@@ -197,6 +202,8 @@ namespace Netwolf.Transport.Client
             {
                 if (disposing)
                 {
+                    Socket?.Shutdown(SocketShutdown.Both);
+                    Socket?.Close(); // calls Socket.Dispose() internally
                     Stream?.Dispose();
                     ClientCertificate?.Dispose();
 

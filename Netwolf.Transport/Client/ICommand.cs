@@ -17,8 +17,7 @@ namespace Netwolf.Transport.Client
         CommandType CommandType { get; }
 
         /// <summary>
-        /// The sender of this command. May be filled in for commands received from the server,
-        /// but will be <c>null</c> for commands prepared by the client.
+        /// The sender of this command, may be <c>null</c>.
         /// </summary>
         string? Source { get; }
 
@@ -45,5 +44,102 @@ namespace Netwolf.Transport.Client
         /// in the final command
         /// </summary>
         bool HasTrailingArg { get; }
+
+        /// <summary>
+        /// The tag part of the final command, including the trailing space if tags exist,
+        /// in the format accepted by the remote IRC server
+        /// </summary>
+        string TagPart
+        {
+            get
+            {
+                if (Tags.Count == 0)
+                {
+                    return string.Empty;
+                }
+
+                var sb = new StringBuilder();
+                bool initial = true;
+                sb.Append('@');
+
+                foreach (var (key, value) in Tags)
+                {
+                    if (initial)
+                    {
+                        initial = false;
+                    }
+                    else
+                    {
+                        sb.Append(';');
+                    }
+
+                    sb.Append(key);
+
+                    if (value == null)
+                    {
+                        continue;
+                    }
+
+                    sb.Append('=');
+
+                    foreach (var c in value)
+                    {
+                        sb.Append(c switch
+                        {
+                            ';' => @"\:",
+                            ' ' => @"\s",
+                            '\\' => @"\\",
+                            '\r' => @"\r",
+                            '\n' => @"\n",
+                            _ => c
+                        });
+                    }
+                }
+
+                sb.Append(' ');
+                return sb.ToString();
+            }
+        }
+
+        /// <summary>
+        /// The command part of the final command, including trailing CRLF
+        /// and the source prefix.
+        /// </summary>
+        string PrefixedCommandPart => $":{Source} {UnprefixedCommandPart}";
+
+        /// <summary>
+        /// The command part of the final command, including trailing CRLF.
+        /// This does not include the source prefix.
+        /// </summary>
+        string UnprefixedCommandPart
+        {
+            get
+            {
+                var sb = new StringBuilder();
+                sb.Append(Verb);
+
+                for (int i = 0; i < Args.Count; ++i)
+                {
+                    sb.Append(' ');
+
+                    if (i == Args.Count - 1 && HasTrailingArg)
+                    {
+                        sb.Append(':');
+                    }
+
+                    sb.Append(Args[i]);
+                }
+
+                sb.Append("\r\n");
+                return sb.ToString();
+            }
+        }
+
+        /// <summary>
+        /// The full command to send to the remote IRC server.
+        /// </summary>
+        string FullCommand => (Source == null || CommandType == CommandType.Client)
+            ? $"{TagPart}{UnprefixedCommandPart}"
+            : $"{TagPart}{PrefixedCommandPart}";
     }
 }

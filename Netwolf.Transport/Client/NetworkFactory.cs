@@ -56,7 +56,8 @@ namespace Netwolf.Transport.Client
             var options = new NetworkOptions();
             optionFactory(options);
             var logger = provider.GetRequiredService<ILogger<Network>>();
-            var network = new Network(name, options, logger);
+            var commandFactory = provider.GetRequiredService<ICommandFactory>();
+            var network = new Network(name, options, logger, commandFactory);
             Networks.Add(provider, network);
             return network;
         }

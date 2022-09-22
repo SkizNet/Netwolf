@@ -11,5 +11,8 @@ namespace Netwolf.Transport.Exceptions
     /// </summary>
     public class CommandTooLongException : Exception
     {
+        public CommandTooLongException() : base() { }
+        public CommandTooLongException(string message) : base(message) { }
+        public CommandTooLongException(string message, Exception innerException) : base(message, innerException) { }
     }
 }

@@ -18,20 +18,15 @@ namespace Netwolf.Transport.Client
         bool IsConnected { get; }
 
         /// <summary>
-        /// Connect to the network with the default timeout (15 seconds) and
-        /// perform user registration.
-        /// Throws TimeoutException if a connection cannot be made in time.
-        /// </summary>
-        /// <returns></returns>
-        Task ConnectAsync();
-
-        /// <summary>
-        /// Connect to the network with a user-controlled cancellation policy
-        /// and perform user registration.
+        /// Connect to the network and perform user registration. If the passed-in
+        /// cancellation token has a timeout, that timeout will apply to all connection
+        /// attempts, rather than any individual connection. Individual connection
+        /// timeouts are controlled by the <see cref="NetworkOptions"/> passed in
+        /// while creating the <see cref="INetwork"/>.
         /// </summary>
         /// <param name="cancellationToken">
         /// Cancellation token; passing <see cref="CancellationToken.None"/>
-        /// will block indefinitely until the connection happens.
+        /// will retry connections indefinitely until the connection happens.
         /// </param>
         Task ConnectAsync(CancellationToken cancellationToken);
 

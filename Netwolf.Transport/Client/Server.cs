@@ -58,5 +58,24 @@ namespace Netwolf.Transport.Client
                 SecureConnection = secure.Value;
             }
         }
+
+        /// <summary>
+        /// Convert the server to a string representation of the host name, port, and TLS setting.
+        /// </summary>
+        /// <returns></returns>
+        public override string ToString()
+        {
+            var sslChar = SecureConnection ? "+" : string.Empty;
+            var leading = string.Empty;
+            var trailing = string.Empty;
+
+            if (HostName.Contains(':'))
+            {
+                leading = "[";
+                trailing = "]";
+            }
+
+            return $"{leading}{HostName}{trailing}:{sslChar}{Port}";
+        }
     }
 }

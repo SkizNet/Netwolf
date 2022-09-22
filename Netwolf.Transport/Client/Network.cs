@@ -31,6 +31,8 @@ namespace Netwolf.Transport.Client
         /// </summary>
         protected ILogger<Network> Logger { get; init; }
 
+        protected ICommandFactory CommandFactory { get; init; }
+
         private IrcConnection? _connection;
 
         /// <summary>
@@ -42,6 +44,11 @@ namespace Netwolf.Transport.Client
         /// User-defined network name (not necessarily what the network actually calls itself)
         /// </summary>
         public string Name { get; init; }
+
+        /// <summary>
+        /// True if we are currently connected to this Network
+        /// </summary>
+        public bool IsConnected => _connection != null;
 
         /// <summary>
         /// TLS client certificate used to log into the user's account.
@@ -57,7 +64,7 @@ namespace Netwolf.Transport.Client
         /// </param>
         /// <param name="options">Network options.</param>
         /// <param name="logger">Logger to use.</param>
-        public Network(string name, NetworkOptions options, ILogger<Network> logger)
+        public Network(string name, NetworkOptions options, ILogger<Network> logger, ICommandFactory commandFactory)
         {
             ArgumentNullException.ThrowIfNull(name);
             ArgumentNullException.ThrowIfNull(options);
@@ -65,6 +72,7 @@ namespace Netwolf.Transport.Client
             Name = name;
             Options = options;
             Logger = logger;
+            CommandFactory = commandFactory;
 
             if (!String.IsNullOrEmpty(Options.AccountCertificateFile))
             {
@@ -119,6 +127,127 @@ namespace Netwolf.Transport.Client
             // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
             Dispose(disposing: true);
             GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// Connect to the network and perform user registration. If the passed-in
+        /// cancellation token has a timeout, that timeout will apply to all connection
+        /// attempts, rather than any individual connection. Individual connection
+        /// timeouts are controlled by the <see cref="NetworkOptions"/> passed in
+        /// while creating the <see cref="INetwork"/>.
+        /// </summary>
+        /// <param name="cancellationToken">
+        /// Cancellation token; passing <see cref="CancellationToken.None"/>
+        /// will retry connections indefinitely until the connection happens.
+        /// </param>
+        public async Task ConnectAsync(CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                foreach (var server in Options.Servers)
+                {
+                    using var timer = new CancellationTokenSource();
+                    using var aggregate = CancellationTokenSource.CreateLinkedTokenSource(timer.Token, cancellationToken);
+                    var connection = new IrcConnection(this, server, Options);
+
+                    if (Options.ConnectTimeout != TimeSpan.Zero)
+                    {
+                        timer.CancelAfter(Options.ConnectTimeout);
+                    }
+
+                    try
+                    {
+                        Logger.LogInformation("Connecting to {server}...", server);
+                        await connection.ConnectAsync(aggregate.Token);
+                        _connection = connection;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // if we were cancelled via the passed-in token, propagate the cancellation upwards
+                        // otherwise this was a timeout, so we move on to the next server
+                        cancellationToken.ThrowIfCancellationRequested();
+                        Logger.LogInformation("Connection attempt aborted.");
+                    }
+                    finally
+                    {
+                        if (_connection != connection)
+                        {
+                            await connection.DisposeAsync();
+                        }
+                    }
+
+                    Logger.LogInformation("Connection timed out, trying next server in list.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Cleanly disconnect from the network with the default timeout (5 seconds).
+        /// If the connection isn't cleanly closed in time, it will be forcibly closed instead.
+        /// </summary>
+        /// <param name="reason">Reason used in the QUIT message, displayed to others on the network</param>
+        /// <returns></returns>
+        public Task DisconnectAsync(string reason)
+        {
+            using var source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            return DisconnectAsync(reason, source.Token);
+        }
+
+        /// <summary>
+        /// Cleanly disconnect from the network with a user-controlled cancellation policy.
+        /// If the connection cannot be cleanly closed in time, it will be forcibly closed instead.
+        /// </summary>
+        /// <param name="reason">Reason used in the QUIT message, displayed to others on the network</param>
+        /// <param name="cancellationToken">
+        /// Cancellation token; passing <see cref="CancellationToken.None"/>
+        /// will block indefinitely until the connection is cleanly closed by the other end.
+        /// </param>
+        /// <returns></returns>
+        public async Task DisconnectAsync(string reason, CancellationToken cancellationToken)
+        {
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await SendAsync(PrepareCommand("QUIT", new string[] { reason }, null), cancellationToken);
+            }
+            finally
+            {
+                if (_connection != null)
+                {
+                    await _connection.DisconnectAsync();
+                }
+
+                _connection = null;
+            }
+        }
+
+        /// <summary>
+        /// Prepare a command to be sent to the network.
+        /// </summary>
+        /// <param name="verb">Command to send.</param>
+        /// <param name="args">
+        /// Command arguments, which will be turned into strings. <c>null</c> values will be converted to empty strings,
+        /// which will lead to an invalid trailing argument error unless it is the final parameter.
+        /// </param>
+        /// <param name="tags">
+        /// Command tags. <c>null</c> values will be sent without tag values, whereas all other values
+        /// will be turned into strings. If the resultant value is an empty string, it will be sent without a tag value.
+        /// </param>
+        /// <returns>The prepared command, which can be sent to the network via <see cref="SendAsync(ICommand)"/>.</returns>
+        /// <exception cref="ArgumentNullException">If <paramref name="verb"/> is <c>null</c>.</exception>
+        /// <exception cref="ArgumentException">If <paramref name="verb"/> is invalid.</exception>
+        /// <exception cref="ArgumentException">If a member of <paramref name="args"/> except for the final member would be considered a trailing argument.</exception>
+        /// <exception cref="CommandTooLongException">
+        /// If the expanded command (without tags) cannot fit within 512 bytes or the tags cannot fit within 4096 bytes.
+        /// </exception>
+        public ICommand PrepareCommand(string verb, object[]? args, IReadOnlyDictionary<string, object?>? tags)
+        {
+            return CommandFactory.CreateCommand(
+                CommandType.Client,
+                $"{Nick}!{Ident}@{Host}",
+                verb,
+                (args ?? Array.Empty<object>()).Select(o => o.ToString() ?? string.Empty).ToList(),
+                (tags ?? new Dictionary<string, object?>()).ToDictionary(o => o.Key, o => o.Value?.ToString()));
         }
     }
 }

@@ -11,8 +11,10 @@ namespace Netwolf.Transport.Client
     /// </summary>
     public interface ICommandFactory
     {
-        Type CommandType { get; }
+        Type ObjectType { get; }
 
-        ICommand CreateCommand(CommandType commandType, string? source, string verb, List<string> args, Dictionary<string, string?> tags);
+        ICommand CreateCommand(CommandType commandType, string? source, string verb, IReadOnlyList<string?> args, IReadOnlyDictionary<string, string?> tags);
+
+        ICommand Parse(CommandType commandType, string message);
     }
 }
