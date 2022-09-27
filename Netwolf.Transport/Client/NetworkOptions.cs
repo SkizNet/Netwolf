@@ -130,5 +130,14 @@ namespace Netwolf.Transport.Client
         /// network does not have services, ensure that <see cref="AccountPassword"/> is <c>null</c>.
         /// </summary>
         public AuthType? AuthType { get; set; }
+
+        /// <summary>
+        /// If set, and supported by the server, use CPRIVMSG and CNOTICE for outgoing messages
+        /// when possible (i.e. when opped in a channel shared with the message targets).
+        /// CPRIVMSG and CNOTICE bypass certain flood controls to make sending possibly a bit faster
+        /// on the IRC network side, but can be disabled in case of incompatibilities client-side
+        /// or a broken implementation network-side.
+        /// </summary>
+        public bool UseCPrivmsg { get; set; }
     }
 }

@@ -226,8 +226,8 @@ namespace Netwolf.Transport.Client
         /// </summary>
         /// <param name="verb">Command to send.</param>
         /// <param name="args">
-        /// Command arguments, which will be turned into strings. <c>null</c> values will be converted to empty strings,
-        /// which will lead to an invalid trailing argument error unless it is the final parameter.
+        /// Command arguments, which will be turned into strings.
+        /// <c>null</c> values (whether before or after string conversion) will be omitted.
         /// </param>
         /// <param name="tags">
         /// Command tags. <c>null</c> values will be sent without tag values, whereas all other values
@@ -240,14 +240,51 @@ namespace Netwolf.Transport.Client
         /// <exception cref="CommandTooLongException">
         /// If the expanded command (without tags) cannot fit within 512 bytes or the tags cannot fit within 4096 bytes.
         /// </exception>
-        public ICommand PrepareCommand(string verb, object[]? args, IReadOnlyDictionary<string, object?>? tags)
+        public ICommand PrepareCommand(string verb, IEnumerable<object?>? args, IReadOnlyDictionary<string, object?>? tags)
         {
             return CommandFactory.CreateCommand(
                 CommandType.Client,
                 $"{Nick}!{Ident}@{Host}",
                 verb,
-                (args ?? Array.Empty<object>()).Select(o => o.ToString() ?? string.Empty).ToList(),
+                (args ?? Array.Empty<object?>()).Select(o => o?.ToString()).Where(o => o != null).ToList(),
                 (tags ?? new Dictionary<string, object?>()).ToDictionary(o => o.Key, o => o.Value?.ToString()));
+        }
+
+        public ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, object?>? tags)
+        {
+            var commands = new List<ICommand>();
+
+            // TODO: pick the CPRIVMSG/CNOTICE variants if enabled in network options, supported by server, and we're opped on a channel shared with target;
+            // this will also need to pick the relevant channel as well. CPRIVMSG target #channel :message or CNOTICE target #channel :message
+            var oppedChannel = string.Empty;
+            var cprivmsgEligible = false;
+            var cnoticeEligible = false;
+
+            var verb = (messageType, cprivmsgEligible, cnoticeEligible) switch
+            {
+                (MessageType.Message, false, _) => "PRIVMSG",
+                (MessageType.Message, true, _) => "CPRIVMSG",
+                (MessageType.Notice, _, false) => "NOTICE",
+                (MessageType.Notice, _, true) => "CNOTICE",
+                (_, _, _) => throw new ArgumentException("Invalid message type", nameof(messageType))
+            };
+
+            var hostmask = $"{Nick}!{Ident}@{Host}";
+            List<string> args = new() { target };
+
+            // :<hostmask> <verb> <target> :<text>\r\n -- 2 colons + 3 spaces + CRLF = 7 syntax characters. If CPRIVMSG/CNOTICE, one extra space is needed.
+            // we build in an additional safety buffer of 14 bytes to account for cases where our hostmask is out of sync or the server adds additional context
+            // to relayed messages (for 7 + 14 = 21 total bytes, leaving 491 for the rest normally or 490 when using CPRIVMSG/CNOTICE)
+            var maxlen = 512 - 21 - hostmask.Length - verb.Length - target.Length;
+            if (verb[0] == 'C')
+            {
+                maxlen -= 1 + oppedChannel.Length;
+                args.Add(oppedChannel);
+            }
+
+            // split text if it is longer than maxlen bytes
+            // TODO: if multiline is supported by the network, add appropriate tags
+            var lines = UnicodeHelper.SplitText(text, maxlen);
         }
     }
 }

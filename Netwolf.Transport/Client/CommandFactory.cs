@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 
 using Netwolf.Transport.Exceptions;
+using Netwolf.Transport.Internal;
 
 using System;
 using System.Collections.Generic;
@@ -108,12 +109,12 @@ namespace Netwolf.Transport.Client
 
             var commandOptions = new CommandOptions(commandType, source, verb, commandArgs, commandTags, hasTrailingArg);
             var command = (ICommand)ActivatorUtilities.CreateInstance(Provider, ObjectType, commandOptions);
-            if (command.PrefixedCommandPart.Length > 512)
+            if (command.PrefixedCommandPart.EncodeUtf8().Length > 512)
             {
                 throw new CommandTooLongException($"Command is too long, {command.PrefixedCommandPart.Length} bytes found but 512 bytes allowed.");
             }
 
-            if (command.TagPart.Length > allowedTagLength)
+            if (command.TagPart.EncodeUtf8().Length > allowedTagLength)
             {
                 throw new CommandTooLongException($"Tags are too long, {command.TagPart.Length} bytes found but {allowedTagLength} bytes allowed.");
             }
