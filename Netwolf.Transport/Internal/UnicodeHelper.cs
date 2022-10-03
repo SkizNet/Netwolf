@@ -1,14 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Diagnostics.Metrics;
-using System.Globalization;
-using System.Linq;
-using System.Reflection.Metadata;
+﻿using System.Globalization;
 using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
 namespace Netwolf.Transport.Internal
 {
@@ -31,7 +22,7 @@ namespace Netwolf.Transport.Internal
             // LB2 Never break at the start of text.
             { (LineBreakClass.Sot, LineBreakClass.Any), (LineBreakType.Forbidden, null, 200, null) },
             // LB3 Always break at the end of text.
-            // handled implicitly
+            // handled by injecting a new value at the end with a mandatory break
             // LB4 Always break after hard line breaks.
             { (LineBreakClass.Any, LineBreakClass.BK), (LineBreakType.Forbidden, LineBreakType.Mandatory, 600, 400) },
             // LB5 Treat CR followed by LF, as well as CR, LF, and NL as hard line breaks.
@@ -377,10 +368,93 @@ namespace Netwolf.Transport.Internal
                 prev = cur;
             }
 
+            // Add end of text signal (which simplifies a bit of logic below)
+            graphemes.Add(new(string.Empty, LineBreakClass.Eot, LineBreakType.Mandatory, 300));
 
             List<string> lines = new();
             int currentLength = 0;
-            var sb = new StringBuilder();
+            var thresholdLength = Math.Min(0, maxLength - 24);
+            var preThreshold = new StringBuilder();
+            Grapheme? threshold = null;
+            int thresholdIndex = 0;
+            var postThreshold = new StringBuilder();
+
+            // iteratively build up the line, breaking on mandatory breaks and keeping candidate sets otherwise
+            // when we get close to maxLength (defined as >= maxlength - 24 bytes). If we need to inject a soft
+            // split, we split on the character in the candidate set with the lowest rule number. If none of the
+            // characters in the candidate set match that criteria, we inject a break regardless after the final
+            // grapheme that fits. Because we injected an end of text marker above, we are guaranteed that this
+            // list ends with a mandatory line break and as such all lines are properly accounted for without
+            // requiring logic outside of the main loop.
+            for (int i = 0; i < graphemes.Count; ++i)
+            {
+                var cur = graphemes[i];
+
+                // is cur a hard break? We don't add hard breaks to the resultant string so these are effectively
+                // 0-length control codes instead.
+                if (cur.Type == LineBreakType.Mandatory)
+                {
+                    // don't add an extra blank line at the end if we ended with a mandatory line break and then
+                    // found our end of text marker
+                    if (cur.Class != LineBreakClass.Eot || currentLength > 0)
+                    {
+                        preThreshold.Append(postThreshold);
+                        lines.Add(preThreshold.ToString());
+                        preThreshold.Clear();
+                        threshold = null;
+                        postThreshold.Clear();
+                        currentLength = 0;
+                    }
+
+                    continue;
+                }
+
+                // skip over other line break characters that are forbidden breaks (i.e. CR when followed by LF)
+                if (cur.Class == LineBreakClass.CR)
+                {
+                    continue;
+                }
+
+                if (currentLength + cur.Length > maxLength)
+                {
+                    // need to split this line
+                    if (threshold != null)
+                    {
+                        // will be incremented on continue, so we specify thresholdIndex here to examine the character
+                        // after threshold in the next loop iteration
+                        i = thresholdIndex;
+                    }
+
+                    lines.Add(preThreshold.ToString());
+                    preThreshold.Clear();
+                    threshold = null;
+                    postThreshold.Clear();
+                    currentLength = 0;
+                    continue;
+                }
+
+                currentLength += cur.Length;
+
+                if (threshold == null)
+                {
+                    preThreshold.Append(cur.Value);
+                }
+                else
+                {
+                    postThreshold.Append(cur.Value);
+                }
+
+                if (currentLength > thresholdLength && cur.Type == LineBreakType.Optional && cur.Rule < (threshold?.Rule ?? 99999))
+                {
+                    // found a new threshold grapheme
+                    preThreshold.Append(postThreshold);
+                    postThreshold.Clear();
+                    threshold = cur;
+                    thresholdIndex = i;
+                }
+            }
+
+            return lines;
         }
 
         private static partial LineBreakClass GetLineBreakClass(Rune rune);
@@ -390,6 +464,9 @@ namespace Netwolf.Transport.Internal
         private class Grapheme
         {
             public Grapheme(string value, LineBreakClass? lineBreakClass = null)
+                : this(value, lineBreakClass, LineBreakType.Optional, 3100) { }
+
+            public Grapheme(string value, LineBreakClass? lineBreakClass, LineBreakType lineBreakType, int rule)
             {
                 Rune = value.EnumerateRunes().FirstOrDefault();
                 lineBreakClass ??= GetLineBreakClass(Rune);
@@ -410,13 +487,16 @@ namespace Netwolf.Transport.Internal
                     _ => lineBreakClass.Value
                 };
 
-                Type = LineBreakType.Optional;
-                Rule = 3100;
+                Type = lineBreakType;
+                Rule = rule;
+                Length = value.EncodeUtf8().Length;
             }
 
             public string Value { get; init; }
 
             public Rune Rune { get; init; }
+
+            public int Length { get; init; }
 
             public LineBreakClass Class { get; init; }
 
@@ -476,6 +556,8 @@ namespace Netwolf.Transport.Internal
             SA,
             // start of text marker
             Sot,
+            // end of text marker
+            Eot,
             // special marker for wildcard rules
             Any
         }
