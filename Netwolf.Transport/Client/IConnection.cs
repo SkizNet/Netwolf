@@ -24,6 +24,17 @@ namespace Netwolf.Transport.Client
         Task ConnectAsync(CancellationToken cancellationToken);
 
         /// <summary>
+        /// Send a command to the remote server
+        /// </summary>
+        /// <param name="command">Command to send</param>
+        /// <param name="cancellationToken">
+        /// Cancellation token; passing <see cref="CancellationToken.None"/>
+        /// will block indefinitely until the command is sent.
+        /// </param>
+        /// <returns></returns>
+        Task SendAsync(ICommand command, CancellationToken cancellationToken);
+
+        /// <summary>
         /// Close the underlying connection and free up related resources;
         /// this task cannot be cancelled.
         /// </summary>

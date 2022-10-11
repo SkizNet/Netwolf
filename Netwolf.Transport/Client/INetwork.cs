@@ -53,7 +53,20 @@ namespace Netwolf.Transport.Client
         /// </exception>
         ICommand PrepareCommand(string verb, IEnumerable<object?>? args, IReadOnlyDictionary<string, object?>? tags);
 
+        /// <summary>
+        /// Send a command to the network, blocking until success.
+        /// </summary>
+        /// <param name="command">Command to send.</param>
+        /// <returns></returns>
         Task SendAsync(ICommand command);
+
+        /// <summary>
+        /// Send a command to the network with a user-controlled cancellation policy.
+        /// </summary>
+        /// <param name="command"></param>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
+        Task SendAsync(ICommand command, CancellationToken cancellationToken);
 
         /// <summary>
         /// Cleanly disconnect from the network with the default timeout (5 seconds).

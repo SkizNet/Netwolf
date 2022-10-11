@@ -222,6 +222,27 @@ namespace Netwolf.Transport.Client
         }
 
         /// <summary>
+        /// Send a command to the network, blocking until success.
+        /// </summary>
+        /// <param name="command">Command to send.</param>
+        /// <returns></returns>
+        public Task SendAsync(ICommand command)
+        {
+            return SendAsync(command, CancellationToken.None);
+        }
+
+        /// <summary>
+        /// Send a command to the network with a user-controlled cancellation policy.
+        /// </summary>
+        /// <param name="command"></param>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
+        public Task SendAsync(ICommand command, CancellationToken cancellationToken)
+        {
+            return Connection.SendAsync(command, cancellationToken);
+        }
+
+        /// <summary>
         /// Prepare a command to be sent to the network.
         /// </summary>
         /// <param name="verb">Command to send.</param>
@@ -244,7 +265,7 @@ namespace Netwolf.Transport.Client
         {
             return CommandFactory.CreateCommand(
                 CommandType.Client,
-                $"{Nick}!{Ident}@{Host}",
+                $"{Connection.State.Nick}!{Connection.State.Ident}@{Connection.State.Host}",
                 verb,
                 (args ?? Array.Empty<object?>()).Select(o => o?.ToString()).Where(o => o != null).ToList(),
                 (tags ?? new Dictionary<string, object?>()).ToDictionary(o => o.Key, o => o.Value?.ToString()));
@@ -253,6 +274,7 @@ namespace Netwolf.Transport.Client
         public ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, object?>? tags)
         {
             var commands = new List<ICommand>();
+            Dictionary<string, string?> messageTags = (tags ?? new Dictionary<string, object?>()).ToDictionary(o => o.Key, o => o.Value?.ToString());
 
             // TODO: pick the CPRIVMSG/CNOTICE variants if enabled in network options, supported by server, and we're opped on a channel shared with target;
             // this will also need to pick the relevant channel as well. CPRIVMSG target #channel :message or CNOTICE target #channel :message
@@ -269,7 +291,7 @@ namespace Netwolf.Transport.Client
                 (_, _, _) => throw new ArgumentException("Invalid message type", nameof(messageType))
             };
 
-            var hostmask = $"{Nick}!{Ident}@{Host}";
+            var hostmask = $"{Connection.State.Nick}!{Connection.State.Ident}@{Connection.State.Host}";
             List<string> args = new() { target };
 
             // :<hostmask> <verb> <target> :<text>\r\n -- 2 colons + 3 spaces + CRLF = 7 syntax characters. If CPRIVMSG/CNOTICE, one extra space is needed.
@@ -282,9 +304,24 @@ namespace Netwolf.Transport.Client
                 args.Add(oppedChannel);
             }
 
+            var lineIndex = args.Count;
+
             // split text if it is longer than maxlen bytes
             // TODO: if multiline is supported by the network, add appropriate tags
             var lines = UnicodeHelper.SplitText(text, maxlen);
+            foreach (var line in lines)
+            {
+                args[lineIndex] = line;
+                commands.Add(CommandFactory.CreateCommand(
+                    CommandType.Client,
+                    hostmask,
+                    verb,
+                    args,
+                    messageTags
+                    ));
+            }
+
+            return commands.ToArray();
         }
     }
 }

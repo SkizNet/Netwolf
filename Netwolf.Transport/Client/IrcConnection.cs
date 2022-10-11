@@ -17,6 +17,11 @@ namespace Netwolf.Transport.Client
     {
         private bool _disposed = false;
 
+        /// <summary>
+        /// State for this connection
+        /// </summary>
+        public IrcConnectionState State { get; init; } = new();
+
         private Socket? Socket { get; set; }
 
         private Stream? Stream { get; set; }
@@ -176,6 +181,26 @@ namespace Netwolf.Transport.Client
 
             Socket = null;
             Stream = null;
+        }
+
+        /// <summary>
+        /// Send a command to the remote server
+        /// </summary>
+        /// <param name="command">Command to send</param>
+        /// <param name="cancellationToken">
+        /// Cancellation token; passing <see cref="CancellationToken.None"/>
+        /// will block indefinitely until the command is sent.
+        /// </param>
+        /// <returns></returns>
+        public async Task SendAsync(ICommand command, CancellationToken cancellationToken)
+        {
+            if (Stream == null)
+            {
+                throw new InvalidOperationException("Cannot send to a closed connection.");
+            }
+
+            // TODO: do we need to queue this somehow? How do we know the stream is writable at this exact moment?
+            await Stream.WriteAsync(command.FullCommand.EncodeUtf8(), cancellationToken);
         }
 
         /// <summary>

@@ -264,7 +264,7 @@ namespace Netwolf.Transport.Internal
             // handle rules that we couldn't handle above
             int state = 0;
             var lb12classes = new LineBreakClass[] { LineBreakClass.SP, LineBreakClass.BA, LineBreakClass.HY };
-            var eaWidths = new EastAsianWidth[] { EastAsianWidth.Fullwidth, EastAsianWidth.Wide, EastAsianWidth.Halfwidth };
+            var eaWidths = new EastAsianWidth[] { EastAsianWidth.F, EastAsianWidth.W, EastAsianWidth.H };
             prev = graphemes[0];
             foreach (var cur in graphemes)
             {
@@ -564,12 +564,18 @@ namespace Netwolf.Transport.Internal
 
         private enum EastAsianWidth
         {
-            Fullwidth,
-            Halfwidth,
-            Wide,
-            Narrow,
-            Ambiguous,
-            Neutral
+            // Fullwidth
+            F,
+            // Halfwidth
+            H,
+            // Wide
+            W,
+            // Narrow
+            Na,
+            // Ambiguous
+            A,
+            // Neutral
+            N
         }
 
         private enum LineBreakType

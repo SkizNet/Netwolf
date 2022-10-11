@@ -5,7 +5,9 @@ VisualStudioVersion = 17.1.32421.90
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Netwolf.Transport", "Netwolf.Transport\Netwolf.Transport.csproj", "{A922C2C2-4F52-4AB7-9007-9EDB42494096}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Netwolf.Transport.Tests", "Netwolf.Transport.Tests\Netwolf.Transport.Tests.csproj", "{F6C55AB3-FE6F-45EC-AFA5-D68F89441C91}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Netwolf.Transport.Tests", "Netwolf.Transport.Tests\Netwolf.Transport.Tests.csproj", "{F6C55AB3-FE6F-45EC-AFA5-D68F89441C91}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Netwolf.Generator", "Netwolf.Generator\Netwolf.Generator.csproj", "{69F52F4C-40CB-4C66-AF9E-6C8A17FFB70C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{F6C55AB3-FE6F-45EC-AFA5-D68F89441C91}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F6C55AB3-FE6F-45EC-AFA5-D68F89441C91}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F6C55AB3-FE6F-45EC-AFA5-D68F89441C91}.Release|Any CPU.Build.0 = Release|Any CPU
+		{69F52F4C-40CB-4C66-AF9E-6C8A17FFB70C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{69F52F4C-40CB-4C66-AF9E-6C8A17FFB70C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{69F52F4C-40CB-4C66-AF9E-6C8A17FFB70C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{69F52F4C-40CB-4C66-AF9E-6C8A17FFB70C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
