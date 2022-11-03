@@ -28,7 +28,7 @@ namespace Netwolf.Transport.Client
         /// Cancellation token; passing <see cref="CancellationToken.None"/>
         /// will retry connections indefinitely until the connection happens.
         /// </param>
-        Task ConnectAsync(CancellationToken cancellationToken);
+        Task ConnectAsync(CancellationToken cancellationToken = default);
 
         ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, object?>? tags);
 
@@ -54,38 +54,30 @@ namespace Netwolf.Transport.Client
         ICommand PrepareCommand(string verb, IEnumerable<object?>? args, IReadOnlyDictionary<string, object?>? tags);
 
         /// <summary>
-        /// Send a command to the network, blocking until success.
-        /// </summary>
-        /// <param name="command">Command to send.</param>
-        /// <returns></returns>
-        Task SendAsync(ICommand command);
-
-        /// <summary>
-        /// Send a command to the network with a user-controlled cancellation policy.
+        /// Send a command to the network
         /// </summary>
         /// <param name="command"></param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        Task SendAsync(ICommand command, CancellationToken cancellationToken);
+        Task SendAsync(ICommand command, CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Cleanly disconnect from the network with the default timeout (5 seconds).
-        /// If the connection isn't cleanly closed in time, it will be forcibly closed instead.
+        /// Receive a command from the network
         /// </summary>
-        /// <param name="reason">Reason used in the QUIT message, displayed to others on the network</param>
+        /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        Task DisconnectAsync(string reason);
+        Task<ICommand> ReceiveAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Cleanly disconnect from the network with a user-controlled cancellation policy.
+        /// Cleanly disconnect from the network.
         /// If the connection cannot be cleanly closed in time, it will be forcibly closed instead.
         /// </summary>
         /// <param name="reason">Reason used in the QUIT message, displayed to others on the network</param>
         /// <param name="cancellationToken">
-        /// Cancellation token; passing <see cref="CancellationToken.None"/>
+        /// Cancellation token; passing <see cref="CancellationToken.None"/> (the default)
         /// will block indefinitely until the connection is cleanly closed by the other end.
         /// </param>
         /// <returns></returns>
-        Task DisconnectAsync(string reason, CancellationToken cancellationToken);
+        Task DisconnectAsync(string reason, CancellationToken cancellationToken = default);
     }
 }

@@ -1,18 +1,22 @@
-﻿using System.Globalization;
+﻿using System.Buffers;
+using System.Globalization;
 using System.Text;
 
 namespace Netwolf.Transport.Internal
 {
     internal static partial class UnicodeHelper
     {
-        internal static byte[] EncodeUtf8(this string source)
+        internal static readonly UTF8Encoding Strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+        internal static readonly UTF8Encoding Lax = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
+
+        internal static byte[] EncodeUtf8(this string source, bool strict = true)
         {
-            return Encoding.UTF8.GetBytes(source);
+            return (strict ? Strict : Lax).GetBytes(source);
         }
 
-        internal static string DecodeUtf8(this byte[] source)
+        internal static string DecodeUtf8(this ReadOnlySpan<byte> source, bool strict = true)
         {
-            return Encoding.UTF8.GetString(source);
+            return (strict ? Strict : Lax).GetString(source);
         }
 
         private static readonly Dictionary<(LineBreakClass Prev, LineBreakClass Cur), (LineBreakType? PrevType, LineBreakType? CurType, int? PrevRule, int? CurRule)> _mapping = new()

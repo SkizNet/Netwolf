@@ -1,7 +1,10 @@
 ﻿using Netwolf.Transport.Internal;
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Dynamic;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Net;
 using System.Net.Security;
@@ -26,6 +29,10 @@ namespace Netwolf.Transport.Client
 
         private Stream? Stream { get; set; }
 
+        private PipeReader? Reader { get; set; }
+
+        private PipeWriter? Writer { get; set; }
+
         private string HostName { get; init; }
 
         private int Port { get; init; }
@@ -42,7 +49,9 @@ namespace Netwolf.Transport.Client
 
         private EndPoint? BindHost { get; init; }
 
-        internal IrcConnection(Network network, Server server, NetworkOptions options)
+        private ICommandFactory CommandFactory { get; init; }
+
+        internal IrcConnection(Network network, Server server, NetworkOptions options, ICommandFactory commandFactory)
         {
             HostName = server.HostName;
             Port = server.Port;
@@ -65,14 +74,7 @@ namespace Netwolf.Transport.Client
             ClientCertificate = network.AccountCertificate;
         }
 
-        /// <summary>
-        /// Connect to the remote host
-        /// </summary>
-        /// <param name="cancellationToken">
-        /// Cancellation token; passing <see cref="CancellationToken.None"/>
-        /// will block indefinitely until the connection happens.
-        /// </param>
-        /// <returns></returns>
+        /// <inheritdoc />
         public async Task ConnectAsync(CancellationToken cancellationToken)
         {
             if (Socket != null || Stream != null)
@@ -130,6 +132,14 @@ namespace Netwolf.Transport.Client
 
                 await sslStream.AuthenticateAsClientAsync(sslOptions, cancellationToken);
             }
+
+            // Allocate a buffer large enough to hold one maximum-sized incoming IRC message with client and server tags,
+            // rounded up to the nearest multiple of 4 KiB (typical memory page size). If the buffer has fewer than
+            // 512 bytes remaining in it, a larger buffer will be allocated during the next read, up to 2 MiB total.
+            Reader = PipeReader.Create(Stream, new StreamPipeReaderOptions(bufferSize: 12288, minimumReadSize: 512, leaveOpen: true));
+
+            // All writes to Writer get immediately written to the underlying Stream, so buffer sizes don't matter here.
+            Writer = PipeWriter.Create(Stream, new StreamPipeWriterOptions(leaveOpen: true));
         }
 
         private bool VerifyServerCertificate(
@@ -168,39 +178,92 @@ namespace Netwolf.Transport.Client
             return false;
         }
 
-        /// <summary>
-        /// Close the underlying connection and free up related resources;
-        /// this task cannot be cancelled.
-        /// </summary>
-        /// <returns></returns>
+        /// <inheritdoc />
         public async Task DisconnectAsync()
         {
-            Socket?.Shutdown(SocketShutdown.Both);
-            Socket?.Close();
-            await NullableHelper.DisposeAsyncIfNotNull(Stream).ConfigureAwait(false);
-
-            Socket = null;
-            Stream = null;
+            await Task.Run(Disconnect).ConfigureAwait(false);
         }
 
-        /// <summary>
-        /// Send a command to the remote server
-        /// </summary>
-        /// <param name="command">Command to send</param>
-        /// <param name="cancellationToken">
-        /// Cancellation token; passing <see cref="CancellationToken.None"/>
-        /// will block indefinitely until the command is sent.
-        /// </param>
-        /// <returns></returns>
+        private void Disconnect()
+        {
+            Reader?.CancelPendingRead();
+            Reader?.Complete();
+            Writer?.CancelPendingFlush();
+            Writer?.Complete();
+            Socket?.Shutdown(SocketShutdown.Both);
+            Socket?.Close(); // calls Socket.Dispose() internally
+            Stream?.Dispose();
+            Socket = null;
+            Stream = null;
+            Reader = null;
+            Writer = null;
+        }
+
+        /// <inheritdoc />
         public async Task SendAsync(ICommand command, CancellationToken cancellationToken)
         {
-            if (Stream == null)
+            if (Writer == null)
             {
                 throw new InvalidOperationException("Cannot send to a closed connection.");
             }
 
-            // TODO: do we need to queue this somehow? How do we know the stream is writable at this exact moment?
-            await Stream.WriteAsync(command.FullCommand.EncodeUtf8(), cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            await Writer.WriteAsync(command.FullCommand.EncodeUtf8(), cancellationToken);
+        }
+
+        private static readonly byte[] _crlf = "\r\n".EncodeUtf8();
+
+        private string? ExtractMessage(ref ReadOnlySequence<byte> buffer)
+        {
+            var sequenceReader = new SequenceReader<byte>(buffer);
+            if (sequenceReader.TryReadTo(out ReadOnlySpan<byte> span, _crlf, advancePastDelimiter: true))
+            {
+                // we need to decode command before advancing Reader to avoid memory corruption
+                var sb = new StringBuilder(span.DecodeUtf8(strict: false));
+                Reader!.AdvanceTo(sequenceReader.Position);
+                // ICommandFactory.Parse requires that the message ends with CRLF
+                sb.Append("\r\n");
+                return sb.ToString();
+            }
+            else if (buffer.Length > 8192 + 512)
+            {
+                // didn't find a CRLF combo and we've read more than the maximum size of an IRC command
+                throw new ProtocolViolationException("Remote IRC command too long.");
+            }
+            else
+            {
+                // didn't find a CRLF combo, so mark the bytes as examined and let the reader keep reading
+                Reader!.AdvanceTo(buffer.Start, buffer.End);
+                return null;
+            }
+        }
+
+        public async Task<ICommand> ReceiveAsync(CancellationToken cancellationToken)
+        {
+            if (Reader == null)
+            {
+                throw new InvalidOperationException("Cannot send to a closed connection.");
+            }
+
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var result = await Reader.ReadAsync(cancellationToken);
+                if (result.IsCanceled)
+                {
+                    throw new OperationCanceledException("ReceiveAsync cancelled by call to DisconnectAsync or Dispose.");
+                }
+
+                // Find the CRLF signalling end of message
+                var buffer = result.Buffer;
+                // Side-effect: advances Reader, making buffer no longer safe to use after this call finishes
+                var message = ExtractMessage(ref buffer);
+                if (message != null)
+                {
+                    return CommandFactory.Parse(CommandType.Server, message);
+                }
+            }
         }
 
         /// <summary>
@@ -211,9 +274,6 @@ namespace Netwolf.Transport.Client
         {
             await DisconnectAsync();
             ClientCertificate?.Dispose();
-
-            Socket = null;
-            Stream = null;
             ClientCertificate = null;
         }
 
@@ -227,12 +287,8 @@ namespace Netwolf.Transport.Client
             {
                 if (disposing)
                 {
-                    Socket?.Shutdown(SocketShutdown.Both);
-                    Socket?.Close(); // calls Socket.Dispose() internally
-                    Stream?.Dispose();
+                    Disconnect();
                     ClientCertificate?.Dispose();
-
-                    Stream = null;
                     ClientCertificate = null;
                 }
 

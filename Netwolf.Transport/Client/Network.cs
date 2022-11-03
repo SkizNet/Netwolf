@@ -129,17 +129,7 @@ namespace Netwolf.Transport.Client
             GC.SuppressFinalize(this);
         }
 
-        /// <summary>
-        /// Connect to the network and perform user registration. If the passed-in
-        /// cancellation token has a timeout, that timeout will apply to all connection
-        /// attempts, rather than any individual connection. Individual connection
-        /// timeouts are controlled by the <see cref="NetworkOptions"/> passed in
-        /// while creating the <see cref="INetwork"/>.
-        /// </summary>
-        /// <param name="cancellationToken">
-        /// Cancellation token; passing <see cref="CancellationToken.None"/>
-        /// will retry connections indefinitely until the connection happens.
-        /// </param>
+        /// <inheritdoc />
         public async Task ConnectAsync(CancellationToken cancellationToken)
         {
             while (true)
@@ -148,7 +138,7 @@ namespace Netwolf.Transport.Client
                 {
                     using var timer = new CancellationTokenSource();
                     using var aggregate = CancellationTokenSource.CreateLinkedTokenSource(timer.Token, cancellationToken);
-                    var connection = new IrcConnection(this, server, Options);
+                    var connection = new IrcConnection(this, server, Options, CommandFactory);
 
                     if (Options.ConnectTimeout != TimeSpan.Zero)
                     {
@@ -165,8 +155,14 @@ namespace Netwolf.Transport.Client
                     {
                         // if we were cancelled via the passed-in token, propagate the cancellation upwards
                         // otherwise this was a timeout, so we move on to the next server
-                        cancellationToken.ThrowIfCancellationRequested();
-                        Logger.LogInformation("Connection attempt aborted.");
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            Logger.LogInformation("Connection attempt aborted.");
+                            cancellationToken.ThrowIfCancellationRequested();
+                        }
+
+                        Logger.LogInformation("Connection timed out, trying next server in list.");
+                        continue;
                     }
                     finally
                     {
@@ -176,33 +172,16 @@ namespace Netwolf.Transport.Client
                         }
                     }
 
-                    Logger.LogInformation("Connection timed out, trying next server in list.");
+                    // Successfully connected, do user registration
+                    // don't exit the loop until registration succeeds
+                    // (we want to bounce/reconnect if that fails for whatever reason)
+                    Logger.LogInformation("Connected to {server}.", server);
+                    
                 }
             }
         }
 
-        /// <summary>
-        /// Cleanly disconnect from the network with the default timeout (5 seconds).
-        /// If the connection isn't cleanly closed in time, it will be forcibly closed instead.
-        /// </summary>
-        /// <param name="reason">Reason used in the QUIT message, displayed to others on the network</param>
-        /// <returns></returns>
-        public Task DisconnectAsync(string reason)
-        {
-            using var source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            return DisconnectAsync(reason, source.Token);
-        }
-
-        /// <summary>
-        /// Cleanly disconnect from the network with a user-controlled cancellation policy.
-        /// If the connection cannot be cleanly closed in time, it will be forcibly closed instead.
-        /// </summary>
-        /// <param name="reason">Reason used in the QUIT message, displayed to others on the network</param>
-        /// <param name="cancellationToken">
-        /// Cancellation token; passing <see cref="CancellationToken.None"/>
-        /// will block indefinitely until the connection is cleanly closed by the other end.
-        /// </param>
-        /// <returns></returns>
+        /// <inheritdoc />
         public async Task DisconnectAsync(string reason, CancellationToken cancellationToken)
         {
             try
@@ -221,46 +200,19 @@ namespace Netwolf.Transport.Client
             }
         }
 
-        /// <summary>
-        /// Send a command to the network, blocking until success.
-        /// </summary>
-        /// <param name="command">Command to send.</param>
-        /// <returns></returns>
-        public Task SendAsync(ICommand command)
-        {
-            return SendAsync(command, CancellationToken.None);
-        }
-
-        /// <summary>
-        /// Send a command to the network with a user-controlled cancellation policy.
-        /// </summary>
-        /// <param name="command"></param>
-        /// <param name="cancellationToken"></param>
-        /// <returns></returns>
+        /// <inheritdoc />
         public Task SendAsync(ICommand command, CancellationToken cancellationToken)
         {
             return Connection.SendAsync(command, cancellationToken);
         }
 
-        /// <summary>
-        /// Prepare a command to be sent to the network.
-        /// </summary>
-        /// <param name="verb">Command to send.</param>
-        /// <param name="args">
-        /// Command arguments, which will be turned into strings.
-        /// <c>null</c> values (whether before or after string conversion) will be omitted.
-        /// </param>
-        /// <param name="tags">
-        /// Command tags. <c>null</c> values will be sent without tag values, whereas all other values
-        /// will be turned into strings. If the resultant value is an empty string, it will be sent without a tag value.
-        /// </param>
-        /// <returns>The prepared command, which can be sent to the network via <see cref="SendAsync(ICommand)"/>.</returns>
-        /// <exception cref="ArgumentNullException">If <paramref name="verb"/> is <c>null</c>.</exception>
-        /// <exception cref="ArgumentException">If <paramref name="verb"/> is invalid.</exception>
-        /// <exception cref="ArgumentException">If a member of <paramref name="args"/> except for the final member would be considered a trailing argument.</exception>
-        /// <exception cref="CommandTooLongException">
-        /// If the expanded command (without tags) cannot fit within 512 bytes or the tags cannot fit within 4096 bytes.
-        /// </exception>
+        /// <inheritdoc/>
+        public Task<ICommand> ReceiveAsync(CancellationToken cancellationToken)
+        {
+            return Connection.ReceiveAsync(cancellationToken);
+        }
+
+        /// <inheritdoc />
         public ICommand PrepareCommand(string verb, IEnumerable<object?>? args, IReadOnlyDictionary<string, object?>? tags)
         {
             return CommandFactory.CreateCommand(
@@ -271,6 +223,7 @@ namespace Netwolf.Transport.Client
                 (tags ?? new Dictionary<string, object?>()).ToDictionary(o => o.Key, o => o.Value?.ToString()));
         }
 
+        /// <inheritdoc />
         public ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, object?>? tags)
         {
             var commands = new List<ICommand>();
