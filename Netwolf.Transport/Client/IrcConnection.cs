@@ -55,6 +55,7 @@ namespace Netwolf.Transport.Client
         {
             HostName = server.HostName;
             Port = server.Port;
+            CommandFactory = commandFactory;
 
             if (options.BindHost != null)
             {
@@ -242,7 +243,7 @@ namespace Netwolf.Transport.Client
         {
             if (Reader == null)
             {
-                throw new InvalidOperationException("Cannot send to a closed connection.");
+                throw new InvalidOperationException("Cannot receive from a closed connection.");
             }
 
             while (true)

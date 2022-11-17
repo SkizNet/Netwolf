@@ -22,12 +22,12 @@ namespace Netwolf.Transport.Client
         /// <summary>
         /// How often to ping the remote <see cref="Server"/> to see if the connection is still live.
         /// </summary>
-        public TimeSpan PingInterval { get; set; } = TimeSpan.FromSeconds(60);
+        public TimeSpan PingInterval { get; set; } = TimeSpan.FromSeconds(30);
 
         /// <summary>
         /// How long to wait for a ping reply before we consider the connection dead?
         /// </summary>
-        public TimeSpan PingTimeout { get; set; } = TimeSpan.FromSeconds(120);
+        public TimeSpan PingTimeout { get; set; } = TimeSpan.FromSeconds(60);
 
         /// <summary>
         /// Primary nickname we attempt to use when connecting to this network

@@ -18,6 +18,18 @@ namespace Netwolf.Transport.Client
         bool IsConnected { get; }
 
         /// <summary>
+        /// Event raised whenever we receive a command from the network
+        /// </summary>
+        event EventHandler<NetworkEventArgs>? CommandReceived;
+
+        /// <summary>
+        /// Event raised whenever we become disconnected for any reason except when
+        /// <see cref="DisconnectAsync(string, CancellationToken)"/> is called. The
+        /// <c>sender</c> parameter will be the exception(s) thrown, if any.
+        /// </summary>
+        event EventHandler<NetworkEventArgs>? Disconnected;
+
+        /// <summary>
         /// Connect to the network and perform user registration. If the passed-in
         /// cancellation token has a timeout, that timeout will apply to all connection
         /// attempts, rather than any individual connection. Individual connection
@@ -30,7 +42,7 @@ namespace Netwolf.Transport.Client
         /// </param>
         Task ConnectAsync(CancellationToken cancellationToken = default);
 
-        ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, object?>? tags);
+        ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, object?>? tags = null);
 
         /// <summary>
         /// Prepare a command to be sent to the network.
@@ -51,7 +63,7 @@ namespace Netwolf.Transport.Client
         /// <exception cref="CommandTooLongException">
         /// If the expanded command (without tags) cannot fit within 512 bytes or the tags cannot fit within 4096 bytes.
         /// </exception>
-        ICommand PrepareCommand(string verb, IEnumerable<object?>? args, IReadOnlyDictionary<string, object?>? tags);
+        ICommand PrepareCommand(string verb, IEnumerable<object?>? args = null, IReadOnlyDictionary<string, object?>? tags = null);
 
         /// <summary>
         /// Send a command to the network
@@ -60,13 +72,6 @@ namespace Netwolf.Transport.Client
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
         Task SendAsync(ICommand command, CancellationToken cancellationToken = default);
-
-        /// <summary>
-        /// Receive a command from the network
-        /// </summary>
-        /// <param name="cancellationToken"></param>
-        /// <returns></returns>
-        Task<ICommand> ReceiveAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Cleanly disconnect from the network.
