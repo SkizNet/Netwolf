@@ -29,9 +29,11 @@ namespace Netwolf.Transport.Client
         /// <summary>
         /// Logger for this Network
         /// </summary>
-        protected ILogger<Network> Logger { get; init; }
+        protected ILogger<INetwork> Logger { get; init; }
 
         protected ICommandFactory CommandFactory { get; init; }
+
+        protected IConnectionFactory ConnectionFactory { get; init; }
 
         /// <summary>
         /// Cancellation token for <see cref="_messageLoop"/>, used when disposing this <see cref="Network"/> instance.
@@ -53,12 +55,17 @@ namespace Netwolf.Transport.Client
         /// </summary>
         private TaskCompletionSource? _userRegistrationCompletionSource;
 
-        private IrcConnection? _connection;
+        private IConnection? _connection;
 
         /// <summary>
         /// A connection to the network
         /// </summary>
-        protected IrcConnection Connection => _connection ?? throw new InvalidOperationException("Network is disconnected.");
+        protected IConnection Connection => _connection ?? throw new InvalidOperationException("Network is disconnected.");
+
+        /// <summary>
+        /// Network state
+        /// </summary>
+        private IrcState State { get; init; } = new();
 
         /// <summary>
         /// User-defined network name (not necessarily what the network actually calls itself)
@@ -71,9 +78,44 @@ namespace Netwolf.Transport.Client
         public bool IsConnected => _connection != null && _userRegistrationCompletionSource == null;
 
         /// <summary>
-        /// TLS client certificate used to log into the user's account.
+        /// Nickname for this connection.
+        /// Throws InvalidOperationException if not currently connected.
         /// </summary>
-        protected internal X509Certificate2? AccountCertificate { get; private set; }
+        public string Nick
+        {
+            get => IsConnected ? State.Nick : throw new InvalidOperationException("Network is disconnected.");
+            protected set => State.Nick = value;
+        }
+
+        /// <summary>
+        /// Ident for this connection.
+        /// Throws InvalidOperationException if not currently connected.
+        /// </summary>
+        public string Ident
+        {
+            get => IsConnected ? State.Ident : throw new InvalidOperationException("Network is disconnected.");
+            protected set => State.Ident = value;
+        }
+
+        /// <summary>
+        /// Hostname for this connection.
+        /// Throws InvalidOperationException if not currently connected.
+        /// </summary>
+        public string Host
+        {
+            get => IsConnected ? State.Host : throw new InvalidOperationException("Network is disconnected.");
+            protected set => State.Host = value;
+        }
+
+        /// <summary>
+        /// Account name for this connection, or null if not logged in.
+        /// Throws InvalidOperationException if not currently connected.
+        /// </summary>
+        public string? Account
+        {
+            get => IsConnected ? State.Account : throw new InvalidOperationException("Network is disconnected.");
+            protected set => State.Account = value;
+        }
 
         /// <inheritdoc />
         public event EventHandler<NetworkEventArgs>? CommandReceived;
@@ -90,7 +132,12 @@ namespace Netwolf.Transport.Client
         /// </param>
         /// <param name="options">Network options.</param>
         /// <param name="logger">Logger to use.</param>
-        public Network(string name, NetworkOptions options, ILogger<Network> logger, ICommandFactory commandFactory)
+        public Network(
+            string name,
+            NetworkOptions options,
+            ILogger<INetwork> logger,
+            ICommandFactory commandFactory,
+            IConnectionFactory connectionFactory)
         {
             ArgumentNullException.ThrowIfNull(name);
             ArgumentNullException.ThrowIfNull(options);
@@ -99,22 +146,7 @@ namespace Netwolf.Transport.Client
             Options = options;
             Logger = logger;
             CommandFactory = commandFactory;
-
-            if (!String.IsNullOrEmpty(Options.AccountCertificateFile))
-            {
-                try
-                {
-                    AccountCertificate = new X509Certificate2(Options.AccountCertificateFile, Options.AccountCertificatePassword);
-                }
-                catch (CryptographicException ex)
-                {
-                    Logger.LogWarning("Cannot load TLS client certificate {AccountCertificateFile}: {Message}", Options, ex);
-                }
-                finally
-                {
-                    Options.AccountCertificatePassword = null;
-                }
-            }
+            ConnectionFactory = connectionFactory;
 
             // spin up the message loop for this Network
             _messageLoop = Task.Run(MessageLoop);
@@ -128,8 +160,6 @@ namespace Netwolf.Transport.Client
         {
             _messageLoopTokenSource.Cancel();
             await _messageLoop.ConfigureAwait(false);
-
-            AccountCertificate?.Dispose();
             await NullableHelper.DisposeAsyncIfNotNull(_connection).ConfigureAwait(false);
         }
 
@@ -148,12 +178,9 @@ namespace Netwolf.Transport.Client
                 {
                     _messageLoopTokenSource.Cancel();
                     _messageLoop.Wait();
-
-                    AccountCertificate?.Dispose();
                     _connection?.Dispose();
                 }
 
-                AccountCertificate = null;
                 _disposed = true;
             }
         }
@@ -261,7 +288,7 @@ namespace Netwolf.Transport.Client
         }
 
         /// <inheritdoc />
-        public async Task ConnectAsync(CancellationToken cancellationToken)
+        public async Task ConnectAsync(CancellationToken cancellationToken = default)
         {
             if (_connection != null)
             {
@@ -274,7 +301,7 @@ namespace Netwolf.Transport.Client
                 {
                     using var timer = new CancellationTokenSource();
                     using var aggregate = CancellationTokenSource.CreateLinkedTokenSource(timer.Token, cancellationToken);
-                    _connection = new IrcConnection(this, server, Options, CommandFactory);
+                    _connection = ConnectionFactory.Create(this, server, Options);
 
                     if (Options.ConnectTimeout != TimeSpan.Zero)
                     {
@@ -316,13 +343,38 @@ namespace Netwolf.Transport.Client
                     // alert the message loop to start processing incoming commands
                     _messageLoopCompletionSource.SetResult();
 
-                    // wait for user registration to complete
                     try
                     {
+                        await SendRawAsync("CAP LS 302", cancellationToken);
+
+                        if (Options.ServerPassword != null)
+                        {
+                            await SendAsync(
+                                PrepareCommand("PASS", new string[] { Options.ServerPassword }, null),
+                                cancellationToken);
+                        }
+
+                        await SendAsync(
+                            PrepareCommand("NICK", new string[] { Options.PrimaryNick }, null),
+                            cancellationToken);
+
+                        // Most networks outright ignore params 2 and 3.
+                        // Some follow RFC 2812 and treat param 2 as a bitfield where 4 = +w and 8 = +i.
+                        // Others may allow an arbitrary user mode string in param 2 prefixed with +.
+                        // For widest compatibility, leave both unspecified and just handle umodes post-registration.
+                        await SendAsync(
+                            PrepareCommand("USER", new string[] { Options.Ident, "0", "*", Options.RealName }, null),
+                            cancellationToken);
+
+                        // Handle any responses to the above. Notably, we might need to choose a new nickname,
+                        // handle CAP negotiation (and SASL), or be disconnected outright. This will block the
+                        // ConnectAsync method until registration is fully completed (whether successfully or not).
                         await _userRegistrationCompletionSource.Task.ConfigureAwait(false);
                     }
                     catch (AggregateException ex)
                     {
+                        // allow other exceptions (e.g. from PrepareCommand) to bubble up and abort entirely,
+                        // as those errors are not recoverable and will fail again if tried again
                         Logger.LogDebug(ex, "An exception was thrown during user registration");
                     }
 
@@ -343,7 +395,7 @@ namespace Netwolf.Transport.Client
         }
 
         /// <inheritdoc />
-        public async Task DisconnectAsync(string reason, CancellationToken cancellationToken)
+        public async Task DisconnectAsync(string reason, CancellationToken cancellationToken = default)
         {
             try
             {
@@ -363,24 +415,29 @@ namespace Netwolf.Transport.Client
         }
 
         /// <inheritdoc />
-        public Task SendAsync(ICommand command, CancellationToken cancellationToken)
+        public Task SendAsync(ICommand command, CancellationToken cancellationToken = default)
         {
             return Connection.SendAsync(command, cancellationToken);
         }
 
+        private Task SendRawAsync(string command, CancellationToken cancellationToken)
+        {
+            return Connection.UnsafeSendAsync(command, cancellationToken);
+        }
+
         /// <inheritdoc />
-        public ICommand PrepareCommand(string verb, IEnumerable<object?>? args, IReadOnlyDictionary<string, object?>? tags)
+        public ICommand PrepareCommand(string verb, IEnumerable<object?>? args = null, IReadOnlyDictionary<string, object?>? tags = null)
         {
             return CommandFactory.CreateCommand(
                 CommandType.Client,
-                $"{Connection.State.Nick}!{Connection.State.Ident}@{Connection.State.Host}",
+                $"{State.Nick}!{State.Ident}@{State.Host}",
                 verb,
                 (args ?? Array.Empty<object?>()).Select(o => o?.ToString()).Where(o => o != null).ToList(),
                 (tags ?? new Dictionary<string, object?>()).ToDictionary(o => o.Key, o => o.Value?.ToString()));
         }
 
         /// <inheritdoc />
-        public ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, object?>? tags)
+        public ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, object?>? tags = null)
         {
             var commands = new List<ICommand>();
             Dictionary<string, string?> messageTags = (tags ?? new Dictionary<string, object?>()).ToDictionary(o => o.Key, o => o.Value?.ToString());
@@ -400,7 +457,7 @@ namespace Netwolf.Transport.Client
                 (_, _, _) => throw new ArgumentException("Invalid message type", nameof(messageType))
             };
 
-            var hostmask = $"{Connection.State.Nick}!{Connection.State.Ident}@{Connection.State.Host}";
+            var hostmask = $"{State.Nick}!{State.Ident}@{State.Host}";
             List<string> args = new() { target };
 
             // :<hostmask> <verb> <target> :<text>\r\n -- 2 colons + 3 spaces + CRLF = 7 syntax characters. If CPRIVMSG/CNOTICE, one extra space is needed.
@@ -435,7 +492,12 @@ namespace Netwolf.Transport.Client
 
         private void UserRegistration(object? sender, NetworkEventArgs e)
         {
+            if (sender is not ICommand command)
+            {
+                return;
+            }
 
+            
         }
 
         private void AbortUserRegistration(object? sender, NetworkEventArgs e)

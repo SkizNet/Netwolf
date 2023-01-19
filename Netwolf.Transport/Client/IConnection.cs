@@ -35,6 +35,19 @@ namespace Netwolf.Transport.Client
         Task SendAsync(ICommand command, CancellationToken cancellationToken);
 
         /// <summary>
+        /// Send a raw command to the remote server.
+        /// No validation or manipulation is performed; can be dangerous.
+        /// DO NOT USE with untrusted input.
+        /// </summary>
+        /// <param name="command">Command to send which conforms to the IRC protocol</param>
+        /// <param name="cancellationToken">
+        /// Cancellation token; passing <see cref="CancellationToken.None"/>
+        /// will block indefinitely until the command is sent.
+        /// </param>
+        /// <returns></returns>
+        Task UnsafeSendAsync(string command, CancellationToken cancellationToken);
+
+        /// <summary>
         /// Receive a command from the remote server
         /// </summary>
         /// <param name="cancellationToken">

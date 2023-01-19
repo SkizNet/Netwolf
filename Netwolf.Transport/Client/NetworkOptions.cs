@@ -12,6 +12,7 @@ namespace Netwolf.Transport.Client
     public class NetworkOptions
     {
         private string? _ident;
+        private string? _realName;
         private string? _accountName;
 
         /// <summary>
@@ -50,6 +51,15 @@ namespace Netwolf.Transport.Client
         {
             get => _ident ?? PrimaryNick;
             set => _ident = value;
+        }
+
+        /// <summary>
+        /// Real name to use. Defaults to <see cref="PrimaryNick"/> if not explicitly set.
+        /// </summary>
+        public string RealName
+        {
+            get => _realName ?? PrimaryNick;
+            set => _realName = value;
         }
 
         /// <summary>
@@ -109,8 +119,7 @@ namespace Netwolf.Transport.Client
         public string? AccountCertificateFile { get; set; }
 
         /// <summary>
-        /// Password for the TLS client certificate, if any. This property will be set to <c>null</c>
-        /// upon construction of a <see cref="Network"/> instance after it is bound from the configuration.
+        /// Password for the TLS client certificate, if any.
         /// </summary>
         public string? AccountCertificatePassword { get; set; }
 

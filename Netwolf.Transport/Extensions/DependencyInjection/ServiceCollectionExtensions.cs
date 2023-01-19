@@ -22,7 +22,7 @@ namespace Netwolf.Transport.Extensions.DependencyInjection
             // Client services
             services.AddSingleton<Client.INetworkFactory, Client.NetworkFactory>();
             services.AddSingleton<Client.ICommandFactory, Client.CommandFactory>();
-            services.AddScoped<Client.INetwork>(provider => provider.GetRequiredService<Client.INetworkFactory>().GetFromScope(provider));
+            services.AddSingleton<Client.IConnectionFactory, Client.ConnectionFactory>();
 
             return services;
         }

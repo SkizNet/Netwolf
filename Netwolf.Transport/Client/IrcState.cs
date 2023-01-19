@@ -9,7 +9,7 @@ namespace Netwolf.Transport.Client
     /// <summary>
     /// Holds the state of the client's connection
     /// </summary>
-    public class IrcConnectionState
+    public class IrcState
     {
         /// <summary>
         /// The current nickname for the connection

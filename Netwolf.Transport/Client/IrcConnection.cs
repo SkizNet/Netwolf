@@ -1,4 +1,7 @@
-﻿using Netwolf.Transport.Internal;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
+using Netwolf.Transport.Internal;
 
 using System;
 using System.Buffers;
@@ -19,11 +22,6 @@ namespace Netwolf.Transport.Client
     public class IrcConnection : IConnection
     {
         private bool _disposed = false;
-
-        /// <summary>
-        /// State for this connection
-        /// </summary>
-        public IrcConnectionState State { get; init; } = new();
 
         private Socket? Socket { get; set; }
 
@@ -51,11 +49,18 @@ namespace Netwolf.Transport.Client
 
         private ICommandFactory CommandFactory { get; init; }
 
-        internal IrcConnection(Network network, Server server, NetworkOptions options, ICommandFactory commandFactory)
+        private ILogger<IConnection> Logger { get; init; }
+
+        internal IrcConnection(
+            IServer server,
+            NetworkOptions options,
+            ILogger<IConnection> logger,
+            ICommandFactory commandFactory)
         {
             HostName = server.HostName;
             Port = server.Port;
             CommandFactory = commandFactory;
+            Logger = logger;
 
             if (options.BindHost != null)
             {
@@ -72,7 +77,18 @@ namespace Netwolf.Transport.Client
             CheckOnlineRevocation = options.CheckOnlineRevocation
                 || AcceptAllCertificates
                 || TrustedFingerprints.Count > 0;
-            ClientCertificate = network.AccountCertificate;
+
+            if (!String.IsNullOrEmpty(options.AccountCertificateFile))
+            {
+                try
+                {
+                    ClientCertificate = new X509Certificate2(options.AccountCertificateFile, options.AccountCertificatePassword);
+                }
+                catch (CryptographicException ex)
+                {
+                    logger.LogWarning("Cannot load TLS client certificate {AccountCertificateFile}: {Message}", options, ex);
+                }
+            }
         }
 
         /// <inheritdoc />
@@ -201,7 +217,12 @@ namespace Netwolf.Transport.Client
         }
 
         /// <inheritdoc />
-        public async Task SendAsync(ICommand command, CancellationToken cancellationToken)
+        public Task SendAsync(ICommand command, CancellationToken cancellationToken)
+        {
+            return UnsafeSendAsync(command.FullCommand, cancellationToken);
+        }
+
+        public async Task UnsafeSendAsync(string command, CancellationToken cancellationToken)
         {
             if (Writer == null)
             {
@@ -209,7 +230,7 @@ namespace Netwolf.Transport.Client
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            await Writer.WriteAsync(command.FullCommand.EncodeUtf8(), cancellationToken);
+            await Writer.WriteAsync(command.EncodeUtf8(), cancellationToken);
         }
 
         private static readonly byte[] _crlf = "\r\n".EncodeUtf8();
