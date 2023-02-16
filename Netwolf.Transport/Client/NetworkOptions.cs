@@ -21,6 +21,13 @@ namespace Netwolf.Transport.Client
         public TimeSpan ConnectTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
         /// <summary>
+        /// Number of times we will attempt to reconnect to a network upon getting a non-fatal connection error.
+        /// A single retry involves going through every defined Server for the network. A value of 0 for this
+        /// option indicates we will only go through all of the servers once.
+        /// </summary>
+        public int ConnectRetries { get; set; } = int.MaxValue;
+
+        /// <summary>
         /// How often to ping the remote <see cref="Server"/> to see if the connection is still live.
         /// </summary>
         public TimeSpan PingInterval { get; set; } = TimeSpan.FromSeconds(30);
@@ -65,7 +72,7 @@ namespace Netwolf.Transport.Client
         /// <summary>
         /// List of servers to try when connecting (in order of preference).
         /// </summary>
-        public List<Server> Servers { get; set; } = new List<Server>();
+        public List<IServer> Servers { get; init; } = new List<IServer>();
 
         /// <summary>
         /// Password required to connect to the network, if any.
@@ -90,7 +97,7 @@ namespace Netwolf.Transport.Client
         /// The strings are compared case-insensitively. If this list is not empty,
         /// <see cref="CheckOnlineRevocation"/> will have no effect.
         /// </summary>
-        public List<string> TrustedFingerprints { get; set; } = new List<string>();
+        public List<string> TrustedFingerprints { get; init; } = new List<string>();
 
         /// <summary>
         /// If true, checks the certificate's OCSP responder for revocation information before accepting a connection.

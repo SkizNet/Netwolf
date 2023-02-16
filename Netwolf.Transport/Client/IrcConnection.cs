@@ -222,6 +222,8 @@ namespace Netwolf.Transport.Client
             return UnsafeSendAsync(command.FullCommand, cancellationToken);
         }
 
+        private static readonly byte[] _crlf = "\r\n".EncodeUtf8();
+
         public async Task UnsafeSendAsync(string command, CancellationToken cancellationToken)
         {
             if (Writer == null)
@@ -231,9 +233,8 @@ namespace Netwolf.Transport.Client
 
             cancellationToken.ThrowIfCancellationRequested();
             await Writer.WriteAsync(command.EncodeUtf8(), cancellationToken);
+            await Writer.WriteAsync(_crlf, cancellationToken);
         }
-
-        private static readonly byte[] _crlf = "\r\n".EncodeUtf8();
 
         private string? ExtractMessage(ref ReadOnlySequence<byte> buffer)
         {

@@ -137,7 +137,7 @@ namespace Netwolf.Transport.Client
         }
 
         /// <summary>
-        /// The full command to send to the remote IRC server.
+        /// The full command to send to the remote IRC server, without trailing CRLF.
         /// </summary>
         string FullCommand => (Source == null || CommandType == CommandType.Client)
             ? $"{TagPart}{UnprefixedCommandPart}"

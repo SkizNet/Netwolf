@@ -21,10 +21,16 @@ namespace Netwolf.Transport.Client
         /// </summary>
         public ICommand? Command { get; init; }
 
-        internal NetworkEventArgs(INetwork network, ICommand? command = null)
+        /// <summary>
+        /// Cancellation token to use for any asynchronous tasks awaited by the event.
+        /// </summary>
+        public CancellationToken Token { get; init; }
+
+        internal NetworkEventArgs(INetwork network, ICommand? command = null, CancellationToken token = default)
         {
             Network = network;
             Command = command;
+            Token = token;
         }
     }
 }

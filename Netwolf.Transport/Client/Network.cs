@@ -2,14 +2,17 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using Netwolf.Transport.Exceptions;
 using Netwolf.Transport.Internal;
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.Design;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Netwolf.Transport.Client
@@ -231,13 +234,13 @@ namespace Netwolf.Transport.Client
                             break;
                         case 1:
                             // Connection.ReceiveAsync fired, so we have a command to dispatch
-                            if (tasks[2].Status == TaskStatus.Faulted)
+                            if (tasks[index].Status == TaskStatus.Faulted)
                             {
                                 // Remote end died, close the connection
                                 goto default;
                             }
 
-                            var command = ((Task<ICommand>)tasks[2]).Result;
+                            var command = ((Task<ICommand>)tasks[index]).Result;
 
                             // Handle PONG specially so we can manage our timers
                             // receiving a cookie back will invalidate that timer and all timers issued prior to the cookie
@@ -251,7 +254,7 @@ namespace Netwolf.Transport.Client
                                 }
                             }
 
-                            CommandReceived?.Invoke(command, new(this, command));
+                            CommandReceived?.Invoke(command, new(this, command, _messageLoopTokenSource.Token));
                             break;
                         case 2:
                             // pingTimer fired, send a PING and reset the timer
@@ -295,7 +298,17 @@ namespace Netwolf.Transport.Client
                 throw new InvalidOperationException("Network is already connected.");
             }
 
-            while (true)
+            if (Options.Servers.Count == 0)
+            {
+                throw new InvalidOperationException("No servers have been defined; unable to connect.");
+            }
+
+            if (Options.ConnectRetries < 0)
+            {
+                throw new InvalidOperationException("ConnectRetries cannot be a negative number.");
+            }
+
+            for (int retry = 0; retry <= Options.ConnectRetries; ++retry)
             {
                 foreach (var server in Options.Servers)
                 {
@@ -343,6 +356,10 @@ namespace Netwolf.Transport.Client
                     // alert the message loop to start processing incoming commands
                     _messageLoopCompletionSource.SetResult();
 
+                    // default to true so that if we abort prematurely, we skip to the error message
+                    // about the connection being aborted rather user registration timing out
+                    bool registrationComplete = true;
+
                     try
                     {
                         await SendRawAsync("CAP LS 302", cancellationToken);
@@ -369,7 +386,10 @@ namespace Netwolf.Transport.Client
                         // Handle any responses to the above. Notably, we might need to choose a new nickname,
                         // handle CAP negotiation (and SASL), or be disconnected outright. This will block the
                         // ConnectAsync method until registration is fully completed (whether successfully or not).
-                        await _userRegistrationCompletionSource.Task.ConfigureAwait(false);
+                        registrationComplete = Task.WaitAll(
+                            new[] { _userRegistrationCompletionSource.Task },
+                            (int)Options.ConnectTimeout.TotalMilliseconds,
+                            cancellationToken);
                     }
                     catch (AggregateException ex)
                     {
@@ -386,12 +406,22 @@ namespace Netwolf.Transport.Client
                         _userRegistrationCompletionSource = null;
                         return;
                     }
+                    else if (!registrationComplete)
+                    {
+                        Logger.LogInformation("User registration timed out, trying next server in list.");
+                        await _connection.DisposeAsync().ConfigureAwait(false);
+                    }
                     else
                     {
                         Logger.LogInformation("Connection aborted, trying next server in list.");
+                        await _connection.DisposeAsync().ConfigureAwait(false);
                     }
                 }
             }
+
+            // Getting here means we ran out of connect retries
+            Logger.LogError("Unable to connect to network, maximum retries reached.");
+            throw new ConnectionException("Unable to connect to network, maximum retries reached.");
         }
 
         /// <inheritdoc />
@@ -490,14 +520,37 @@ namespace Netwolf.Transport.Client
             return commands.ToArray();
         }
 
-        private void UserRegistration(object? sender, NetworkEventArgs e)
+        private async void UserRegistration(object? sender, NetworkEventArgs e)
         {
             if (sender is not ICommand command)
             {
                 return;
             }
 
-            
+            switch (command.Verb)
+            {
+                case "NICK":
+                    State.Nick = command.Args[0];
+                    break;
+                case "432":
+                case "433":
+                    // primary nick didn't work for whatever reason, try secondary
+                    var attempted = command.Args[0];
+                    var secondary = Options.SecondaryNick ?? $"{Options.PrimaryNick}_";
+                    if (attempted == Options.PrimaryNick)
+                    {
+                        await SendAsync(
+                                PrepareCommand("NICK", new string[] { secondary }, null),
+                                e.Token);
+                    }
+                    else if (attempted == secondary)
+                    {
+                        // both taken? abort
+                        Logger.LogWarning("Server rejected both primary and secondary nicks.");
+                    }
+
+                    break;
+            }
         }
 
         private void AbortUserRegistration(object? sender, NetworkEventArgs e)

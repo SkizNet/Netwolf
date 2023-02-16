@@ -3,9 +3,11 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace Netwolf.Test
@@ -19,19 +21,50 @@ namespace Netwolf.Test
         private delegate void CommandHandler(IConnection client, ICommand command);
 
         private readonly IReadOnlyDictionary<string, CommandHandler> Handlers;
+        private ICommandFactory CommandFactory { get; init; }
 
         private bool disposedValue;
 
         private ConcurrentDictionary<IConnection, ClientState> State { get; init; } = new();
 
-        internal FakeServer()
+        internal FakeServer(ICommandFactory commandFactory)
         {
+            CommandFactory = commandFactory;
+
             Handlers = new Dictionary<string, CommandHandler>(
                 typeof(FakeServer)
-                .GetMethods(BindingFlags.NonPublic | BindingFlags.Instance)
+                .GetMethods(BindingFlags.Public | BindingFlags.Instance)
                 .SelectMany(m => m.GetCustomAttributes<CommandAttribute>()
                     .Select(a => new KeyValuePair<string, CommandHandler>(a.Command, m.CreateDelegate<CommandHandler>(this))))
                 );
+        }
+
+        [Command("NICK")]
+        public void OnNick(IConnection client, ICommand command)
+        {
+            if (command.Args.Count == 0 || command.Args[0].Length == 0)
+            {
+                Reply(client, null, null, Numeric.ERR_NONICKNAMEGIVEN);
+                return;
+            }
+
+            var nick = command.Args[0];
+
+            // RFC 2812 nickname validation
+            if (!Regex.IsMatch(nick, @"[a-zA-Z[\]\\`_^{}|][a-zA-Z0-9[\]\\`_^{}|-]{0,15}"))
+            {
+                Reply(client, null, null, Numeric.ERR_ERRONEUSNICKNAME, nick);
+                return;
+            }
+
+            if (State.Any(o => o.Value.Nickname == nick))
+            {
+                Reply(client, null, null, Numeric.ERR_NICKNAMEINUSE, nick);
+                return;
+            }
+
+            State[client].Nickname = nick;
+            Reply(client, null, null, "NICK", nick);
         }
 
         internal void ConnectClient(IConnection connection)
@@ -44,6 +77,23 @@ namespace Netwolf.Test
             State.Remove(connection, out _);
         }
 
+        private void Reply(IConnection client, string? source, object? tags, Numeric numeric, params string?[] args)
+        {
+            var description = typeof(Numeric).GetField(numeric.ToString())!.GetCustomAttributes<DisplayAttribute>().First().Description;
+            Reply(client, source, tags, string.Format("{0:D3}", (int)numeric), args.Append(description).ToArray());
+        }
+
+        private void Reply(IConnection client, string? source, object? tags, string verb, params string?[] args)
+        {
+            var command = CommandFactory.CreateCommand(
+                CommandType.Server,
+                source ?? "irc.example.com",
+                verb.ToUpperInvariant(),
+                args.ToList(),
+                tags?.GetType().GetProperties().ToDictionary(o => o.Name, o => o.GetValue(tags)?.ToString()) ?? new Dictionary<string, string?>());
+            State[client].Queue.Add(command);
+        }
+
         internal Task ProcessCommand(IConnection client, ICommand command, CancellationToken cancellationToken)
         {
             if (command.CommandType != CommandType.Client)
@@ -51,8 +101,13 @@ namespace Netwolf.Test
                 throw new ArgumentException("Not a client command", nameof(command));
             }
 
-            // run the command handler for it
+            if (!Handlers.ContainsKey(command.Verb))
+            {
+                Reply(client, null, null, Numeric.ERR_UNKNOWNCOMMAND, command.Verb);
+                return Task.CompletedTask;
+            }
 
+            Handlers[command.Verb](client, command);
             return Task.CompletedTask;
         }
 
@@ -111,6 +166,12 @@ namespace Netwolf.Test
 
             internal BlockingCollection<ICommand> Queue { get; init; } = new();
 
+            /// <summary>
+            /// Whether the client has completed user registration or not
+            /// (nothing to do with accounts)
+            /// </summary>
+            internal bool Registered { get; set; }
+
             internal string Nickname { get; set; } = null!;
 
             internal string Ident { get; set; } = null!;
@@ -156,6 +217,20 @@ namespace Netwolf.Test
             {
                 Command = command;
             }
+        }
+
+        private enum Numeric : int
+        {
+            [Display(Description = "Unknown command")]
+            ERR_UNKNOWNCOMMAND = 421,
+            [Display(Description = "No nickname given")]
+            ERR_NONICKNAMEGIVEN = 431,
+            [Display(Description = "Erroneus nickname")]
+            ERR_ERRONEUSNICKNAME = 432,
+            [Display(Description = "Nickname is already in use")]
+            ERR_NICKNAMEINUSE = 433,
+            [Display(Description = "Nickname collision")]
+            ERR_NICKCOLLISION = 436
         }
     }
 }

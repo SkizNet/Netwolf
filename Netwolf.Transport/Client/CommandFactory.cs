@@ -22,7 +22,7 @@ namespace Netwolf.Transport.Client
         private static readonly Regex _tagKeyRegex = new(@"^\+?(?:[a-zA-Z0-9-.]+/)?[a-zA-Z0-9-]+$", RegexOptions.Compiled);
         private static readonly Regex _spaceNullCrLfRegex = new(@"[ \r\n\0]", RegexOptions.Compiled);
         private static readonly Regex _nullCrLfRegex = new(@"[\r\n\0]", RegexOptions.Compiled);
-        private static readonly Regex _parseCommandRegex = new(@"^(?:@(?<tag>[^ ;]+)(?:;(?<tag>[^ ;]+))* +)?(?::(?<source>[^ ]+) +)?(?<verb>[^ ]+)(?: +(?<arg>[^: ][^ ]*))*(?: +:(?<trailing>.*))?\r\n$", RegexOptions.Compiled);
+        private static readonly Regex _parseCommandRegex = new(@"^(?:@(?<tag>[^ ;]+)(?:;(?<tag>[^ ;]+))* +)?(?::(?<source>[^ ]+) +)?(?<verb>[^ ]+)(?: +(?<arg>[^: ][^ ]*))*(?: +:(?<trailing>.*))?$", RegexOptions.Compiled);
 
         private IServiceProvider Provider { get; init; }
 

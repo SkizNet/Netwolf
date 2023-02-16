@@ -36,7 +36,8 @@ namespace Netwolf.Transport.Internal
             { (LineBreakClass.Any, LineBreakClass.LF), (LineBreakType.Forbidden, LineBreakType.Mandatory, 600, 501) },
             { (LineBreakClass.Any, LineBreakClass.NL), (LineBreakType.Forbidden, LineBreakType.Mandatory, 600, 501) },
             // LB7 Do not break before spaces or zero width space.
-            { (LineBreakClass.Any, LineBreakClass.SP), (LineBreakType.Forbidden, null, 700, null) },
+            // Also LB18 Break after spaces needs to go here to prevent duplicate key errors
+            { (LineBreakClass.Any, LineBreakClass.SP), (LineBreakType.Forbidden, LineBreakType.Optional, 700, 1800) },
             { (LineBreakClass.Any, LineBreakClass.ZW), (LineBreakType.Forbidden, null, 700, null) },
             // LB8 Break before any character following a zero-width space, even if one or more spaces intervene.
             // handled in SplitText() as this rule cannot be encoded in a pairwise lookup table
@@ -67,7 +68,7 @@ namespace Netwolf.Transport.Internal
             // LB17 Do not break within ‘——’, even with intervening spaces.
             // handled in SplitText() as this rule cannot be encoded in a pairwise lookup table
             // LB18 Break after spaces.
-            { (LineBreakClass.Any, LineBreakClass.SP), (null, LineBreakType.Optional, null, 1800) },
+            // handled above since (Any, SP) was in use for LB7
             // LB19 Do not break before or after quotation marks, such as ‘ ” ’.
             { (LineBreakClass.Any, LineBreakClass.QU), (LineBreakType.Forbidden, LineBreakType.Forbidden, 1900, 1900) },
             // LB20 Break before and after unresolved CB.

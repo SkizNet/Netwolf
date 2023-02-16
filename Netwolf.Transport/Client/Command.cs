@@ -23,9 +23,7 @@ namespace Netwolf.Transport.Client
 
         public bool HasTrailingArg { get; init; }
 
-        public INetwork Network { get; init; }
-
-        public Command(INetwork network, CommandOptions options)
+        public Command(CommandOptions options)
         {
             CommandType = options.CommandType;
             Source = options.Source;
@@ -33,7 +31,6 @@ namespace Netwolf.Transport.Client
             Args = options.Args;
             Tags = options.Tags;
             HasTrailingArg = options.HasTrailingArg;
-            Network = network;
         }
     }
 }

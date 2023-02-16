@@ -27,19 +27,25 @@ namespace Netwolf.Test.Transport
 
             DefaultOptions = new NetworkOptions()
             {
-                
+                // there's no actual sockets being opened here;
+                // keep timeouts low so tests don't take forever
+                ConnectTimeout = TimeSpan.FromSeconds(5),
+                ConnectRetries = 0
             };
+
+            DefaultOptions.Servers.Add(new Server("irc.example.com", 6667));
         }
 
         [TestMethod]
-        public async void TestUserRegistration()
+        public async Task TestUserRegistration()
         {
             var logger = Container.GetRequiredService<ILogger<INetwork>>();
             var commandFactory = Container.GetRequiredService<ICommandFactory>();
-            var connectionFactory = new FakeConnectionFactory(new FakeServer(), commandFactory);
+            var connectionFactory = new FakeConnectionFactory(new FakeServer(commandFactory), commandFactory);
             using var network = new Network("Test", DefaultOptions, logger, commandFactory, connectionFactory);
 
             await network.ConnectAsync();
+            Assert.IsTrue(true);
         }
     }
 }

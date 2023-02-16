@@ -43,7 +43,7 @@ namespace Netwolf.Transport.Client
             set => _secureConnection = value;
         }
 
-        internal Server(string hostName, int port, bool? secure)
+        public Server(string hostName, int port, bool? secure = null)
         {
             ArgumentNullException.ThrowIfNull(hostName);
             if (port < 1 || port > 65535)
