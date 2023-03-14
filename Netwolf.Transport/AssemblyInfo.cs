@@ -1,4 +1,4 @@
 ﻿using System.Runtime.CompilerServices;
 
 [assembly:CLSCompliant(true)]
-[assembly:InternalsVisibleTo("Netwolf.Transport.Tests")]
+[assembly:InternalsVisibleTo("Netwolf.Test")]

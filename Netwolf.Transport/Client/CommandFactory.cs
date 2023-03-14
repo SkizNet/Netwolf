@@ -18,11 +18,11 @@ namespace Netwolf.Transport.Client
 
         // In general, simple regexes that potentially allow more strings than necessary
         // are preferred to strict regexes that perfectly validate things like hostnames
-        private static readonly Regex _commandRegex = new("^(?:[a-zA-Z]+|[0-9]{3})$", RegexOptions.Compiled);
-        private static readonly Regex _tagKeyRegex = new(@"^\+?(?:[a-zA-Z0-9-.]+/)?[a-zA-Z0-9-]+$", RegexOptions.Compiled);
-        private static readonly Regex _spaceNullCrLfRegex = new(@"[ \r\n\0]", RegexOptions.Compiled);
-        private static readonly Regex _nullCrLfRegex = new(@"[\r\n\0]", RegexOptions.Compiled);
-        private static readonly Regex _parseCommandRegex = new(@"^(?:@(?<tag>[^ ;]+)(?:;(?<tag>[^ ;]+))* +)?(?::(?<source>[^ ]+) +)?(?<verb>[^ ]+)(?: +(?<arg>[^: ][^ ]*))*(?: +:(?<trailing>.*))?$", RegexOptions.Compiled);
+        private static readonly Regex _commandRegex = new("^(?:[a-zA-Z]+|[0-9]{3})$", RegexOptions.NonBacktracking);
+        private static readonly Regex _tagKeyRegex = new(@"^\+?(?:[a-zA-Z0-9-.]+/)?[a-zA-Z0-9-]+$", RegexOptions.NonBacktracking);
+        private static readonly Regex _spaceNullCrLfRegex = new(@"[ \r\n\0]", RegexOptions.NonBacktracking);
+        private static readonly Regex _nullCrLfRegex = new(@"[\r\n\0]", RegexOptions.NonBacktracking);
+        private static readonly Regex _parseCommandRegex = new(@"^(?:@(?<tag>[^ ;]+)(?:;(?<tag>[^ ;]+))* +)?(?::(?<source>[^ ]+) +)?(?<verb>[^ ]+)(?: +(?<arg>[^: ][^ ]*))*(?: +:(?<trailing>.*))?$", RegexOptions.NonBacktracking);
 
         private IServiceProvider Provider { get; init; }
 

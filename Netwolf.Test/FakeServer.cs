@@ -1,4 +1,5 @@
-﻿using Netwolf.Transport.Client;
+﻿using Netwolf.Server;
+using Netwolf.Transport.Client;
 
 using System;
 using System.Collections.Concurrent;
@@ -26,6 +27,8 @@ namespace Netwolf.Test
         private bool disposedValue;
 
         private ConcurrentDictionary<IConnection, ClientState> State { get; init; } = new();
+
+        internal NetworkState Config { get; init; } = new();
 
         internal FakeServer(ICommandFactory commandFactory)
         {
@@ -64,7 +67,83 @@ namespace Netwolf.Test
             }
 
             State[client].Nickname = nick;
-            Reply(client, null, null, "NICK", nick);
+
+            if (!State[client].Registered)
+            {
+                CheckRegistrationComplete(client);
+            }
+            else
+            {
+                Reply(client, null, null, "NICK", nick);
+            }
+        }
+
+        [Command("USER")]
+        public void OnUser(IConnection client, ICommand command)
+        {
+            if (State[client].Registered)
+            {
+                Reply(client, null, null, Numeric.ERR_ALREADYREGISTERED);
+                return;
+            }
+
+            if (command.Args.Count != 4 || command.Args[0].Length == 0)
+            {
+                Reply(client, null, null, Numeric.ERR_NEEDMOREPARAMS, command.Verb);
+                return;
+            }
+
+            State[client].Ident = $"~{command.Args[0]}";
+            State[client].RealName = command.Args[3];
+
+            CheckRegistrationComplete(client);
+        }
+
+        [Command("LUSERS")]
+        public void OnLusers(IConnection client, ICommand command)
+        {
+            var state = State[client];
+
+            Reply(client, null, null, Numeric.RPL_LUSERCLIENT);
+            Reply(client, null, null, Numeric.RPL_LUSEROP);
+
+            if (state.HasPriv("oper:lusers:unknown"))
+            {
+                Reply(client, null, null, Numeric.RPL_LUSERUNKNOWN);
+            }
+
+            Reply(client, null, null, Numeric.RPL_LUSERCHANNELS);
+            Reply(client, null, null, Numeric.RPL_LUSERME);
+
+            // Netwolf has no concept of local vs global users, so don't give RPL_LOCALUSERS
+            Reply(client, null, null, Numeric.RPL_GLOBALUSERS);
+        }
+
+        [Command("MOTD")]
+        public void OnMotd(IConnection client, ICommand command)
+        {
+            // We do not implement or support the target parameter for this command,
+            // as Netwolf does expose the individual servers comprising the network
+
+            // TODO: support showing a real MOTD if one is set in network config
+            Reply(client, null, null, Numeric.ERR_NOMOTD);
+        }
+
+        internal void CheckRegistrationComplete(IConnection client)
+        {
+            var state = State[client];
+            if (!state.CapsPending && state.Nickname != null && state.Ident != null && state.RealName != null)
+            {
+                state.Registered = true;
+                Reply(client, null, null, Numeric.RPL_WELCOME);
+                Reply(client, null, null, Numeric.RPL_YOURHOST, state.RealHost);
+                Reply(client, null, null, Numeric.RPL_CREATED);
+                Reply(client, null, null, Numeric.RPL_MYINFO, Config.ServerName, Config.Version, Config.UserModes, Config.ChannelModes, Config.ChannelModesWithParams);
+                ReportISupport(client);
+                OnLusers(client, CommandFactory.CreateCommand(CommandType.Client, null, "LUSERS", new List<string?>(), new Dictionary<string, string?>()));
+                Reply(client, null, null, Numeric.RPL_UMODEIS, state.ModeString);
+                OnMotd(client, CommandFactory.CreateCommand(CommandType.Client, null, "MOTD", new List<string?>(), new Dictionary<string, string?>()));
+            }
         }
 
         internal void ConnectClient(IConnection connection)
@@ -77,17 +156,31 @@ namespace Netwolf.Test
             State.Remove(connection, out _);
         }
 
+        private void ReportISupport(IConnection client)
+        {
+            // TODO: FINISH
+        }
+
         private void Reply(IConnection client, string? source, object? tags, Numeric numeric, params string?[] args)
         {
-            var description = typeof(Numeric).GetField(numeric.ToString())!.GetCustomAttributes<DisplayAttribute>().First().Description;
-            Reply(client, source, tags, string.Format("{0:D3}", (int)numeric), args.Append(description).ToArray());
+            var state = State[client];
+            var network = Config;
+            var description = typeof(Numeric).GetField(numeric.ToString())!.GetCustomAttributes<DisplayAttribute>().FirstOrDefault()?.Description;
+            var realArgs = new List<string?>() { state.Nickname };
+            realArgs.AddRange(args);
+            if (description != null)
+            {
+                realArgs.Add(description.Interpolate(state, network));
+            }
+
+            Reply(client, source, tags, string.Format("{0:D3}", (int)numeric), realArgs.ToArray());
         }
 
         private void Reply(IConnection client, string? source, object? tags, string verb, params string?[] args)
         {
             var command = CommandFactory.CreateCommand(
                 CommandType.Server,
-                source ?? "irc.example.com",
+                source ?? "irc.netwolf.org",
                 verb.ToUpperInvariant(),
                 args.ToList(),
                 tags?.GetType().GetProperties().ToDictionary(o => o.Name, o => o.GetValue(tags)?.ToString()) ?? new Dictionary<string, string?>());
@@ -138,29 +231,54 @@ namespace Netwolf.Test
         }
 
         [Flags]
-        private enum ChannelAccessFlags
+        internal enum ChannelAccessFlags
         {
             None = 0,
             Member = 1,
+            [Display(Name = "v", ShortName = "+")]
             Voice = 2,
+            [Display(Name = "o", ShortName = "@")]
             Operator = 4
         }
 
         [Flags]
-        private enum ChannelModes : ulong
+        internal enum ChannelModes : ulong
         {
             None = 0,
+            [Display(Name = "m")]
             Moderated = 0x0000_0000_0000_0001,
+            [Display(Name = "n")]
             NoExternalMessages = 0x0000_0000_0000_0002,
+            [Display(Name = "t")]
             ProtectedTopic = 0x0000_0000_0000_0004,
+            [Display(Name = "s")]
             Secret = 0x0000_0000_0000_0008,
+            [Display(Name = "p")]
             Private = 0x0000_0000_0000_0010,
+            [Display(Name = "i")]
             InviteOnly = 0x0000_0000_0000_0020,
+            [Display(Name = "l")]
             ChannelLimit = 0x0000_0000_0000_0040,
+            [Display(Name = "k")]
             Passworded = 0x0000_0000_0000_0080
         }
 
-        private class ClientState
+        internal class NetworkState
+        {
+            internal string NetworkName { get; set; } = "Netwolf Test";
+
+            internal string ServerName { get; set; } = "irc.netwolf.org";
+
+            internal string Version { get; set; } = "netwolf-0.1.0";
+
+            internal string UserModes => "iowx";
+
+            internal string ChannelModes => "beIiklmnostv";
+
+            internal string ChannelModesWithParams => "beIklov";
+        }
+
+        internal class ClientState
         {
             internal readonly object ClientLock = new();
 
@@ -171,6 +289,11 @@ namespace Netwolf.Test
             /// (nothing to do with accounts)
             /// </summary>
             internal bool Registered { get; set; }
+
+            /// <summary>
+            /// If the client started CAP negotation but didn't complete it yet
+            /// </summary>
+            internal bool CapsPending { get; set; }
 
             internal string Nickname { get; set; } = null!;
 
@@ -184,10 +307,15 @@ namespace Netwolf.Test
 
             internal string RealName { get; set; } = null!;
 
+            /// <summary>
+            /// For display only
+            /// </summary>
+            internal string ModeString => "+";
+
             internal List<ChannelState> ChannelMembership { get; init; } = new();
         }
 
-        private class ChannelState
+        internal class ChannelState
         {
             internal readonly object ChannelLock = new();
 
@@ -217,20 +345,6 @@ namespace Netwolf.Test
             {
                 Command = command;
             }
-        }
-
-        private enum Numeric : int
-        {
-            [Display(Description = "Unknown command")]
-            ERR_UNKNOWNCOMMAND = 421,
-            [Display(Description = "No nickname given")]
-            ERR_NONICKNAMEGIVEN = 431,
-            [Display(Description = "Erroneus nickname")]
-            ERR_ERRONEUSNICKNAME = 432,
-            [Display(Description = "Nickname is already in use")]
-            ERR_NICKNAMEINUSE = 433,
-            [Display(Description = "Nickname collision")]
-            ERR_NICKCOLLISION = 436
         }
     }
 }

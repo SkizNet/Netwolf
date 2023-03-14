@@ -33,7 +33,7 @@ namespace Netwolf.Test.Transport
                 ConnectRetries = 0
             };
 
-            DefaultOptions.Servers.Add(new Server("irc.example.com", 6667));
+            DefaultOptions.Servers.Add(new Netwolf.Transport.Client.Server("irc.netwolf.org", 6667));
         }
 
         [TestMethod]
