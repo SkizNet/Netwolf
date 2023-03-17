@@ -1,12 +1,37 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using Netwolf.Server.Attributes;
+using Netwolf.Server.ChannelModes;
 
 namespace Netwolf.Server
 {
+    /// <summary>
+    /// Base class for all channel types recognized by the server
+    /// </summary>
     public abstract class Channel
     {
+        /// <summary>
+        /// Currently-active channel modes
+        /// </summary>
+        protected HashSet<IChannelMode> Modes { get; private init; } = new();
+
+        /// <summary>
+        /// Determine whether a mode can be applied to this type of channel.
+        /// <para>
+        /// This is typically done by decorating each mode type with the AppliesToChannel&lt;&gt;
+        /// attribute, but may also be performed by overriding this method in a subclass. The latter
+        /// may be required when introducing new channel types in other assemblies that wish to re-use
+        /// built-in modes from this assembly.
+        /// </para>
+        /// attribute
+        /// </summary>
+        /// <typeparam name="T">Mode type</typeparam>
+        /// <returns></returns>
+        public virtual bool AcceptsMode<T>()
+            where T : IChannelMode
+        {
+            return typeof(T)
+                .GetCustomAttributes(typeof(AppliesToChannelAttribute<>), inherit: true)
+                .Cast<IAppliesTo>()
+                .Any(attr => attr.CanApply(this));
+        }
     }
 }

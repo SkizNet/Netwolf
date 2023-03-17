@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace Netwolf.Server.ChannelModes
 {
-    internal enum ParameterType
+    public enum ParameterType
     {
         /// <summary>
         /// No parameters are required for this mode

@@ -7,8 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Folder Include="Attributes\" />
     <Folder Include="Commands\" />
+    <Folder Include="Internal\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Netwolf.Transport\Netwolf.Transport.csproj" />
   </ItemGroup>
 
 </Project>

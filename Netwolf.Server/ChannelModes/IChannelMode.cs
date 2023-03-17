@@ -1,15 +1,15 @@
-﻿namespace Netwolf.Server.ChannelModes
+﻿using System.Collections.Generic;
+
+namespace Netwolf.Server.ChannelModes
 {
     /// <summary>
-    /// Internal API surface for channel modes.
+    /// API surface for channel modes.
+    /// Marked internal so that other assemblies are required to use the
+    /// already-provided abstract classes, in order to enforce things like
+    /// having a public parameterless constructible.
     /// </summary>
     internal interface IChannelMode
     {
-        /// <summary>
-        /// Singleton instance of this channel mode.
-        /// </summary>
-        IChannelMode Singleton { get; }
-
         /// <summary>
         /// Character representing this mode in a mode line.
         /// </summary>
@@ -19,6 +19,11 @@
         /// How this mode handles parameters.
         /// </summary>
         ParameterType ParameterType { get; }
+
+        /// <summary>
+        /// Parameter value for this mode, in a format suitable for client display.
+        /// </summary>
+        string? Parameter { get; }
 
         /// <summary>
         /// Privilege required in order to view whether or not
@@ -43,23 +48,28 @@
         string ModifyPrivilege { get; }
 
         /// <summary>
-        /// Called when a user attempts to set the mode on a channel.
-        /// May cause side effects of messages sent to the user, channel members, and/or server operators.
+        /// Set the mode on the given channel, or modify the mode's parameter
+        /// if it is already set.
+        /// <para>
+        /// Side effects: Giving the user error messages if the mode cannot be set.
+        /// </para>
         /// </summary>
         /// <param name="user">User attempting to set the mode.</param>
-        /// <param name="channel">Channel the mode is attempting to be set on.</param>
-        /// <param name="parameter">Parameter specified when setting the mode, or <c>null</c> if no parameter was specified by the user.</param>
-        /// <returns>Returns whether or not the mode was successfully set on the channel.</returns>
-        bool TrySet(User user, Channel channel, string? parameter);
+        /// <param name="channel">Channel mode is being set on.</param>
+        /// <param name="parameter">User-specified parameter, if any.</param>
+        /// <returns><c>true</c> if the mode was successfully set on the channel.</returns>
+        bool Set(User user, Channel channel, string? parameter);
 
         /// <summary>
-        /// Called when a user attempts to unset the mode on a channel.
-        /// May cause side effects of messages sent to the user, channel members, and/or server operators.
+        /// Remove the mode from the given channel.
+        /// <para>
+        /// Side effects: Giving the user error messages if the mode cannot be unset.
+        /// </para>
         /// </summary>
-        /// <param name="user">User attempting to set the mode.</param>
-        /// <param name="channel">Channel the mode is attempting to be unset on.</param>
-        /// <param name="parameter">Parameter specified when unsetting the mode, or <c>null</c> if no parameter was specified by the user.</param>
-        /// <returns>Returns whether or not the mode was successfully unset on the channel.</returns>
-        bool TryUnset(User user, Channel channel, string? parameter);
+        /// <param name="user">User attempting to unset the mode.</param>
+        /// <param name="channel">Channel the mode is being removed from.</param>
+        /// <param name="parameter">User-specified parameter, if any.</param>
+        /// <returns><c>true</c> if the mode was successfully removed from the channel.</returns>
+        bool Unset(User user, Channel channel, string? parameter);
     }
 }
