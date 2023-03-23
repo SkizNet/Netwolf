@@ -4,11 +4,11 @@ namespace Netwolf.Server.ChannelModes
 {
     /// <summary>
     /// API surface for channel modes.
-    /// Marked internal so that other assemblies are required to use the
-    /// already-provided abstract classes, in order to enforce things like
-    /// having a public parameterless constructible.
+    /// Don't directly implement this interface in other assemblies;
+    /// extend one of the channel mode classes instead to avoid lots of
+    /// boilerplate and potential implementation/security issues.
     /// </summary>
-    internal interface IChannelMode
+    public interface IChannelMode
     {
         /// <summary>
         /// Character representing this mode in a mode line.

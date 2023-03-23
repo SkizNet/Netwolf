@@ -33,5 +33,10 @@ namespace Netwolf.Server
                 .Cast<IAppliesTo>()
                 .Any(attr => attr.CanApply(this));
         }
+
+        public HashSet<string> GetPrivilegesFor(User user)
+        {
+            return new HashSet<string>();
+        }
     }
 }
