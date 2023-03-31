@@ -1,25 +1,18 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace Netwolf.Transport.Client;
 
-namespace Netwolf.Transport.Client
+/// <summary>
+/// Factory for <see cref="INetwork"/>, registered as a DI service
+/// </summary>
+public interface INetworkFactory
 {
     /// <summary>
-    /// Factory for <see cref="INetwork"/>, registered as a DI service
+    /// Create a new network with the given options.
     /// </summary>
-    public interface INetworkFactory
-    {
-        /// <summary>
-        /// Create a new network with the given options.
-        /// </summary>
-        /// <param name="name">
-        /// Network name, for the caller's internal tracking purposes.
-        /// The name does not need to be unique.
-        /// </param>
-        /// <param name="options">Network options.</param>
-        /// <returns>A disconnected network instance</returns>
-        INetwork Create(string name, NetworkOptions options);
-    }
+    /// <param name="name">
+    /// Network name, for the caller's internal tracking purposes.
+    /// The name does not need to be unique.
+    /// </param>
+    /// <param name="options">Network options.</param>
+    /// <returns>A disconnected network instance</returns>
+    INetwork Create(string name, NetworkOptions options);
 }

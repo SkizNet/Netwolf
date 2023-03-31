@@ -1,48 +1,46 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 using Netwolf.Transport.Client;
 using Netwolf.Transport.Extensions.DependencyInjection;
 
-namespace Netwolf.Test.Transport
+namespace Netwolf.Test.Transport;
+
+[TestClass]
+public class NetworkTests
 {
-    [TestClass]
-    public class NetworkTests
+    private ServiceProvider Container { get; init; }
+
+    private NetworkOptions DefaultOptions { get; init; }
+
+    public NetworkTests()
     {
-        private ServiceProvider Container { get; init; }
+        Container = new ServiceCollection()
+            .AddLogging(config => config.AddConsole())
+            // bring in default Netwolf DI services
+            .AddTransportServices()
+            .BuildServiceProvider();
 
-        private NetworkOptions DefaultOptions { get; init; }
-
-        public NetworkTests()
+        DefaultOptions = new NetworkOptions()
         {
-            Container = new ServiceCollection()
-                .AddLogging(config => config.AddConsole())
-                // bring in default Netwolf DI services
-                .AddTransportServices()
-                .BuildServiceProvider();
+            // there's no actual sockets being opened here;
+            // keep timeouts low so tests don't take forever
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            ConnectRetries = 0
+        };
 
-            DefaultOptions = new NetworkOptions()
-            {
-                // there's no actual sockets being opened here;
-                // keep timeouts low so tests don't take forever
-                ConnectTimeout = TimeSpan.FromSeconds(5),
-                ConnectRetries = 0
-            };
+        DefaultOptions.Servers.Add(new Netwolf.Transport.Client.Server("irc.netwolf.org", 6667));
+    }
 
-            DefaultOptions.Servers.Add(new Netwolf.Transport.Client.Server("irc.netwolf.org", 6667));
-        }
+    [TestMethod]
+    public async Task TestUserRegistration()
+    {
+        var logger = Container.GetRequiredService<ILogger<INetwork>>();
+        var commandFactory = Container.GetRequiredService<ICommandFactory>();
+        var connectionFactory = new FakeConnectionFactory(new FakeServer(commandFactory), commandFactory);
+        using var network = new Network("Test", DefaultOptions, logger, commandFactory, connectionFactory);
 
-        [TestMethod]
-        public async Task TestUserRegistration()
-        {
-            var logger = Container.GetRequiredService<ILogger<INetwork>>();
-            var commandFactory = Container.GetRequiredService<ICommandFactory>();
-            var connectionFactory = new FakeConnectionFactory(new FakeServer(commandFactory), commandFactory);
-            using var network = new Network("Test", DefaultOptions, logger, commandFactory, connectionFactory);
-
-            await network.ConnectAsync();
-            Assert.IsTrue(true);
-        }
+        await network.ConnectAsync();
+        Assert.IsTrue(true);
     }
 }

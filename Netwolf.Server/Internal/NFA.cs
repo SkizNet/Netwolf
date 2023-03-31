@@ -1,233 +1,219 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Runtime.CompilerServices;
 
-namespace Netwolf.Server.Internal
+namespace Netwolf.Server.Internal;
+
+internal class NFA
 {
-    internal class NFA
+    internal bool Compiled => Initial.Compiled > 0;
+
+    private List<State> States { get; init; }
+
+    private State Initial { get; set; }
+
+    private HashSet<int> Accepting { get; set; } = new();
+
+    internal NFA()
     {
-        internal bool Compiled => Initial.Compiled > 0;
+        Initial = new State(0);
+        States = new List<State>() { Initial };
+    }
 
-        private List<State> States { get; init; }
-
-        private State Initial { get; set; }
-
-        private HashSet<int> Accepting { get; set; } = new();
-
-        internal NFA()
+    internal int NewState()
+    {
+        if (Compiled)
         {
-            Initial = new State(0);
-            States = new List<State>() { Initial };
+            throw new InvalidOperationException("NFA is already compiled");
         }
 
-        internal int NewState()
-        {
-            if (Compiled)
-            {
-                throw new InvalidOperationException("NFA is already compiled");
-            }
+        States.Add(new State(States.Count));
+        return States.Count - 1;
+    }
 
-            States.Add(new State(States.Count));
-            return States.Count - 1;
+    internal void AddEpsilon(int from, int to)
+    {
+        if (Compiled)
+        {
+            throw new InvalidOperationException("NFA is already compiled");
         }
 
-        internal void AddEpsilon(int from, int to)
-        {
-            if (Compiled)
-            {
-                throw new InvalidOperationException("NFA is already compiled");
-            }
+        States[from].AddEpsilon(States[to]);
+    }
 
-            States[from].AddEpsilon(States[to]);
+    internal void AddAny(int from, int to)
+    {
+        if (Compiled)
+        {
+            throw new InvalidOperationException("NFA is already compiled");
         }
 
-        internal void AddAny(int from, int to)
-        {
-            if (Compiled)
-            {
-                throw new InvalidOperationException("NFA is already compiled");
-            }
+        States[from].AddAny(States[to]);
+    }
 
-            States[from].AddAny(States[to]);
+    internal void AddTransition(int from, char input, int to)
+    {
+        if (Compiled)
+        {
+            throw new InvalidOperationException("NFA is already compiled");
         }
 
-        internal void AddTransition(int from, char input, int to)
-        {
-            if (Compiled)
-            {
-                throw new InvalidOperationException("NFA is already compiled");
-            }
+        States[from].Add(input, States[to]);
+    }
 
-            States[from].Add(input, States[to]);
+    internal void MarkAccepting(int state)
+    {
+        if (state < 0 || state >= States.Count)
+        {
+            throw new ArgumentException("Invalid state number", nameof(state));
         }
 
-        internal void MarkAccepting(int state)
-        {
-            if (state < 0 || state >= States.Count)
-            {
-                throw new ArgumentException("Invalid state number", nameof(state));
-            }
+        _ = Accepting.Add(state);
+    }
 
-            Accepting.Add(state);
+    internal void Compile()
+    {
+        Initial.Compile();
+    }
+
+    internal bool Parse(string input)
+    {
+        if (!Compiled)
+        {
+            throw new InvalidOperationException("NFA must be compiled");
         }
 
-        internal void Compile()
+        var cur = Initial;
+        foreach (char c in input)
         {
-            Initial.Compile();
+            cur = Initial.Next(c);
         }
 
-        internal bool Parse(string input)
+        return Accepting.Intersect(cur.Names).Any();
+    }
+
+    private class State
+    {
+        public static State Dead = new(-1) { Compiled = 2 };
+
+        public HashSet<int> Names { get; init; } = new();
+
+        public int Compiled { get; private set; } = 0;
+
+        private List<State> EpsilonTransitions { get; set; } = new();
+
+        private State? AnyCharacter { get; set; }
+
+        private Dictionary<char, State> Transitions { get; init; } = new();
+
+        public State(int name)
         {
-            if (!Compiled)
-            {
-                throw new InvalidOperationException("NFA must be compiled");
-            }
-
-            var cur = Initial;
-            foreach (var c in input)
-            {
-                cur = Initial.Next(c);
-            }
-
-            return Accepting.Intersect(cur.Names).Any();
+            _ = Names.Add(name);
         }
 
-        private class State
+        public State(params State?[] states)
         {
-            public static State Dead = new(-1) { Compiled = 2 };
+            EpsilonTransitions.AddRange(states.Where(s => s != null)!);
+        }
 
-            public HashSet<int> Names { get; init; } = new();
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public State Next(char c)
+        {
+            return Transitions.GetValueOrDefault(c) ?? AnyCharacter ?? Dead;
+        }
 
-            public int Compiled { get; private set; } = 0;
-
-            private List<State> EpsilonTransitions { get; set; } = new();
-            
-            private State? AnyCharacter { get; set; }
-
-            private Dictionary<char, State> Transitions { get; init; } = new();
-
-            public State(int name)
+        public void AddEpsilon(State next)
+        {
+            if (Compiled > 0)
             {
-                Names.Add(name);
+                throw new InvalidOperationException("State is already compiled");
             }
 
-            public State(params State?[] states)
+            if (next == this)
             {
-                EpsilonTransitions.AddRange(states.Where(s => s != null)!);
+                // pointless
+                return;
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public State Next(char c)
+            EpsilonTransitions.Add(next);
+        }
+
+        public void AddAny(State next)
+        {
+            if (Compiled > 0)
             {
-                return Transitions.GetValueOrDefault(c) ?? AnyCharacter ?? Dead;
+                throw new InvalidOperationException("State is already compiled");
             }
 
-            public void AddEpsilon(State next)
+            AnyCharacter = new State(AnyCharacter, next);
+        }
+
+        public void Add(char input, State next)
+        {
+            if (Compiled > 0)
             {
-                if (Compiled > 0)
+                throw new InvalidOperationException("State is already compiled");
+            }
+
+            Transitions[input] = new State(Transitions.GetValueOrDefault(input), next);
+        }
+
+        public void Compile(int to = 2)
+        {
+            if (Compiled < 1 && to >= 1)
+            {
+                // recursion prevention
+                Compiled = 1;
+
+                // roll any character transitions into other transition tables
+                if (AnyCharacter != null)
                 {
-                    throw new InvalidOperationException("State is already compiled");
-                }
-
-                if (next == this)
-                {
-                    // pointless
-                    return;
-                }
-
-                EpsilonTransitions.Add(next);
-            }
-
-            public void AddAny(State next)
-            {
-                if (Compiled > 0)
-                {
-                    throw new InvalidOperationException("State is already compiled");
-                }
-
-                AnyCharacter = new State(AnyCharacter, next);
-            }
-
-            public void Add(char input, State next)
-            {
-                if (Compiled > 0)
-                {
-                    throw new InvalidOperationException("State is already compiled");
-                }
-
-                Transitions[input] = new State(Transitions.GetValueOrDefault(input), next);
-            }
-
-            public void Compile(int to = 2)
-            {
-                if (Compiled < 1 && to >= 1)
-                {
-                    // recursion prevention
-                    Compiled = 1;
-
-                    // roll any character transitions into other transition tables
-                    if (AnyCharacter != null)
+                    foreach (var (input, state) in Transitions)
                     {
-                        foreach (var (input, state) in Transitions)
+                        Transitions[input] = new State(AnyCharacter, state);
+                    }
+                }
+
+                // compute the epsilon closure for this state
+                var closure = new HashSet<State>(EpsilonTransitions);
+                var queue = new Queue<State>(closure);
+                while (queue.Count > 0)
+                {
+                    var front = queue.Dequeue();
+                    foreach (var state in front.EpsilonTransitions)
+                    {
+                        if (!closure.Contains(state) && state != this)
                         {
-                            Transitions[input] = new State(AnyCharacter, state);
+                            _ = closure.Add(state);
+                            queue.Enqueue(state);
                         }
                     }
-
-                    // compute the epsilon closure for this state
-                    var closure = new HashSet<State>(EpsilonTransitions);
-                    var queue = new Queue<State>(closure);
-                    while (queue.Count > 0)
-                    {
-                        var front = queue.Dequeue();
-                        foreach (var state in front.EpsilonTransitions)
-                        {
-                            if (!closure.Contains(state) && state != this)
-                            {
-                                closure.Add(state);
-                                queue.Enqueue(state);
-                            }
-                        }
-                    }
-
-                    EpsilonTransitions = closure.ToList();
-                    Names.UnionWith(EpsilonTransitions.SelectMany(s => s.Names));
                 }
 
-                if (Compiled < 2 && to >= 2)
+                EpsilonTransitions = closure.ToList();
+                Names.UnionWith(EpsilonTransitions.SelectMany(s => s.Names));
+            }
+
+            if (Compiled < 2 && to >= 2)
+            {
+                Compiled = 2;
+
+                // roll epsilon transitions into the other transition tables
+                foreach (var state in EpsilonTransitions)
                 {
-                    Compiled = 2;
+                    state.Compile(1);
 
-                    // roll epsilon transitions into the other transition tables
-                    foreach (var state in EpsilonTransitions)
+                    foreach (var (input, next) in state.Transitions)
                     {
-                        state.Compile(1);
-
-                        foreach (var (input, next) in state.Transitions)
-                        {
-                            if (Transitions.TryGetValue(input, out var existing))
-                            {
-                                Transitions[input] = new State(next, existing);
-                            }
-                            else
-                            {
-                                Transitions[input] = next;
-                            }
-                        }
-
-                        AnyCharacter = new State(AnyCharacter, state);
+                        Transitions[input] = Transitions.TryGetValue(input, out var existing) ? new State(next, existing) : next;
                     }
 
-                    EpsilonTransitions.Clear();
-                    AnyCharacter?.Compile();
-                    foreach (var (_, state) in Transitions)
-                    {
-                        state.Compile();
-                    }
+                    AnyCharacter = new State(AnyCharacter, state);
+                }
+
+                EpsilonTransitions.Clear();
+                AnyCharacter?.Compile();
+                foreach (var (_, state) in Transitions)
+                {
+                    state.Compile();
                 }
             }
         }

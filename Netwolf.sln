@@ -8,10 +8,13 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Netwolf.Generator", "Netwolf.Generator\Netwolf.Generator.csproj", "{69F52F4C-40CB-4C66-AF9E-6C8A17FFB70C}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{E63B0D8F-6E71-4A29-BF41-4A1C5C658549}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Netwolf.Test", "Netwolf.Test\Netwolf.Test.csproj", "{54655BF3-CB72-4618-9C0C-9F45058F7783}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Netwolf.Server", "Netwolf.Server\Netwolf.Server.csproj", "{33577B40-4631-4EBD-8F9E-CF91EE339BFF}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Netwolf.Server", "Netwolf.Server\Netwolf.Server.csproj", "{33577B40-4631-4EBD-8F9E-CF91EE339BFF}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

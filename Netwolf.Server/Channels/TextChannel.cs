@@ -1,12 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace Netwolf.Server.Channels;
 
-namespace Netwolf.Server.Channels
+public class TextChannel : Channel
 {
-    public class TextChannel : Channel
-    {
-    }
 }

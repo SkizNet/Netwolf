@@ -1,81 +1,73 @@
-﻿
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace Netwolf.Transport.Client;
 
-namespace Netwolf.Transport.Client
+/// <summary>
+/// A server we can connect to as a client.
+/// </summary>
+public class Server : IServer
 {
     /// <summary>
-    /// A server we can connect to as a client.
+    /// Server hostname (DNS name or IP) to connect to.
     /// </summary>
-    public class Server : IServer
+    /// <remarks>
+    /// <seealso cref="Port"/>
+    /// <seealso cref="SecureConnection"/>
+    /// </remarks>
+    public string HostName { get; set; }
+
+    /// <summary>
+    /// Port number to connect to.
+    /// </summary>
+    /// <remarks>
+    /// <seealso cref="Address"/>
+    /// <seealso cref="SecureConnection"/>
+    /// </remarks>
+    public int Port { get; set; }
+
+    private readonly int[] SECURE_PORTS = { 6697, 9999 };
+    private bool? _secureConnection;
+
+    /// <summary>
+    /// Whether or not to connect to this server using TLS.
+    /// By default, TLS is used if the <see cref="Port"/> is <c>6697</c> or <c>9999</c>.
+    /// </summary>
+    public bool SecureConnection
     {
-        /// <summary>
-        /// Server hostname (DNS name or IP) to connect to.
-        /// </summary>
-        /// <remarks>
-        /// <seealso cref="Port"/>
-        /// <seealso cref="SecureConnection"/>
-        /// </remarks>
-        public string HostName { get; set; }
+        get => _secureConnection ?? SECURE_PORTS.Contains(Port);
+        set => _secureConnection = value;
+    }
 
-        /// <summary>
-        /// Port number to connect to.
-        /// </summary>
-        /// <remarks>
-        /// <seealso cref="Address"/>
-        /// <seealso cref="SecureConnection"/>
-        /// </remarks>
-        public int Port { get; set; }
-
-        private readonly int[] SECURE_PORTS = { 6697, 9999 };
-        private bool? _secureConnection;
-
-        /// <summary>
-        /// Whether or not to connect to this server using TLS.
-        /// By default, TLS is used if the <see cref="Port"/> is <c>6697</c> or <c>9999</c>.
-        /// </summary>
-        public bool SecureConnection
+    public Server(string hostName, int port, bool? secure = null)
+    {
+        ArgumentNullException.ThrowIfNull(hostName);
+        if (port is < 1 or > 65535)
         {
-            get => _secureConnection ?? SECURE_PORTS.Contains(Port);
-            set => _secureConnection = value;
+            throw new ArgumentOutOfRangeException(nameof(port), port, "Port number must be between 1 and 65535.");
         }
 
-        public Server(string hostName, int port, bool? secure = null)
+        HostName = hostName;
+        Port = port;
+        if (secure != null)
         {
-            ArgumentNullException.ThrowIfNull(hostName);
-            if (port < 1 || port > 65535)
-            {
-                throw new ArgumentOutOfRangeException(nameof(port), port, "Port number must be between 1 and 65535.");
-            }
+            SecureConnection = secure.Value;
+        }
+    }
 
-            HostName = hostName;
-            Port = port;
-            if (secure != null)
-            {
-                SecureConnection = secure.Value;
-            }
+    /// <summary>
+    /// Convert the server to a string representation of the host name, port, and TLS setting.
+    /// </summary>
+    /// <returns></returns>
+    public override string ToString()
+    {
+        string sslChar = SecureConnection ? "+" : String.Empty;
+        string leading = String.Empty;
+        string trailing = String.Empty;
+
+        if (HostName.Contains(':'))
+        {
+            leading = "[";
+            trailing = "]";
         }
 
-        /// <summary>
-        /// Convert the server to a string representation of the host name, port, and TLS setting.
-        /// </summary>
-        /// <returns></returns>
-        public override string ToString()
-        {
-            var sslChar = SecureConnection ? "+" : string.Empty;
-            var leading = string.Empty;
-            var trailing = string.Empty;
-
-            if (HostName.Contains(':'))
-            {
-                leading = "[";
-                trailing = "]";
-            }
-
-            return $"{leading}{HostName}{trailing}:{sslChar}{Port}";
-        }
+        return $"{leading}{HostName}{trailing}:{sslChar}{Port}";
     }
 }

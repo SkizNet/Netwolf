@@ -1,12 +1,11 @@
-﻿namespace Netwolf.Transport.Client
+﻿namespace Netwolf.Transport.Client;
+
+public enum AuthType
 {
-    public enum AuthType
-    {
-        None,
-        NickServIdentify,
-        NickServCertFp,
-        SaslPlain,
-        SaslExternal,
-        SaslScramSha256
-    }
+    None,
+    NickServIdentify,
+    NickServCertFp,
+    SaslPlain,
+    SaslExternal,
+    SaslScramSha256
 }

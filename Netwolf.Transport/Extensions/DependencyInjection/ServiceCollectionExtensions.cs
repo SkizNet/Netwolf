@@ -1,30 +1,20 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+namespace Netwolf.Transport.Extensions.DependencyInjection;
 
-namespace Netwolf.Transport.Extensions.DependencyInjection
+/// <summary>
+/// This class contains extension methods to register DI services
+/// necessary for the Netwolf.Transport library.
+/// </summary>
+public static class ServiceCollectionExtensions
 {
-    /// <summary>
-    /// This class contains extension methods to register DI services
-    /// necessary for the Netwolf.Transport library.
-    /// </summary>
-    public static class ServiceCollectionExtensions
+    public static IServiceCollection AddTransportServices(this IServiceCollection services)
     {
-        [SuppressMessage("Style", "IDE0001:Simplify name",
-            Justification = "Explicitly listing generic types in registration makes it more understandable which types are being registered")]
-        public static IServiceCollection AddTransportServices(this IServiceCollection services)
-        {
-            // Client services
-            services.AddSingleton<Client.INetworkFactory, Client.NetworkFactory>();
-            services.AddSingleton<Client.ICommandFactory, Client.CommandFactory>();
-            services.AddSingleton<Client.IConnectionFactory, Client.ConnectionFactory>();
+        // Client services
+        _ = services.AddSingleton<Client.INetworkFactory, Client.NetworkFactory>();
+        _ = services.AddSingleton<Client.ICommandFactory, Client.CommandFactory>();
+        _ = services.AddSingleton<Client.IConnectionFactory, Client.ConnectionFactory>();
 
-            return services;
-        }
+        return services;
     }
 }
