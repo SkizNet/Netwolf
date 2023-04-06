@@ -439,7 +439,14 @@ internal static partial class UnicodeHelper
 
             currentLength += cur.Length;
 
-            threshold == null ? preThreshold.Append(cur.Value) : postThreshold.Append(cur.Value);
+            if (threshold == null)
+            {
+                preThreshold.Append(cur.Value);
+            }
+            else
+            {
+                postThreshold.Append(cur.Value);
+            }
 
             if (currentLength > thresholdLength && cur.Type == LineBreakType.Optional && cur.Rule < (threshold?.Rule ?? 99999))
             {
