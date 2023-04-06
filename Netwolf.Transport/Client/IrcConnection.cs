@@ -226,8 +226,8 @@ public class IrcConnection : IConnection
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        _ = await Writer.WriteAsync(command.EncodeUtf8(), cancellationToken);
-        _ = await Writer.WriteAsync(_crlf, cancellationToken);
+        await Writer.WriteAsync(command.EncodeUtf8(), cancellationToken);
+        await Writer.WriteAsync(_crlf, cancellationToken);
     }
 
     private string? ExtractMessage(ref ReadOnlySequence<byte> buffer)
@@ -239,7 +239,7 @@ public class IrcConnection : IConnection
             var sb = new StringBuilder(span.DecodeUtf8(strict: false));
             Reader!.AdvanceTo(sequenceReader.Position);
             // ICommandFactory.Parse requires that the message ends with CRLF
-            _ = sb.Append("\r\n");
+            sb.Append("\r\n");
             return sb.ToString();
         }
         else if (buffer.Length > 8192 + 512)

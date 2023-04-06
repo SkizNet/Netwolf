@@ -147,7 +147,7 @@ public class CommandFactory : ICommandFactory
 
                         if (escape)
                         {
-                            _ = sb.Append(c switch
+                            sb.Append(c switch
                             {
                                 ':' => ';',
                                 's' => ' ',
@@ -160,7 +160,7 @@ public class CommandFactory : ICommandFactory
                         }
                         else
                         {
-                            _ = sb.Append(c);
+                            sb.Append(c);
                         }
                     }
 

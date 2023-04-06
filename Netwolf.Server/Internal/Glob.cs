@@ -29,8 +29,8 @@ internal partial class Glob
             string pattern = GlobRegex().Replace(p, m =>
             {
                 var sb = new StringBuilder();
-                _ = sb.Append(new string('?', m.Value.Count(c => c == '?')));
-                _ = sb.Append(m.Value.Contains('*') ? "*" : String.Empty);
+                sb.Append(new string('?', m.Value.Count(c => c == '?')));
+                sb.Append(m.Value.Contains('*') ? "*" : String.Empty);
                 return sb.ToString();
             });
 

@@ -66,7 +66,7 @@ internal class NFA
             throw new ArgumentException("Invalid state number", nameof(state));
         }
 
-        _ = Accepting.Add(state);
+        Accepting.Add(state);
     }
 
     internal void Compile()
@@ -106,7 +106,7 @@ internal class NFA
 
         public State(int name)
         {
-            _ = Names.Add(name);
+            Names.Add(name);
         }
 
         public State(params State?[] states)
@@ -182,7 +182,7 @@ internal class NFA
                     {
                         if (!closure.Contains(state) && state != this)
                         {
-                            _ = closure.Add(state);
+                            closure.Add(state);
                             queue.Enqueue(state);
                         }
                     }

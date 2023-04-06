@@ -252,13 +252,13 @@ public class Network : INetwork
                         pingTimeoutTimers.Add(Task.Delay(Options.PingTimeout, _messageLoopTokenSource.Token));
                         string cookie = String.Format("NWPC{0:X16}", Random.Shared.NextInt64());
                         pingTimeoutCookies.Add(cookie);
-                        _ = Task.Run(() => SendAsync(PrepareCommand("PING", new string[] { cookie }, null), _messageLoopTokenSource.Token));
+                        Task.Run(() => SendAsync(PrepareCommand("PING", new string[] { cookie }, null), _messageLoopTokenSource.Token));
                         break;
                     default:
                         // one of the pingTimeoutTimers fired or ReceiveAsync threw an exception
                         // this leaves the internal state "dirty" (by not cleaning up pingTimeoutTimers/Cookies, etc.)
                         // but on reconnect the completion source will be flagged and reset those
-                        _ = Task.Run(async () =>
+                        Task.Run(async () =>
                         {
                             if (_connection != null)
                             {

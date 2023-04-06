@@ -8,7 +8,7 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddServerServices(this IServiceCollection services)
     {
-        _ = services.AddSingleton<ICommandHandlerFactory, CommandHandlerFactory>();
+        services.AddSingleton<ICommandDispatcher, CommandDispatcher>();
 
         return services;
     }

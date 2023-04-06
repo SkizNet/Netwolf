@@ -402,11 +402,11 @@ internal static partial class UnicodeHelper
                 // found our end of text marker
                 if (cur.Class != LineBreakClass.Eot || currentLength > 0)
                 {
-                    _ = preThreshold.Append(postThreshold);
+                    preThreshold.Append(postThreshold);
                     lines.Add(preThreshold.ToString());
-                    _ = preThreshold.Clear();
+                    preThreshold.Clear();
                     threshold = null;
-                    _ = postThreshold.Clear();
+                    postThreshold.Clear();
                     currentLength = 0;
                 }
 
@@ -430,22 +430,22 @@ internal static partial class UnicodeHelper
                 }
 
                 lines.Add(preThreshold.ToString());
-                _ = preThreshold.Clear();
+                preThreshold.Clear();
                 threshold = null;
-                _ = postThreshold.Clear();
+                postThreshold.Clear();
                 currentLength = 0;
                 continue;
             }
 
             currentLength += cur.Length;
 
-            _ = threshold == null ? preThreshold.Append(cur.Value) : postThreshold.Append(cur.Value);
+            threshold == null ? preThreshold.Append(cur.Value) : postThreshold.Append(cur.Value);
 
             if (currentLength > thresholdLength && cur.Type == LineBreakType.Optional && cur.Rule < (threshold?.Rule ?? 99999))
             {
                 // found a new threshold grapheme
-                _ = preThreshold.Append(postThreshold);
-                _ = postThreshold.Clear();
+                preThreshold.Append(postThreshold);
+                postThreshold.Clear();
                 threshold = cur;
                 thresholdIndex = i;
             }

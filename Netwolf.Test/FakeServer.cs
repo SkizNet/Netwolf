@@ -148,7 +148,7 @@ internal class FakeServer : IDisposable
 
     internal void DisconnectClient(IConnection connection)
     {
-        _ = State.Remove(connection, out _);
+        State.Remove(connection, out _);
     }
 
     private void ReportISupport(IConnection client)

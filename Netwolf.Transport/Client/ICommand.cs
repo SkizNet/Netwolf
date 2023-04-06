@@ -56,7 +56,7 @@ public interface ICommand
 
             var sb = new StringBuilder();
             bool initial = true;
-            _ = sb.Append('@');
+            sb.Append('@');
 
             foreach (var (key, value) in Tags)
             {
@@ -66,21 +66,21 @@ public interface ICommand
                 }
                 else
                 {
-                    _ = sb.Append(';');
+                    sb.Append(';');
                 }
 
-                _ = sb.Append(key);
+                sb.Append(key);
 
                 if (value == null)
                 {
                     continue;
                 }
 
-                _ = sb.Append('=');
+                sb.Append('=');
 
                 foreach (char c in value)
                 {
-                    _ = sb.Append(c switch
+                    sb.Append(c switch
                     {
                         ';' => @"\:",
                         ' ' => @"\s",
@@ -92,7 +92,7 @@ public interface ICommand
                 }
             }
 
-            _ = sb.Append(' ');
+            sb.Append(' ');
             return sb.ToString();
         }
     }
@@ -112,21 +112,21 @@ public interface ICommand
         get
         {
             var sb = new StringBuilder();
-            _ = sb.Append(Verb);
+            sb.Append(Verb);
 
             for (int i = 0; i < Args.Count; ++i)
             {
-                _ = sb.Append(' ');
+                sb.Append(' ');
 
                 if (i == Args.Count - 1 && HasTrailingArg)
                 {
-                    _ = sb.Append(':');
+                    sb.Append(':');
                 }
 
-                _ = sb.Append(Args[i]);
+                sb.Append(Args[i]);
             }
 
-            _ = sb.Append("\r\n");
+            sb.Append("\r\n");
             return sb.ToString();
         }
     }

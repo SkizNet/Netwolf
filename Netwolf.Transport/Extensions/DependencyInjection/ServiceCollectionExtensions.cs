@@ -11,9 +11,9 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddTransportServices(this IServiceCollection services)
     {
         // Client services
-        _ = services.AddSingleton<Client.INetworkFactory, Client.NetworkFactory>();
-        _ = services.AddSingleton<Client.ICommandFactory, Client.CommandFactory>();
-        _ = services.AddSingleton<Client.IConnectionFactory, Client.ConnectionFactory>();
+        services.AddSingleton<Client.INetworkFactory, Client.NetworkFactory>();
+        services.AddSingleton<Client.ICommandFactory, Client.CommandFactory>();
+        services.AddSingleton<Client.IConnectionFactory, Client.ConnectionFactory>();
 
         return services;
     }
