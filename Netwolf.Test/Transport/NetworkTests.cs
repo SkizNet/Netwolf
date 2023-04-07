@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
+using Netwolf.Server.Extensions.DependencyInjection;
 using Netwolf.Transport.Client;
 using Netwolf.Transport.Extensions.DependencyInjection;
 
@@ -19,6 +20,7 @@ public class NetworkTests
             .AddLogging(config => config.AddConsole())
             // bring in default Netwolf DI services
             .AddTransportServices()
+            .AddServerServices()
             .BuildServiceProvider();
 
         DefaultOptions = new NetworkOptions()

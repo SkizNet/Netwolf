@@ -10,5 +10,5 @@ public interface ICommandHandler
 
     bool HasChannel { get; }
 
-    Task<ICommandResponse> ExecuteAsync(ICommand command, User client, Channel? channel);
+    Task<ICommandResponse> ExecuteAsync(ICommand command, User client, Channel? channel, CancellationToken cancellationToken);
 }

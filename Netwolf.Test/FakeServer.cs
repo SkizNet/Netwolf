@@ -23,8 +23,6 @@ internal class FakeServer : IDisposable
 
     private ConcurrentDictionary<IConnection, ClientState> State { get; init; } = new();
 
-    internal NetworkState Config { get; init; } = new();
-
     internal FakeServer(ICommandFactory commandFactory)
     {
         CommandFactory = commandFactory;
@@ -256,58 +254,6 @@ internal class FakeServer : IDisposable
         ChannelLimit = 0x0000_0000_0000_0040,
         [Display(Name = "k")]
         Passworded = 0x0000_0000_0000_0080
-    }
-
-    internal class NetworkState
-    {
-        internal string NetworkName { get; set; } = "Netwolf Test";
-
-        internal string ServerName { get; set; } = "irc.netwolf.org";
-
-        internal string Version { get; set; } = "netwolf-0.1.0";
-
-        internal string UserModes => "iowx";
-
-        internal string ChannelModes => "beIiklmnostv";
-
-        internal string ChannelModesWithParams => "beIklov";
-    }
-
-    internal class ClientState
-    {
-        internal readonly object ClientLock = new();
-
-        internal BlockingCollection<ICommand> Queue { get; init; } = new();
-
-        /// <summary>
-        /// Whether the client has completed user registration or not
-        /// (nothing to do with accounts)
-        /// </summary>
-        internal bool Registered { get; set; }
-
-        /// <summary>
-        /// If the client started CAP negotation but didn't complete it yet
-        /// </summary>
-        internal bool CapsPending { get; set; }
-
-        internal string Nickname { get; set; } = null!;
-
-        internal string Ident { get; set; } = null!;
-
-        internal string RealHost { get; set; } = null!;
-
-        internal string VirtualHost { get; set; } = null!;
-
-        internal string? Account { get; set; }
-
-        internal string RealName { get; set; } = null!;
-
-        /// <summary>
-        /// For display only
-        /// </summary>
-        internal string ModeString => "+";
-
-        internal List<ChannelState> ChannelMembership { get; init; } = new();
     }
 
     internal class ChannelState

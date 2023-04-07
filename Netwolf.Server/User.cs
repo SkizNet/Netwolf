@@ -1,10 +1,46 @@
-﻿namespace Netwolf.Server;
+﻿using Netwolf.Transport.Client;
+
+using System.Collections.Concurrent;
+
+namespace Netwolf.Server;
 
 public class User
 {
+    public Network Network { get; init; }
+
+    // temporary probably; we eventually want to support multiple clients attached to a single user,
+    // and also potentially per-channel "profiles" for the user, which means most of these details won't be top-level
+    internal BlockingCollection<ICommand> Queue { get; init; } = new();
+
+    public string Nickname { get; internal set; } = null!;
+
+    public string Ident { get; internal set; } = null!;
+
+    public string RealHost { get; internal set; } = null!;
+
+    public string VirtualHost { get; internal set; } = null!;
+
+    public string? Account { get; internal set; }
+
+    public string RealName { get; internal set; } = null!;
+
+    /// <summary>
+    /// For display only
+    /// </summary>
+    public string ModeString => "+";
+
+    // for channels and privs, probably want the public facing to be read-only/immutable
+    // and only manipulated internally
+    public List<Channel> Channels { get; init; } = new();
+
     public HashSet<string> UserPrivileges { get; init; } = new();
 
     public HashSet<string> OperPrivileges { get; init; } = new();
+
+    public User(Network network)
+    {
+        Network = network;
+    }
 
     public bool HasPrivilege(string priv, Channel? channel = null)
     {
@@ -58,5 +94,11 @@ public class User
     public bool HasAnyPrivilege(params string[] privs)
     {
         return privs.Any(p => HasPrivilege(p));
+    }
+
+    public void Send(ICommand command)
+    {
+        // TODO: Check for SendQ limits here
+        Queue.Add(command);
     }
 }

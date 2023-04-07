@@ -10,15 +10,12 @@ namespace Netwolf.Server.Commands;
 
 internal class CommandDispatcher : ICommandDispatcher
 {
-    private IServiceProvider ServiceProvider { get; init; }
-
     private ILogger Logger { get; init; }
 
     private Dictionary<string, ICommandHandler> Commands { get; init; } = new();
 
     public CommandDispatcher(IServiceProvider provider, ILogger<ICommandDispatcher> logger)
     {
-        ServiceProvider = provider;
         Logger = logger;
 
         // populate Commands from all concrete classes across all assemblies that implement ICommandHandler
@@ -33,7 +30,7 @@ internal class CommandDispatcher : ICommandDispatcher
                     continue;
                 }
 
-                var handler = (ICommandHandler)ActivatorUtilities.CreateInstance(ServiceProvider, type);
+                var handler = (ICommandHandler)ActivatorUtilities.CreateInstance(provider, type);
                 if (!Regex.IsMatch("^[A-Z][A-Z0-9]*$", handler.Command))
                 {
                     logger.LogWarning(@"Skipping {Type}: bad command name", type.FullName);
@@ -76,8 +73,10 @@ internal class CommandDispatcher : ICommandDispatcher
         }
     }
 
-    public Task<ICommandResponse> DispatchAsync(ICommand command, User client)
+    public Task<ICommandResponse> DispatchAsync(ICommand command, User client, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (command.CommandType != CommandType.Client)
         {
             throw new ArgumentException("Not passed a client command", nameof(command));
@@ -99,6 +98,6 @@ internal class CommandDispatcher : ICommandDispatcher
 
         }
 
-        return handler.ExecuteAsync(command, client, channel);
+        return handler.ExecuteAsync(command, client, channel, cancellationToken);
     }
 }

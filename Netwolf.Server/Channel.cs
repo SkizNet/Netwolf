@@ -9,9 +9,19 @@ namespace Netwolf.Server;
 public abstract class Channel
 {
     /// <summary>
+    /// Network this Channel belongs to
+    /// </summary>
+    public Network Network { get; init; }
+
+    /// <summary>
     /// Currently-active channel modes
     /// </summary>
     protected HashSet<IChannelMode> Modes { get; private init; } = new();
+
+    public Channel(Network network)
+    {
+        Network = network;
+    }
 
     /// <summary>
     /// Determine whether a mode can be applied to this type of channel.
@@ -21,7 +31,10 @@ public abstract class Channel
     /// may be required when introducing new channel types in other assemblies that wish to re-use
     /// built-in modes from this assembly.
     /// </para>
-    /// attribute
+    /// <para>
+    /// When overriding, you should call the base method to ensure that AppliesToChannel attributes
+    /// continue to function properly.
+    /// </para>
     /// </summary>
     /// <typeparam name="T">Mode type</typeparam>
     /// <returns></returns>
