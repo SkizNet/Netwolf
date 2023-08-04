@@ -14,6 +14,8 @@ public class BatchResponse : ICommandResponse
     private readonly User _user;
     private readonly List<ICommandResponse> _lines = new();
 
+    public bool CloseConnection => _lines.Any(l => l.CloseConnection);
+
     public BatchResponse(User user)
     {
         _user = user ?? throw new ArgumentNullException(nameof(user));

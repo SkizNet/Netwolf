@@ -1,4 +1,5 @@
-﻿using Netwolf.Transport.Client;
+﻿using Netwolf.Server.Internal;
+using Netwolf.Transport.Client;
 
 using System.Collections.Concurrent;
 
@@ -9,7 +10,7 @@ public class User
     public Network Network { get; init; }
 
     // temporary probably; we eventually want to support multiple clients attached to a single user,
-    // and also potentially per-channel "profiles" for the user, which means most of these details won't be top-level
+    // and also potentially per-channel/group "profiles" for the user, which means most of these details won't be (only) top-level
     internal BlockingCollection<ICommand> Queue { get; init; } = new();
 
     public string Nickname { get; internal set; } = null!;
@@ -23,6 +24,14 @@ public class User
     public string? Account { get; internal set; }
 
     public string RealName { get; internal set; } = null!;
+
+    internal RegistrationFlags RegistrationFlags { get; set; } = RegistrationFlags.Default;
+
+    /// <summary>
+    /// Whether the client has been fully registered on the network (has sent NICK/USER and finished CAP negotation)
+    /// Has nothing to do with accounts
+    /// </summary>
+    public bool Registered => RegistrationFlags == RegistrationFlags.None;
 
     /// <summary>
     /// For display only
@@ -100,5 +109,27 @@ public class User
     {
         // TODO: Check for SendQ limits here
         Queue.Add(command);
+    }
+
+    public bool AttachConnectionConfig(string? password)
+    {
+        if (!RegistrationFlags.HasFlag(RegistrationFlags.PendingPass))
+        {
+            throw new InvalidOperationException($"A connection config has already been attached to this user.");
+        }
+
+        if (password != null)
+        {
+            // don't support server passwords right now
+            return false;
+        }
+
+        // TODO: actually check configs; right now we just accept everyone that doesn't specify a server password
+        RegistrationFlags |= RegistrationFlags.NeedsIdentLookup | RegistrationFlags.NeedsHostLookup;
+
+        // mark connection as having a config attached (by clearing the fact we're looking for a PASS command)
+        RegistrationFlags ^= RegistrationFlags.PendingPass;
+
+        return true;
     }
 }

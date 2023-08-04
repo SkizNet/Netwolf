@@ -12,9 +12,11 @@ namespace Netwolf.Server.Commands;
 
 public class NumericResponse : ICommandResponse
 {
+    public bool CloseConnection => false;
+
     public NumericResponse(User user, Numeric numeric, params string[] args)
     {
-        string? description = typeof(Numeric).GetField(numeric.ToString())!.GetCustomAttributes<DisplayAttribute>().FirstOrDefault()?.Description;
+        string? description = typeof(Numeric).GetField(numeric.ToString())!.GetCustomAttributes<DisplayAttribute>().FirstOrDefault()?.GetDescription();
         var realArgs = new List<string?>() { user.Nickname };
         realArgs.AddRange(args);
         if (description != null)
