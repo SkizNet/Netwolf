@@ -12,13 +12,14 @@ namespace Netwolf.Server.Commands;
 
 public class NumericResponse : ICommandResponse
 {
-    public NumericResponse(Network network, User user, Numeric numeric, params string[] args)
+    public NumericResponse(User user, Numeric numeric, params string[] args)
     {
         string? description = typeof(Numeric).GetField(numeric.ToString())!.GetCustomAttributes<DisplayAttribute>().FirstOrDefault()?.Description;
         var realArgs = new List<string?>() { user.Nickname };
         realArgs.AddRange(args);
         if (description != null)
         {
+            var network = user.Network;
             realArgs.Add(description.Interpolate(user, network));
         }
     }

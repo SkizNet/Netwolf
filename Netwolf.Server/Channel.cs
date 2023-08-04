@@ -14,13 +14,25 @@ public abstract class Channel
     public Network Network { get; init; }
 
     /// <summary>
+    /// Channel name, including type prefix
+    /// </summary>
+    public string Name { get; private init; }
+
+    /// <summary>
     /// Currently-active channel modes
     /// </summary>
     protected HashSet<IChannelMode> Modes { get; private init; } = new();
 
-    public Channel(Network network)
+    /// <summary>
+    /// Channel members and their channel privileges.
+    /// Should be refactored so the public version is immutable.
+    /// </summary>
+    public Dictionary<User, HashSet<string>> Members { get; init; } = new();
+
+    public Channel(Network network, string name)
     {
         Network = network;
+        Name = name;
     }
 
     /// <summary>
@@ -49,6 +61,6 @@ public abstract class Channel
 
     public HashSet<string> GetPrivilegesFor(User user)
     {
-        return new HashSet<string>();
+        return Members.GetValueOrDefault(user, new HashSet<string>());
     }
 }

@@ -1,4 +1,5 @@
-﻿using Netwolf.Transport.Client;
+﻿using Netwolf.Server.Commands;
+using Netwolf.Transport.Client;
 
 namespace Netwolf.Test;
 
@@ -8,11 +9,14 @@ internal class FakeConnection : IConnection
 
     private ICommandFactory CommandFactory { get; set; }
 
+    private ICommandDispatcher CommandDispatcher { get; set; }
+
     private bool disposedValue;
 
-    internal FakeConnection(FakeServer server, ICommandFactory commandFactory)
+    internal FakeConnection(FakeServer server, ICommandFactory commandFactory, ICommandDispatcher commandDispatcher)
     {
         CommandFactory = commandFactory;
+        CommandDispatcher = commandDispatcher;
         Server = server;
     }
 
@@ -33,10 +37,12 @@ internal class FakeConnection : IConnection
         return Server.ReceiveCommand(this, cancellationToken);
     }
 
-    public Task SendAsync(ICommand command, CancellationToken cancellationToken)
+    public async Task SendAsync(ICommand command, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Server.ProcessCommand(this, command, cancellationToken);
+        var result = await CommandDispatcher.DispatchAsync(command, Server.State[this], cancellationToken);
+
+        // TODO: do things with result such as sending any response back to the client
     }
 
     public Task UnsafeSendAsync(string command, CancellationToken cancellationToken)
