@@ -29,25 +29,6 @@ internal class FakeServer : IDisposable
         Network = new(commandFactory, dispatcher);
     }
 
-    [Command("USER")]
-    public void OnUser(IConnection client, ICommand command)
-    {
-        if (State[client].Registered)
-        {
-            Reply(client, null, null, Numeric.ERR_ALREADYREGISTERED);
-            return;
-        }
-
-        if (command.Args.Count != 4 || command.Args[0].Length == 0)
-        {
-            Reply(client, null, null, Numeric.ERR_NEEDMOREPARAMS, command.Verb);
-            return;
-        }
-
-        State[client].Ident = $"~{command.Args[0]}";
-        State[client].RealName = command.Args[3];
-    }
-
     internal void ConnectClient(IConnection connection)
     {
         State[connection] = new User(Network);

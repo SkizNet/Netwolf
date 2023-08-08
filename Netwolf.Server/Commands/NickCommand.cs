@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace Netwolf.Server.Commands;
 
-public partial class Nick : ICommandHandler
+public partial class NickCommand : ICommandHandler
 {
     // RFC 2812 nickname validation
     [GeneratedRegex("[a-zA-Z[\\]\\\\`_^{}|][a-zA-Z0-9[\\]\\\\`_^{}|-]*")]
@@ -53,7 +53,7 @@ public partial class Nick : ICommandHandler
 
         if (client.RegistrationFlags.HasFlag(RegistrationFlags.PendingNick))
         {
-            if (!client.MaybeDoImplicitPassCommand())
+            if (!client.MaybeDoImplicitPassCommand(RegistrationFlags.PendingNick))
             {
                 // TODO: move string to a resource file for l10n
                 return Task.FromResult<ICommandResponse>(new ErrorResponse(client, "You do not have access to this network (missing password?)."));
@@ -62,7 +62,6 @@ public partial class Nick : ICommandHandler
             var batch = client.ClearRegistrationFlag(RegistrationFlags.PendingNick);
             if (batch != null)
             {
-                batch.Add(response);
                 return Task.FromResult<ICommandResponse>(batch);
             }
         }

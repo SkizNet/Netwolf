@@ -26,6 +26,12 @@ public class User
 
     public string RealName { get; internal set; } = null!;
 
+    public string? FullIdent { get; internal set; }
+
+    public string UserParam1 { get; internal set; } = null!;
+
+    public string UserParam2 { get; internal set; } = null!;
+
     internal RegistrationFlags RegistrationFlags { get; private set; } = RegistrationFlags.Default;
 
     /// <summary>
@@ -141,9 +147,9 @@ public class User
             batch.AddNumeric(this, Numeric.RPL_CREATED);
             batch.AddNumeric(this, Numeric.RPL_MYINFO, Network.ServerName, Network.Version, Network.UserModes, Network.ChannelModes, Network.ChannelModesWithParams);
             batch.AddRange(Network.ReportISupport(this));
-            batch.AddRange(LUsers.ExecuteInternal(this));
+            batch.AddRange(ListUsersCommand.ExecuteInternal(this));
             batch.AddNumeric(this, Numeric.RPL_UMODEIS, ModeString);
-            batch.AddRange(Motd.ExecuteInternal(this));
+            batch.AddRange(MotdCommand.ExecuteInternal(this));
 
             return batch;
         }

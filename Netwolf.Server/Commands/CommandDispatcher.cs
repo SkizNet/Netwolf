@@ -8,8 +8,11 @@ using System.Xml.Linq;
 
 namespace Netwolf.Server.Commands;
 
-internal class CommandDispatcher : ICommandDispatcher
+internal partial class CommandDispatcher : ICommandDispatcher
 {
+    [GeneratedRegex("^[A-Z][A-Z0-9]*$")]
+    private static partial Regex CommandNameRegex();
+
     private ILogger Logger { get; init; }
 
     private Dictionary<string, ICommandHandler> Commands { get; init; } = new();
@@ -31,9 +34,9 @@ internal class CommandDispatcher : ICommandDispatcher
                 }
 
                 var handler = (ICommandHandler)ActivatorUtilities.CreateInstance(provider, type);
-                if (!Regex.IsMatch("^[A-Z][A-Z0-9]*$", handler.Command))
+                if (!CommandNameRegex().IsMatch(handler.Command))
                 {
-                    logger.LogWarning(@"Skipping {Type}: bad command name", type.FullName);
+                    logger.LogWarning(@"Skipping {Type}: bad command name {Command}", type.FullName, handler.Command);
                     continue;
                 }
 
@@ -41,7 +44,7 @@ internal class CommandDispatcher : ICommandDispatcher
                 {
                     if (handler.Privilege.Length < 6 || handler.Privilege[5] != ':')
                     {
-                        logger.LogWarning(@"Skipping {Type}: invalid privilege", type.FullName);
+                        logger.LogWarning(@"Skipping {Type}: invalid privilege {Privilege}", type.FullName, handler.Privilege);
                         continue;
                     }
 
@@ -84,7 +87,8 @@ internal class CommandDispatcher : ICommandDispatcher
 
         if (!Commands.TryGetValue(command.Verb, out var handler))
         {
-            throw new NotImplementedException();
+            Logger.LogInformation("Received unknown command {Command}", command.UnprefixedCommandPart.TrimEnd());
+            return Task.FromResult<ICommandResponse>(new NumericResponse(client, Numeric.ERR_UNKNOWNCOMMAND, command.Verb));
         }
 
         Channel? channel = null;
@@ -93,9 +97,10 @@ internal class CommandDispatcher : ICommandDispatcher
             // Convert the first parameter to a channel
         }
 
-        if (handler.Privilege != null)
+        if (handler.Privilege != null && !client.HasPrivilege(handler.Privilege, channel))
         {
-
+            // Error message differs based on what type of privilege is missing,
+            // and perhaps other context (e.g. oper commands have a different error if the user is an oper vs not)
         }
 
         return handler.ExecuteAsync(command, client, channel, cancellationToken);

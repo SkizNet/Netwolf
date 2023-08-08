@@ -61,6 +61,7 @@ public class Network
             { "MAXLIST", "beq:100,I:100" },
             { "MODES", 4 },
             { "MONITOR", 100 },
+            { "NAMELEN", 150 },
             { "NETWORK", NetworkName },
             { "NICKLEN", 20 },
             { "PREFIX", "(ohv)@%+" },

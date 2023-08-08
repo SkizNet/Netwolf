@@ -8,9 +8,9 @@ using System.Threading.Tasks;
 
 namespace Netwolf.Server.Commands;
 
-public class Motd : ICommandHandler
+public class ListUsersCommand : ICommandHandler
 {
-    public string Command => "MOTD";
+    public string Command => "LUSERS";
 
     public string? Privilege => null;
 
@@ -26,12 +26,22 @@ public class Motd : ICommandHandler
 
     internal static MultiResponse ExecuteInternal(User client)
     {
-        // We do not implement or support the target parameter for this command,
-        // as Netwolf does expose the individual servers comprising the network
-
-        // TODO: support showing a real MOTD if one is set in network config
         var batch = new MultiResponse();
-        batch.AddNumeric(client, Numeric.ERR_NOMOTD);
+
+        batch.AddNumeric(client, Numeric.RPL_LUSERCLIENT);
+        batch.AddNumeric(client, Numeric.RPL_LUSEROP);
+
+        if (client.HasPrivilege("oper:lusers:unknown"))
+        {
+            batch.AddNumeric(client, Numeric.RPL_LUSERUNKNOWN);
+        }
+
+        batch.AddNumeric(client, Numeric.RPL_LUSERCHANNELS);
+        batch.AddNumeric(client, Numeric.RPL_LUSERME);
+
+        // Netwolf has no concept of local vs global users, so don't give RPL_LOCALUSERS
+        batch.AddNumeric(client, Numeric.RPL_GLOBALUSERS);
+
         return batch;
     }
 }

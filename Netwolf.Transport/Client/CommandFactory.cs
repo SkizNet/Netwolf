@@ -8,7 +8,7 @@ using System.Text.RegularExpressions;
 
 namespace Netwolf.Transport.Client;
 
-public class CommandFactory : ICommandFactory
+public partial class CommandFactory : ICommandFactory
 {
     public virtual Type ObjectType => typeof(Command);
 
@@ -18,7 +18,10 @@ public class CommandFactory : ICommandFactory
     private static readonly Regex _tagKeyRegex = new(@"^\+?(?:[a-zA-Z0-9-.]+/)?[a-zA-Z0-9-]+$", RegexOptions.NonBacktracking);
     private static readonly Regex _spaceNullCrLfRegex = new(@"[ \r\n\0]", RegexOptions.NonBacktracking);
     private static readonly Regex _nullCrLfRegex = new(@"[\r\n\0]", RegexOptions.NonBacktracking);
-    private static readonly Regex _parseCommandRegex = new(@"^(?:@(?<tag>[^ ;]+)(?:;(?<tag>[^ ;]+))* +)?(?::(?<source>[^ ]+) +)?(?<verb>[^ ]+)(?: +(?<arg>[^: ][^ ]*))*(?: +:(?<trailing>.*))?$", RegexOptions.NonBacktracking);
+
+    // cannot be NonBacktracking, as NonBacktracking does not properly capture a named group multiple times (only returns the last match)
+    [GeneratedRegex("^(?:@(?<tag>[^ ;]+)(?:;(?<tag>[^ ;]+))* +)?(?::(?<source>[^ ]+) +)?(?<verb>[^ ]+)(?: +(?<arg>[^: ][^ ]*))*(?: +(?::(?<trailing>.*))?)?$")]
+    private static partial Regex ParseCommandRegex();
 
     private IServiceProvider Provider { get; init; }
 
@@ -93,7 +96,7 @@ public class CommandFactory : ICommandFactory
             // tag values are valid UTF-8 (which was also validated already since the bytes were decoded to a string by now).
 
             // normalize empty string values to null for consistency (allowed by spec)
-            commandTags[key] = (value == String.Empty) ? null : value;
+            commandTags[key] = value == String.Empty ? null : value;
         }
 
         var commandOptions = new CommandOptions(commandType, source, verb, commandArgs, commandTags, hasTrailingArg);
@@ -107,7 +110,7 @@ public class CommandFactory : ICommandFactory
 
     public ICommand Parse(CommandType commandType, string message)
     {
-        var matches = _parseCommandRegex.Match(message);
+        var matches = ParseCommandRegex().Match(message);
         if (!matches.Success)
         {
             throw new ArgumentException("Invalid or ill-formed IRC message", nameof(message));
@@ -118,12 +121,12 @@ public class CommandFactory : ICommandFactory
         Dictionary<string, string?> tags = new();
         List<string> args = new();
 
-        if (matches.Groups.ContainsKey("source"))
+        if (matches.Groups["source"].Success)
         {
             source = matches.Groups["source"].Value;
         }
 
-        if (matches.Groups.ContainsKey("tag"))
+        if (matches.Groups["tag"].Success)
         {
             foreach (var tag in matches.Groups["tag"].Captures.Cast<Capture>())
             {
@@ -169,7 +172,7 @@ public class CommandFactory : ICommandFactory
             }
         }
 
-        if (matches.Groups.ContainsKey("arg"))
+        if (matches.Groups["arg"].Success)
         {
             foreach (var arg in matches.Groups["arg"].Captures.Cast<Capture>())
             {
@@ -177,7 +180,7 @@ public class CommandFactory : ICommandFactory
             }
         }
 
-        if (matches.Groups.ContainsKey("trailing"))
+        if (matches.Groups["trailing"].Success)
         {
             args.Add(matches.Groups["trailing"].Value);
         }

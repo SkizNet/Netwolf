@@ -41,7 +41,7 @@ public class NetworkTests
         var logger = Container.GetRequiredService<ILogger<INetwork>>();
         var commandFactory = Container.GetRequiredService<ICommandFactory>();
         var dispatcher = Container.GetRequiredService<ICommandDispatcher>();
-        var connectionFactory = new FakeConnectionFactory(new FakeServer(commandFactory, dispatcher), commandFactory);
+        var connectionFactory = new FakeConnectionFactory(new FakeServer(commandFactory, dispatcher), commandFactory, dispatcher);
         using var network = new Network("NetwolfTest", DefaultOptions, logger, commandFactory, connectionFactory);
 
         await network.ConnectAsync();
