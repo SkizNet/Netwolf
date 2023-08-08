@@ -13,7 +13,7 @@ namespace Netwolf.Server.Commands;
 public partial class Nick : ICommandHandler
 {
     // RFC 2812 nickname validation
-    [GeneratedRegex("[a-zA-Z[\\]\\\\`_^{}|][a-zA-Z0-9[\\]\\\\`_^{}|-]{0,15}")]
+    [GeneratedRegex("[a-zA-Z[\\]\\\\`_^{}|][a-zA-Z0-9[\\]\\\\`_^{}|-]*")]
     private static partial Regex ValidNickRegex();
 
     public string Command => "NICK";
@@ -35,7 +35,8 @@ public partial class Nick : ICommandHandler
 
         string nick = command.Args[0];
 
-        if (!ValidNickRegex().IsMatch(nick))
+        // TODO: Make nick length configurable
+        if (nick.Length > 20 || !ValidNickRegex().IsMatch(nick))
         {
             return Task.FromResult<ICommandResponse>(new NumericResponse(client, Numeric.ERR_ERRONEUSNICKNAME, nick));
         }
@@ -45,19 +46,27 @@ public partial class Nick : ICommandHandler
             return Task.FromResult<ICommandResponse>(new NumericResponse(client, Numeric.ERR_NICKNAMEINUSE, nick));
         }
 
+        string? source = client.Registered ? client.Hostmask : null;
+        var response = new CommandResponse(client, source, "NICK", nick);
+
         client.Nickname = nick;
 
         if (client.RegistrationFlags.HasFlag(RegistrationFlags.PendingNick))
         {
-            if (client.RegistrationFlags.HasFlag(RegistrationFlags.PendingPass) && !client.AttachConnectionConfig(null))
+            if (!client.MaybeDoImplicitPassCommand())
             {
                 // TODO: move string to a resource file for l10n
                 return Task.FromResult<ICommandResponse>(new ErrorResponse(client, "You do not have access to this network (missing password?)."));
             }
 
-            client.RegistrationFlags ^= RegistrationFlags.PendingNick;
+            var batch = client.ClearRegistrationFlag(RegistrationFlags.PendingNick);
+            if (batch != null)
+            {
+                batch.Add(response);
+                return Task.FromResult<ICommandResponse>(batch);
+            }
         }
 
-        return Task.FromResult<ICommandResponse>(new CommandResponse(client, "NICK", nick));
+        return Task.FromResult<ICommandResponse>(response);
     }
 }

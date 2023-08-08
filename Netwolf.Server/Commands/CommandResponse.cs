@@ -8,10 +8,26 @@ namespace Netwolf.Server.Commands;
 
 public class CommandResponse : ICommandResponse
 {
-    public bool CloseConnection => false;
+    protected User User { get; init; }
 
-    public CommandResponse(User user, string command, params string[] args)
+    protected string? Source { get; init; }
+
+    protected string Command { get; init; }
+
+    protected List<string> Args { get; init; }
+
+    public virtual bool CloseConnection => false;
+
+    public CommandResponse(User user, string? source, string command, params string[] args)
     {
+        User = user;
+        Source = source;
+        Command = command;
+        Args = new List<string>(args);
+    }
 
+    public void Send()
+    {
+        User.Send(Source, Command, Args);
     }
 }

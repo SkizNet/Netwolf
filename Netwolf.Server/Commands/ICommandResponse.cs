@@ -12,4 +12,9 @@ public interface ICommandResponse
     /// Whether we should terminate the client connection as part of this response (error, quit)
     /// </summary>
     bool CloseConnection { get; }
+
+    /// <summary>
+    /// Send this response to the client
+    /// </summary>
+    void Send();
 }

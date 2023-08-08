@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
+using Netwolf.Server.Commands;
 using Netwolf.Server.Extensions.DependencyInjection;
 using Netwolf.Transport.Client;
 using Netwolf.Transport.Extensions.DependencyInjection;
@@ -39,8 +40,9 @@ public class NetworkTests
     {
         var logger = Container.GetRequiredService<ILogger<INetwork>>();
         var commandFactory = Container.GetRequiredService<ICommandFactory>();
-        var connectionFactory = new FakeConnectionFactory(new FakeServer(commandFactory), commandFactory);
-        using var network = new Network("Test", DefaultOptions, logger, commandFactory, connectionFactory);
+        var dispatcher = Container.GetRequiredService<ICommandDispatcher>();
+        var connectionFactory = new FakeConnectionFactory(new FakeServer(commandFactory, dispatcher), commandFactory);
+        using var network = new Network("NetwolfTest", DefaultOptions, logger, commandFactory, connectionFactory);
 
         await network.ConnectAsync();
         Assert.IsTrue(true);

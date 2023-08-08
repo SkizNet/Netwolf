@@ -19,13 +19,14 @@ internal class FakeServer : IDisposable
 
     private bool disposedValue;
 
-    private Server.Network Network { get; init; } = new();
+    private Server.Network Network { get; init; }
 
     internal ConcurrentDictionary<IConnection, User> State { get; init; } = new();
 
-    internal FakeServer(ICommandFactory commandFactory)
+    internal FakeServer(ICommandFactory commandFactory, ICommandDispatcher dispatcher)
     {
         CommandFactory = commandFactory;
+        Network = new(commandFactory, dispatcher);
     }
 
     [Command("USER")]
@@ -45,55 +46,6 @@ internal class FakeServer : IDisposable
 
         State[client].Ident = $"~{command.Args[0]}";
         State[client].RealName = command.Args[3];
-
-        CheckRegistrationComplete(client);
-    }
-
-    [Command("LUSERS")]
-    public void OnLusers(IConnection client, ICommand command)
-    {
-        var state = State[client];
-
-        Reply(client, null, null, Numeric.RPL_LUSERCLIENT);
-        Reply(client, null, null, Numeric.RPL_LUSEROP);
-
-        if (true /*state.HasPriv("oper:lusers:unknown")*/)
-        {
-            Reply(client, null, null, Numeric.RPL_LUSERUNKNOWN);
-        }
-
-        Reply(client, null, null, Numeric.RPL_LUSERCHANNELS);
-        Reply(client, null, null, Numeric.RPL_LUSERME);
-
-        // Netwolf has no concept of local vs global users, so don't give RPL_LOCALUSERS
-        Reply(client, null, null, Numeric.RPL_GLOBALUSERS);
-    }
-
-    [Command("MOTD")]
-    public void OnMotd(IConnection client, ICommand command)
-    {
-        // We do not implement or support the target parameter for this command,
-        // as Netwolf does expose the individual servers comprising the network
-
-        // TODO: support showing a real MOTD if one is set in network config
-        Reply(client, null, null, Numeric.ERR_NOMOTD);
-    }
-
-    internal void CheckRegistrationComplete(IConnection client)
-    {
-        var state = State[client];
-        if (!state.CapsPending && state.Nickname != null && state.Ident != null && state.RealName != null)
-        {
-            state.Registered = true;
-            Reply(client, null, null, Numeric.RPL_WELCOME);
-            Reply(client, null, null, Numeric.RPL_YOURHOST, state.RealHost);
-            Reply(client, null, null, Numeric.RPL_CREATED);
-            Reply(client, null, null, Numeric.RPL_MYINFO, Network.ServerName, Network.Version, Network.UserModes, Network.ChannelModes, Network.ChannelModesWithParams);
-            ReportISupport(client);
-            OnLusers(client, CommandFactory.CreateCommand(CommandType.Client, null, "LUSERS", new List<string?>(), new Dictionary<string, string?>()));
-            Reply(client, null, null, Numeric.RPL_UMODEIS, state.ModeString);
-            OnMotd(client, CommandFactory.CreateCommand(CommandType.Client, null, "MOTD", new List<string?>(), new Dictionary<string, string?>()));
-        }
     }
 
     internal void ConnectClient(IConnection connection)
@@ -104,11 +56,6 @@ internal class FakeServer : IDisposable
     internal void DisconnectClient(IConnection connection)
     {
         State.Remove(connection, out _);
-    }
-
-    private void ReportISupport(IConnection client)
-    {
-        // TODO: FINISH
     }
 
     private void Reply(IConnection client, string? source, object? tags, Numeric numeric, params string?[] args)

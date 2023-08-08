@@ -1,4 +1,5 @@
-﻿using Netwolf.Server.Internal;
+﻿using Netwolf.Server.Commands;
+using Netwolf.Server.Internal;
 using Netwolf.Transport.Client;
 
 using System.Collections.Concurrent;
@@ -25,7 +26,7 @@ public class User
 
     public string RealName { get; internal set; } = null!;
 
-    internal RegistrationFlags RegistrationFlags { get; set; } = RegistrationFlags.Default;
+    internal RegistrationFlags RegistrationFlags { get; private set; } = RegistrationFlags.Default;
 
     /// <summary>
     /// Whether the client has been fully registered on the network (has sent NICK/USER and finished CAP negotation)
@@ -37,6 +38,8 @@ public class User
     /// For display only
     /// </summary>
     public string ModeString => "+";
+
+    public string Hostmask => $"{Nickname}!{Ident}@{VirtualHost}";
 
     // for channels and privs, probably want the public facing to be read-only/immutable
     // and only manipulated internally
@@ -105,13 +108,50 @@ public class User
         return privs.Any(p => HasPrivilege(p));
     }
 
-    public void Send(ICommand command)
+    public void Send(string? source, string verb, IReadOnlyList<string?>? args = null, IReadOnlyDictionary<string, string?>? tags = null)
     {
+        // TODO: inject tags based on negotated CAPs (or strip tags if client didn't do CAP negotation at all)
+        var command = Network.CommandFactory.CreateCommand(
+            CommandType.Server,
+            source ?? Network.ServerName,
+            verb,
+            args ?? new List<string?>(),
+            tags ?? new Dictionary<string, string?>());
+
         // TODO: Check for SendQ limits here
         Queue.Add(command);
     }
 
-    public bool AttachConnectionConfig(string? password)
+    internal MultiResponse? ClearRegistrationFlag(RegistrationFlags flag)
+    {
+        if (!RegistrationFlags.HasFlag(flag))
+        {
+            // already cleared, don't need to do anything
+            return null;
+        }
+
+        RegistrationFlags ^= flag;
+
+        if (Registered)
+        {
+            // connection has now been fully registered, send them all of the post-registration info
+            var batch = new MultiResponse();
+            batch.AddNumeric(this, Numeric.RPL_WELCOME);
+            batch.AddNumeric(this, Numeric.RPL_YOURHOST, RealHost);
+            batch.AddNumeric(this, Numeric.RPL_CREATED);
+            batch.AddNumeric(this, Numeric.RPL_MYINFO, Network.ServerName, Network.Version, Network.UserModes, Network.ChannelModes, Network.ChannelModesWithParams);
+            batch.AddRange(Network.ReportISupport(this));
+            batch.AddRange(LUsers.ExecuteInternal(this));
+            batch.AddNumeric(this, Numeric.RPL_UMODEIS, ModeString);
+            batch.AddRange(Motd.ExecuteInternal(this));
+
+            return batch;
+        }
+
+        return null;
+    }
+
+    internal bool AttachConnectionConfig(string? password)
     {
         if (!RegistrationFlags.HasFlag(RegistrationFlags.PendingPass))
         {
@@ -128,7 +168,24 @@ public class User
         RegistrationFlags |= RegistrationFlags.NeedsIdentLookup | RegistrationFlags.NeedsHostLookup;
 
         // mark connection as having a config attached (by clearing the fact we're looking for a PASS command)
+        // this will never complete user registration so directly manipulate flags rather than calling ClearRegistrationFlag()
         RegistrationFlags ^= RegistrationFlags.PendingPass;
+
+        return true;
+    }
+
+    /// <summary>
+    /// If clearing <paramref name="flag"/> would cause registration to complete, attach
+    /// a connection config as if no PASS command were supplied.
+    /// </summary>
+    /// <param name="flag">Flag that will be cleared</param>
+    /// <returns>true if we attached a config or we don't need to attach a config yet, false if we need to attach a config but none matches (access denied)</returns>
+    internal bool MaybeDoImplicitPassCommand(RegistrationFlags flag)
+    {
+        if ((RegistrationFlags & ~(flag | RegistrationFlags.PendingPass)) == RegistrationFlags.None)
+        {
+            return AttachConnectionConfig(null);
+        }
 
         return true;
     }
