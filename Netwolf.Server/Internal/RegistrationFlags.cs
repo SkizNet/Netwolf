@@ -14,9 +14,7 @@ internal enum RegistrationFlags
     PendingNick = 1 << 1,
     PendingUser = 1 << 2,
     PendingCapNegotation = 1 << 3,
-    NeedsIdentLookup = 1 << 4,
-    PendingIdentLookup = 1 << 5,
-    NeedsHostLookup = 1 << 6,
-    PendingHostLookup = 1 << 7,
-    Default = PendingPass | PendingNick | PendingUser,
+    PendingIdentLookup = 1 << 4,
+    PendingHostLookup = 1 << 5,
+    Default = PendingPass | PendingNick | PendingUser | PendingIdentLookup | PendingHostLookup,
 }

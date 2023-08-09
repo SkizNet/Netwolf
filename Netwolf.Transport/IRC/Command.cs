@@ -1,4 +1,4 @@
-﻿namespace Netwolf.Transport.Client;
+﻿namespace Netwolf.Transport.IRC;
 
 /// <summary>
 /// Represents a command that can be sent to or received from a network

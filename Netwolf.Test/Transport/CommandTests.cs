@@ -8,7 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 using Netwolf.Transport.Extensions.DependencyInjection;
-using Netwolf.Transport.Client;
+using Netwolf.Transport.IRC;
 
 namespace Netwolf.Test.Transport;
 

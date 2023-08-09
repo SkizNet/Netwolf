@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 
-namespace Netwolf.Transport.Client;
+namespace Netwolf.Transport.IRC;
 
 public class ConnectionFactory : IConnectionFactory
 {

@@ -1,6 +1,6 @@
 ﻿using Netwolf.Transport.Exceptions;
 
-namespace Netwolf.Transport.Client;
+namespace Netwolf.Transport.IRC;
 
 /// <summary>
 /// Represents a Network

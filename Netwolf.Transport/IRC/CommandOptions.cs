@@ -1,4 +1,4 @@
-﻿namespace Netwolf.Transport.Client;
+﻿namespace Netwolf.Transport.IRC;
 
 /// <summary>
 /// Encapsulates data required to create an <see cref="ICommand"/>.

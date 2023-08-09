@@ -1,12 +1,12 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 
 using Netwolf.Transport.Exceptions;
-using Netwolf.Transport.Internal;
+using Netwolf.Transport.Extensions;
 
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Netwolf.Transport.Client;
+namespace Netwolf.Transport.IRC;
 
 public partial class CommandFactory : ICommandFactory
 {
@@ -101,8 +101,9 @@ public partial class CommandFactory : ICommandFactory
 
         var commandOptions = new CommandOptions(commandType, source, verb, commandArgs, commandTags, hasTrailingArg);
         var command = (ICommand)ActivatorUtilities.CreateInstance(Provider, ObjectType, commandOptions);
-        return command.PrefixedCommandPart.EncodeUtf8().Length > 512
-            ? throw new CommandTooLongException($"Command is too long, {command.PrefixedCommandPart.Length} bytes found but 512 bytes allowed.")
+        // PrefixedCommandPart doesn't include trailing CRLF, so check against 510 instead of 512 to account for that protocol overhead
+        return command.PrefixedCommandPart.EncodeUtf8().Length > 510
+            ? throw new CommandTooLongException($"Command is too long, {command.PrefixedCommandPart.Length} bytes found but 510 bytes allowed.")
             : command.TagPart.EncodeUtf8().Length > allowedTagLength
             ? throw new CommandTooLongException($"Tags are too long, {command.TagPart.Length} bytes found but {allowedTagLength} bytes allowed.")
             : command;

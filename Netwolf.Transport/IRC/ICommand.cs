@@ -1,6 +1,6 @@
 ﻿using System.Text;
 
-namespace Netwolf.Transport.Client;
+namespace Netwolf.Transport.IRC;
 
 /// <summary>
 /// General client interface for a <see cref="Command"/>.
@@ -98,13 +98,13 @@ public interface ICommand
     }
 
     /// <summary>
-    /// The command part of the final command, including trailing CRLF
+    /// The command part of the final command, without trailing CRLF
     /// and the source prefix.
     /// </summary>
     string PrefixedCommandPart => $":{Source} {UnprefixedCommandPart}";
 
     /// <summary>
-    /// The command part of the final command, including trailing CRLF.
+    /// The command part of the final command, without trailing CRLF.
     /// This does not include the source prefix.
     /// </summary>
     string UnprefixedCommandPart
@@ -126,7 +126,6 @@ public interface ICommand
                 sb.Append(Args[i]);
             }
 
-            sb.Append("\r\n");
             return sb.ToString();
         }
     }

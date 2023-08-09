@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-using Netwolf.Transport.Client;
+using Netwolf.Transport.IRC;
 
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
@@ -87,7 +87,7 @@ internal partial class CommandDispatcher : ICommandDispatcher
 
         if (!Commands.TryGetValue(command.Verb, out var handler))
         {
-            Logger.LogInformation("Received unknown command {Command}", command.UnprefixedCommandPart.TrimEnd());
+            Logger.LogDebug("Received unknown command {Command}", command.UnprefixedCommandPart);
             return Task.FromResult<ICommandResponse>(new NumericResponse(client, Numeric.ERR_UNKNOWNCOMMAND, command.Verb));
         }
 

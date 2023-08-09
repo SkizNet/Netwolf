@@ -4,11 +4,11 @@ namespace Netwolf.Server;
 
 public enum Numeric : int
 {
-    [Display(Description = "Welcome to the {network.NetworkName} Network, {user.Nickname}!")]
+    [Display(Description = "Welcome to the {network.NetworkName} Network, {user.Nickname}")]
     RPL_WELCOME = 1,
     [Display(Description = "Your host is {network.ServerName}, running version {network.Version}")]
     RPL_YOURHOST = 2,
-    [Display(Description = "This server was created {DateTime.Now.ToString(\"G\")}")]
+    [Display(Description = "This server was created {DateTime.Now.ToString(\"u\")}")]
     RPL_CREATED = 3,
     // No Description text for this numeric
     RPL_MYINFO = 4,
@@ -24,7 +24,7 @@ public enum Numeric : int
     RPL_LUSERUNKNOWN = 253,
     [Display(Description = "channels formed")]
     RPL_LUSERCHANNELS = 254,
-    [Display(Description = "I have {network.UserCount} clients and 1 servers")]
+    [Display(Description = "I have {network.UserCount} clients and 0 servers")]
     RPL_LUSERME = 255,
     [Display(Description = "Administrative info")]
     RPL_ADMINME = 256,
@@ -134,9 +134,9 @@ public enum Numeric : int
     RPL_MOTDSTART = 375,
     [Display(Description = "End of /MOTD")]
     RPL_ENDOFMOTD = 376,
-    [Display(Description = "is connecting from *@{user.RealHost} {user.IPAddress}")]
+    [Display(Description = "is connecting from *@{user.RealHost} {user.RealIP}")]
     RPL_WHOISHOST = 378,
-    [Display(Description = "is using modes +{user.UserModes}")]
+    [Display(Description = "is using modes {user.ModeString}")]
     RPL_WHOISMODES = 379,
     [Display(Description = "You are now an IRC operator")]
     RPL_YOUREOPER = 381,

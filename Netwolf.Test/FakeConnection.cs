@@ -1,5 +1,7 @@
-﻿using Netwolf.Server.Commands;
-using Netwolf.Transport.Client;
+﻿using Microsoft.Extensions.Logging;
+
+using Netwolf.Server.Commands;
+using Netwolf.Transport.IRC;
 
 namespace Netwolf.Test;
 
@@ -11,13 +13,16 @@ internal class FakeConnection : IConnection
 
     private ICommandDispatcher CommandDispatcher { get; set; }
 
+    private ILogger<IConnection> Logger { get; set; }
+
     private bool disposedValue;
 
-    internal FakeConnection(FakeServer server, ICommandFactory commandFactory, ICommandDispatcher commandDispatcher)
+    internal FakeConnection(FakeServer server, ICommandFactory commandFactory, ICommandDispatcher commandDispatcher, ILogger<IConnection> logger)
     {
         CommandFactory = commandFactory;
         CommandDispatcher = commandDispatcher;
         Server = server;
+        Logger = logger;
     }
 
     public Task ConnectAsync(CancellationToken cancellationToken)
@@ -32,17 +37,20 @@ internal class FakeConnection : IConnection
         return Task.CompletedTask;
     }
 
-    public Task<ICommand> ReceiveAsync(CancellationToken cancellationToken)
+    public async Task<ICommand> ReceiveAsync(CancellationToken cancellationToken)
     {
-        return Server.ReceiveCommand(this, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        var command = await Server.ReceiveCommand(this, cancellationToken);
+        Logger.LogDebug("<-- {Command}", command.FullCommand);
+        return command;
     }
 
     public async Task SendAsync(ICommand command, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        Logger.LogDebug("--> {Command}", command.FullCommand);
         var result = await CommandDispatcher.DispatchAsync(command, Server.State[this], cancellationToken);
-
-        // TODO: do things with result such as sending any response back to the client
+        result.Send();
     }
 
     public Task UnsafeSendAsync(string command, CancellationToken cancellationToken)

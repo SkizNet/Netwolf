@@ -1,4 +1,4 @@
-﻿namespace Netwolf.Transport.Client;
+﻿namespace Netwolf.Transport.IRC;
 
 /// <summary>
 /// Factory for <see cref="INetwork"/>, registered as a DI service

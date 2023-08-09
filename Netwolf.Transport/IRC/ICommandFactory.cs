@@ -1,4 +1,4 @@
-﻿namespace Netwolf.Transport.Client;
+﻿namespace Netwolf.Transport.IRC;
 
 /// <summary>
 /// DI factory for <see cref="ICommand"/>

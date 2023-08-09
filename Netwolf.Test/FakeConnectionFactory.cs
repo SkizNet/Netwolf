@@ -1,25 +1,27 @@
-﻿using Netwolf.Server.Commands;
-using Netwolf.Transport.Client;
+﻿using Microsoft.Extensions.Logging;
+
+using Netwolf.Server.Commands;
+using Netwolf.Transport.IRC;
 
 namespace Netwolf.Test;
 
 internal class FakeConnectionFactory : IConnectionFactory
 {
-    private FakeServer Server { get; set; }
-
     private ICommandFactory CommandFactory { get; set; }
 
     private ICommandDispatcher CommandDispatcher { get; set; }
 
-    internal FakeConnectionFactory(FakeServer server, ICommandFactory commandFactory, ICommandDispatcher dispatcher)
+    private ILogger<IConnection> ConnLogger { get; set; }
+
+    public FakeConnectionFactory(ICommandFactory commandFactory, ICommandDispatcher dispatcher, ILogger<IConnection> connLogger)
     {
         CommandFactory = commandFactory;
-        Server = server;
         CommandDispatcher = dispatcher;
+        ConnLogger = connLogger;
     }
 
     public IConnection Create(INetwork network, IServer server, NetworkOptions options)
     {
-        return new FakeConnection(Server, CommandFactory, CommandDispatcher);
+        return new FakeConnection((FakeServer)server, CommandFactory, CommandDispatcher, ConnLogger);
     }
 }

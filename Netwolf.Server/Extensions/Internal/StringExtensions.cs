@@ -1,5 +1,8 @@
-﻿using System;
+﻿using Netwolf.Transport.Extensions;
+
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Linq.Dynamic.Core;
 using System.Linq.Expressions;
@@ -8,10 +11,15 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
+using static System.Net.Mime.MediaTypeNames;
+
 namespace Netwolf.Server.Extensions.Internal;
 
 internal static partial class StringExtensions
 {
+    [GeneratedRegex("{(?<exp>[^}]+)}")]
+    private static partial Regex InterpolateRegex();
+
     internal static string Interpolate<T1>(
         this string input,
         T1 param1,
@@ -53,6 +61,36 @@ internal static partial class StringExtensions
         });
     }
 
-    [GeneratedRegex("{(?<exp>[^}]+)}")]
-    private static partial Regex InterpolateRegex();
+    /// <summary>
+    /// Truncates a unicode string to a maximum number of bytes (in UTF-8),
+    /// ensuring that we do not split in the middle of a grapheme.
+    /// </summary>
+    /// <param name="input">Input string</param>
+    /// <param name="maxBytes">Maximum number of </param>
+    /// <returns></returns>
+    internal static string Truncate(this string input, int maxBytes)
+    {
+        var bytes = input.EncodeUtf8();
+        if (bytes.Length <= maxBytes)
+        {
+            return input;
+        }
+
+        StringBuilder sb = new();
+        int count = 0;
+        var enumerator = StringInfo.GetTextElementEnumerator(input);
+        while (enumerator.MoveNext())
+        {
+            string grapheme = enumerator.GetTextElement();
+            count += grapheme.EncodeUtf8().Length;
+            if (count > maxBytes)
+            {
+                break;
+            }
+
+            sb.Append(grapheme);
+        }
+
+        return sb.ToString();
+    }
 }

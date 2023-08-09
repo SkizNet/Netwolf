@@ -1,9 +1,10 @@
 ﻿using Netwolf.Server;
 using Netwolf.Server.Commands;
-using Netwolf.Transport.Client;
+using Netwolf.Transport.IRC;
 
 using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
+using System.Net;
 using System.Reflection;
 using System.Text.RegularExpressions;
 
@@ -13,7 +14,7 @@ namespace Netwolf.Test;
 /// Small barebones ircv3-compliant ircd with no actual network connectivity
 /// Much of this code will eventually move to Netwolf.Server once I start implementing that
 /// </summary>
-internal class FakeServer : IDisposable
+internal class FakeServer : IDisposable, IServer
 {
     private ICommandFactory CommandFactory { get; init; }
 
@@ -22,8 +23,13 @@ internal class FakeServer : IDisposable
     private Server.Network Network { get; init; }
 
     internal ConcurrentDictionary<IConnection, User> State { get; init; } = new();
+    public string HostName => "irc.netwolf.org";
 
-    internal FakeServer(ICommandFactory commandFactory, ICommandDispatcher dispatcher)
+    public int Port => 6697;
+
+    public bool SecureConnection => true;
+
+    public FakeServer(ICommandFactory commandFactory, ICommandDispatcher dispatcher)
     {
         CommandFactory = commandFactory;
         Network = new(commandFactory, dispatcher);
@@ -31,38 +37,13 @@ internal class FakeServer : IDisposable
 
     internal void ConnectClient(IConnection connection)
     {
-        State[connection] = new User(Network);
+        State[connection] = new User(Network, IPAddress.Loopback, 0, 0);
     }
 
     internal void DisconnectClient(IConnection connection)
     {
-        State.Remove(connection, out _);
-    }
-
-    private void Reply(IConnection client, string? source, object? tags, Numeric numeric, params string?[] args)
-    {
-        var user = State[client];
-        var network = Network;
-        string? description = typeof(Numeric).GetField(numeric.ToString())!.GetCustomAttributes<DisplayAttribute>().FirstOrDefault()?.Description;
-        var realArgs = new List<string?>() { user.Nickname };
-        realArgs.AddRange(args);
-        if (description != null)
-        {
-            realArgs.Add(description.Interpolate(user, network));
-        }
-
-        Reply(client, source, tags, String.Format("{0:D3}", (int)numeric), realArgs.ToArray());
-    }
-
-    private void Reply(IConnection client, string? source, object? tags, string verb, params string?[] args)
-    {
-        var command = CommandFactory.CreateCommand(
-            CommandType.Server,
-            source ?? "irc.netwolf.org",
-            verb.ToUpperInvariant(),
-            args.ToList(),
-            tags?.GetType().GetProperties().ToDictionary(o => o.Name, o => o.GetValue(tags)?.ToString()) ?? new Dictionary<string, string?>());
-        State[client].Queue.Add(command);
+        State.Remove(connection, out var client);
+        client?.Disconnect();
     }
 
     internal async Task<ICommand> ReceiveCommand(IConnection client, CancellationToken cancellationToken)

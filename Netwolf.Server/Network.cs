@@ -1,5 +1,5 @@
 ﻿using Netwolf.Server.Commands;
-using Netwolf.Transport.Client;
+using Netwolf.Transport.IRC;
 
 using System;
 using System.Collections;
@@ -32,6 +32,17 @@ public class Network
     public Dictionary<string, User> Clients { get; init; } = new();
 
     public Dictionary<string, Channel> Channels { get; init; } = new();
+
+    public int UserCount => Clients.Count;
+
+    public int ChannelCount => Channels.Count;
+
+    // TODO: count number of +i users once we implement user modes
+    public int InvisibleCount => Clients.Count(c => false);
+
+    public int MaxUserCount { get; set; } = 0;
+
+    public int PendingCount { get; set; } = 0;
 
     public Network(ICommandFactory commandFactory, ICommandDispatcher dispatcher)
     {

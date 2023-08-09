@@ -1,4 +1,4 @@
-﻿using Netwolf.Transport.Client;
+﻿using Netwolf.Transport.IRC;
 
 using System;
 using System.Collections.Generic;
@@ -29,18 +29,19 @@ public class ListUsersCommand : ICommandHandler
         var batch = new MultiResponse();
 
         batch.AddNumeric(client, Numeric.RPL_LUSERCLIENT);
-        batch.AddNumeric(client, Numeric.RPL_LUSEROP);
+        batch.AddNumeric(client, Numeric.RPL_LUSEROP, client.Network.Clients.Count(c => c.Value.HasPrivilege("oper:general")).ToString());
 
         if (client.HasPrivilege("oper:lusers:unknown"))
         {
-            batch.AddNumeric(client, Numeric.RPL_LUSERUNKNOWN);
+            batch.AddNumeric(client, Numeric.RPL_LUSERUNKNOWN, client.Network.PendingCount.ToString());
         }
 
-        batch.AddNumeric(client, Numeric.RPL_LUSERCHANNELS);
+        batch.AddNumeric(client, Numeric.RPL_LUSERCHANNELS, client.Network.ChannelCount.ToString());
         batch.AddNumeric(client, Numeric.RPL_LUSERME);
 
-        // Netwolf has no concept of local vs global users, so don't give RPL_LOCALUSERS
-        batch.AddNumeric(client, Numeric.RPL_GLOBALUSERS);
+        // Netwolf has no concept of local vs global users, so we give the same numbers for both
+        batch.AddNumeric(client, Numeric.RPL_LOCALUSERS, client.Network.UserCount.ToString(), client.Network.MaxUserCount.ToString());
+        batch.AddNumeric(client, Numeric.RPL_GLOBALUSERS, client.Network.UserCount.ToString(), client.Network.MaxUserCount.ToString());
 
         return batch;
     }

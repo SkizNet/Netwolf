@@ -1,4 +1,4 @@
-﻿namespace Netwolf.Transport.Client;
+﻿namespace Netwolf.Transport.IRC;
 
 /// <summary>
 /// Data class to encapsulate options for an <see cref="INetwork"/>
@@ -37,7 +37,7 @@ public class NetworkOptions
     /// <remarks>
     /// <seealso cref="SecondaryNick"/>
     /// </remarks>
-    public string PrimaryNick { get; set; } = null!;
+    public string PrimaryNick { get; set; } = String.Empty;
 
     /// <summary>
     /// Secondary nickname we attempt to use when connecting to this network,

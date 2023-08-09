@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 
+using Netwolf.Transport.Extensions;
 using Netwolf.Transport.Internal;
 
 using System.Buffers;
@@ -11,7 +12,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
-namespace Netwolf.Transport.Client;
+namespace Netwolf.Transport.IRC;
 
 public class IrcConnection : IConnection
 {
@@ -226,6 +227,7 @@ public class IrcConnection : IConnection
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+        Logger.LogDebug("--> {Command}", command);
         await Writer.WriteAsync(command.EncodeUtf8(), cancellationToken);
         await Writer.WriteAsync(_crlf, cancellationToken);
     }
@@ -278,6 +280,7 @@ public class IrcConnection : IConnection
             string? message = ExtractMessage(ref buffer);
             if (message != null)
             {
+                Logger.LogDebug("<-- {Command}", message);
                 return CommandFactory.Parse(CommandType.Server, message);
             }
         }

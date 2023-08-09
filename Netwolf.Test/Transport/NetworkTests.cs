@@ -1,9 +1,10 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 using Netwolf.Server.Commands;
 using Netwolf.Server.Extensions.DependencyInjection;
-using Netwolf.Transport.Client;
+using Netwolf.Transport.IRC;
 using Netwolf.Transport.Extensions.DependencyInjection;
 
 namespace Netwolf.Test.Transport;
@@ -13,36 +14,38 @@ public class NetworkTests
 {
     private ServiceProvider Container { get; init; }
 
-    private NetworkOptions DefaultOptions { get; init; }
-
     public NetworkTests()
     {
         Container = new ServiceCollection()
-            .AddLogging(config => config.AddConsole())
+            .AddLogging(config => config.SetMinimumLevel(LogLevel.Debug).AddConsole())
             // bring in default Netwolf DI services
             .AddTransportServices()
             .AddServerServices()
+            .Replace(ServiceDescriptor.Singleton<IConnectionFactory, FakeConnectionFactory>())
             .BuildServiceProvider();
+    }
 
-        DefaultOptions = new NetworkOptions()
+    private static NetworkOptions MakeOptions(FakeServer server)
+    {
+        var options = new NetworkOptions()
         {
-            // there's no actual sockets being opened here;
             // keep timeouts low so tests don't take forever
-            ConnectTimeout = TimeSpan.FromSeconds(5),
-            ConnectRetries = 0
+            // there are some internal 5s timeouts (ident/hostname lookup) so be a bit longer than that
+            ConnectTimeout = TimeSpan.FromSeconds(7),
+            ConnectRetries = 0,
+            PrimaryNick = "test"
         };
 
-        DefaultOptions.Servers.Add(new Netwolf.Transport.Client.Server("irc.netwolf.org", 6667));
+        options.Servers.Add(server);
+        return options;
     }
 
     [TestMethod]
     public async Task TestUserRegistration()
     {
-        var logger = Container.GetRequiredService<ILogger<INetwork>>();
-        var commandFactory = Container.GetRequiredService<ICommandFactory>();
-        var dispatcher = Container.GetRequiredService<ICommandDispatcher>();
-        var connectionFactory = new FakeConnectionFactory(new FakeServer(commandFactory, dispatcher), commandFactory, dispatcher);
-        using var network = new Network("NetwolfTest", DefaultOptions, logger, commandFactory, connectionFactory);
+        var server = ActivatorUtilities.CreateInstance<FakeServer>(Container);
+        var networkFactory = Container.GetRequiredService<INetworkFactory>();
+        using var network = networkFactory.Create("NetwolfTest", MakeOptions(server));
 
         await network.ConnectAsync();
         Assert.IsTrue(true);

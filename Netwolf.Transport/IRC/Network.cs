@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 using Netwolf.Transport.Exceptions;
 using Netwolf.Transport.Internal;
 
-namespace Netwolf.Transport.Client;
+namespace Netwolf.Transport.IRC;
 
 /// <summary>
 /// A network that we connect to as a client
@@ -284,17 +284,26 @@ public class Network : INetwork
     {
         if (_connection != null)
         {
-            throw new InvalidOperationException("Network is already connected.");
+            Logger.LogError("Network is already connected.");
+            throw new ConnectionException("Network is already connected.");
         }
 
         if (Options.Servers.Count == 0)
         {
-            throw new InvalidOperationException("No servers have been defined; unable to connect.");
+            Logger.LogError("No servers have been defined; unable to connect.");
+            throw new ConnectionException("No servers have been defined; unable to connect.");
         }
 
         if (Options.ConnectRetries < 0)
         {
-            throw new InvalidOperationException("ConnectRetries cannot be a negative number.");
+            Logger.LogError("ConnectRetries cannot be a negative number.");
+            throw new ConnectionException("ConnectRetries cannot be a negative number.");
+        }
+
+        if (Options.PrimaryNick == String.Empty || Options.Ident == String.Empty)
+        {
+            Logger.LogError("User info for this network is not filled out.");
+            throw new ConnectionException("User info for this network is not filled out.");
         }
 
         for (int retry = 0; retry <= Options.ConnectRetries; ++retry)
@@ -369,7 +378,7 @@ public class Network : INetwork
                     // Others may allow an arbitrary user mode string in param 2 prefixed with +.
                     // For widest compatibility, leave both unspecified and just handle umodes post-registration.
                     await SendAsync(
-                        PrepareCommand("USER", new string[] { Options.Ident, "0", "*", Options.RealName }, null),
+                        PrepareCommand("USER", new string[] { Options.Ident, "0", "*", Options.RealName }),
                         cancellationToken);
 
                     // Handle any responses to the above. Notably, we might need to choose a new nickname,
@@ -518,8 +527,11 @@ public class Network : INetwork
 
         switch (command.Verb)
         {
-            case "NICK":
+            case "001":
                 State.Nick = command.Args[0];
+                break;
+            case "005":
+                // process ISUPPORT tokens
                 break;
             case "432":
             case "433":
@@ -538,6 +550,44 @@ public class Network : INetwork
                     Logger.LogWarning("Server rejected both primary and secondary nicks.");
                 }
 
+                break;
+            case "376":
+            case "422":
+                // got MOTD, we've been registered
+                _userRegistrationCompletionSource!.SetResult();
+                break;
+            case "CAP":
+                // CAP negotation, figure out which subcommand we have
+                break;
+            case "AUTHENTICATE":
+                // SASL
+                break;
+            case "900":
+                // successful SASL, which conveniently also tells us our hostmask too
+                // (avoids needing to do a /WHO on ourself to get that info)
+                State.Account = command.Args[2];
+                
+                // enclosed in a new scope to prevent the `bits` variable from leaking out of this case
+                {
+                    var bits = command.Args[1].Split(new char[] { '!', '@' }, 3);
+
+                    if (State.Ident == null)
+                    {
+                        State.Ident = bits[1];
+                    }
+
+                    if (State.Host == null)
+                    {
+                        State.Host = bits[2];
+                    }
+                }
+
+                break;
+            case "902":
+            case "904":
+            case "905":
+            case "906":
+                // SASL failed
                 break;
         }
     }
