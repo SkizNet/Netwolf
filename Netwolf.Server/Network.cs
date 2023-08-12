@@ -3,6 +3,7 @@ using Netwolf.Transport.IRC;
 
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Linq;
@@ -29,20 +30,23 @@ public class Network
 
     public string ChannelModesWithParams => "behIkloqv";
 
-    public Dictionary<string, User> Clients { get; init; } = new();
+    public string ChannelTypes => "#";
 
-    public Dictionary<string, Channel> Channels { get; init; } = new();
+    public ConcurrentDictionary<string, User> Clients { get; init; } = new();
+
+    public ConcurrentDictionary<string, Channel> Channels { get; init; } = new();
 
     public int UserCount => Clients.Count;
 
     public int ChannelCount => Channels.Count;
 
-    // TODO: count number of +i users once we implement user modes
-    public int InvisibleCount => Clients.Count(c => false);
+    public int InvisibleCount => Clients.Count(c => c.Value.Invisible);
 
-    public int MaxUserCount { get; set; } = 0;
+    internal int _maxUserCount = 0;
+    public int MaxUserCount => _maxUserCount;
 
-    public int PendingCount { get; set; } = 0;
+    internal int _pendingCount = 0;
+    public int PendingCount => _pendingCount;
 
     public Network(ICommandFactory commandFactory, ICommandDispatcher dispatcher)
     {
@@ -62,7 +66,7 @@ public class Network
             { "CHANLIMIT", "#:100" },
             { "CHANMODES", "beIq,k,l,imnst" },
             { "CHANNELLEN", 30 },
-            { "CHANTYPES", "#" },
+            { "CHANTYPES", ChannelTypes },
             { "ELIST", "CMNTU" },
             { "EXCEPTS", "e" },
             { "EXTBAN", "$,a" },
@@ -75,10 +79,10 @@ public class Network
             { "NAMELEN", 150 },
             { "NETWORK", NetworkName },
             { "NICKLEN", 20 },
-            { "PREFIX", "(ohv)@%+" },
+            { "PREFIX", "(aohv)&@%+" },
             { "SAFELIST", null },
             { "SILENCE", 100 },
-            { "STATUSMSG", "@%+" },
+            { "STATUSMSG", "&@%+" },
             { "TARGMAX", "ACCEPT:,JOIN:,KICK:1,LIST:1,MONITOR:,NAMES:1,NOTICE:4,PART:,PRIVMSG:4,WHOIS:1" },
             { "TOPICLEN", 350 },
             { "UTF8ONLY", null },

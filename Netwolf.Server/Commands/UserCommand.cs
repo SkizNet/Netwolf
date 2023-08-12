@@ -27,9 +27,9 @@ public class UserCommand : ICommandHandler
             return new NumericResponse(client, Numeric.ERR_ALREADYREGISTERED);
         }
 
-        if (command.Args.Count != 4 || command.Args[0].Length == 0)
+        if (command.Args.Count < 4)
         {
-            return new NumericResponse(client, Numeric.ERR_NEEDMOREPARAMS, command.Verb);
+            return new NumericResponse(client, Numeric.ERR_NEEDMOREPARAMS, Command);
         }
 
         // TODO: Make configurable (or at least use some const defined in client.Network rather than hardcoding the ident/gecos lengths here too)

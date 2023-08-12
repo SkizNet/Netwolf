@@ -113,6 +113,8 @@ public enum Numeric : int
     // No Description text for this numeric
     RPL_NAMREPLY = 353,
     // No Description text for this numeric
+    RPL_WHOSPCRPL = 354,
+    // No Description text for this numeric
     RPL_LINKS = 364,
     [Display(Description = "End of /LINKS list")]
     RPL_ENDOFLINKS = 365,

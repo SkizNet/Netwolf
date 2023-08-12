@@ -28,7 +28,7 @@ public partial class NickCommand : ICommandHandler
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (command.Args.Count == 0 || command.Args[0].Length == 0)
+        if (command.Args.Count == 0)
         {
             return new NumericResponse(client, Numeric.ERR_NONICKNAMEGIVEN);
         }

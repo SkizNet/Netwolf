@@ -41,13 +41,16 @@ public class NetworkTests
     }
 
     [TestMethod]
-    public async Task TestUserRegistration()
+    public async Task User_registration_succeeds()
     {
         var server = ActivatorUtilities.CreateInstance<FakeServer>(Container);
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = networkFactory.Create("NetwolfTest", MakeOptions(server));
 
         await network.ConnectAsync();
-        Assert.IsTrue(true);
+        Assert.IsTrue(network.IsConnected);
+        Assert.AreEqual("test", network.Nick);
+        Assert.AreEqual("test", network.Ident);
+        Assert.AreEqual("127.0.0.1", network.Host);
     }
 }

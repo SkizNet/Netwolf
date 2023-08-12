@@ -34,6 +34,8 @@ public class User : IDisposable
 
     public string? VirtualHost { get; internal set; }
 
+    public string DisplayHost => VirtualHost ?? RealHost;
+
     public string? Account { get; internal set; }
 
     public string RealName { get; internal set; } = null!;
@@ -50,6 +52,14 @@ public class User : IDisposable
 
     private int RemotePort { get; init; }
 
+    // Probably temporary until we get a real user modes implementation
+    public bool Invisible { get; internal set; } = false;
+
+    // Also probably temporary, or at least needs a refactor for when user persistence becomes a thing
+    public bool Away => AwayReason != null;
+
+    public string? AwayReason { get; internal set; }
+
     internal RegistrationFlags RegistrationFlags { get; private set; } = RegistrationFlags.Default;
 
     private CancellationTokenSource TokenSource { get; init; } = new();
@@ -65,13 +75,13 @@ public class User : IDisposable
     /// <summary>
     /// For display only
     /// </summary>
-    public string ModeString => "+";
+    public string ModeString => Invisible ? "+i" : "+";
 
     public string Hostmask => $"{Nickname}!{Ident}@{VirtualHost}";
 
     // for channels and privs, probably want the public facing to be read-only/immutable
     // and only manipulated internally
-    public List<Channel> Channels { get; init; } = new();
+    public HashSet<Channel> Channels { get; init; } = new();
 
     public HashSet<string> UserPrivileges { get; init; } = new();
 
@@ -85,7 +95,7 @@ public class User : IDisposable
         RemotePort = remotePort;
         Tasks.Add(Task.Run(LookUpIdent));
         Tasks.Add(Task.Run(LookUpHost));
-        Network.PendingCount++;
+        Interlocked.Increment(ref Network._pendingCount);
     }
 
     public bool HasPrivilege(string priv, Channel? channel = null)
@@ -165,11 +175,13 @@ public class User : IDisposable
             if (Registered)
             {
                 // connection has now been fully registered
-                Network.PendingCount--;
+                Interlocked.Decrement(ref Network._pendingCount);
                 Network.Clients[LookupKey] = this;
-                if (Network.Clients.Count > Network.MaxUserCount)
+                var newClientCount = Network.Clients.Count;
+                var currentMax = Network.MaxUserCount;
+                if (newClientCount > currentMax)
                 {
-                    Network.MaxUserCount = Network.Clients.Count;
+                    Interlocked.CompareExchange(ref Network._maxUserCount, currentMax, newClientCount);
                 }
 
                 // send them all of the post-registration info

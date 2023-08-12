@@ -1,0 +1,133 @@
+WHO <channel|nick|mask> [flags][%format[,token]] [mask]
+
+The WHO command allows you to search users and display information on them.
+It can be executed on a channel to display that channel's members, a nickname
+to display information for that nick only, or a mask that can optionally
+contain * and ? wildcards to show users who match that mask according to the
+specified flags.
+
+If a mask is specified as the third parameter, the first parameter is ignored
+unless it is a channel, in which case only users on the channel who also match
+the mask are displayed. Specifying the mask in the third parameter allows you
+to add spaces into the mask, which may be helpful when matching realnames. It
+also allows you to match other user information even if the mask happens to be
+a nickname that is currently on the network, unlike a mask in the first
+parameter.
+
+If the first parameter is a channel name, all users on the channel will be
+listed if you are also on that channel. If you are not on the channel, users
+will only be listed if the channel is not have the +s (secret) channel mode set
+and the user does not have the +i (invisible) user mode set.
+
+If the first parameter is a literal 0 or *, a global search is executed.
+
+{{#oper:spy:who}}
+The first parameter may be prefixed with the ! character to perform an operspy.
+If this is done, you will be shown all information about the target channel or 
+mask, even if the channel is +s or the user is +i. Other opers will be notified
+when performing an operspy. Requires privilege oper:spy:who.
+{{/oper:spy:who}}
+
+Flags may optionally be specified in the second parameter to control what data
+that a mask searches against or to limit the results in other fashions. If no
+flags are specified, the mask will search against the user's nickname,
+username, hostname, and realname. IP address searches support CIDR formatting.
+
++------+----------------------------+
+| Flag | Description                |
++------+----------------------------+
+|    n | Search nicknames           |
+|    u | Search usernames           |
+|    h | Search hostnames           |
+|    r | Search realnames           |
+|    a | Search account names       |
+|    i | Search IP addresses        |
+|    o | Display only IRC operators |
++------+----------------------------+
+
+If no %format is specified, the response will be 0 or more RPL_WHOREPLY (352)
+numerics followed by RPL_ENDOFWHO (315). Each reply consists of the following
+fields, in order:
+
+1. If a channel was specified in the first parameter, that channel. Otherwise,
+   an arbitrary channel the client is joined to, or "*" if the client is not
+   joined to any channels.
+2. The user's username.
+3. The user's hostname.
+4. The server name. As Netwolf has no concept of multiple linked servers, this
+   will always be a static value.
+5. The user's nickname.
+6. The user's status, which consists of the following characters in order:
+   +--------+------------------------------------------------+
+   | Status | Description                                    |
+   +--------+------------------------------------------------+
+   |      H | The user is not away                           |
+   |      G | The user is away                               |
+   |      O | ^The user is offline                           |
+   |      M | ^The user is connected from a mobile device;   |
+   |        |  shown instead of 'H' if applicable            |
+   |      * | The user is an IRC operator                    |
+   |      & | The user is an admin of the channel in field 1 |
+   |      @ | The user is an op of the channel in field 1    |
+   |      % | The user is a halfop of the channel in field 1 |
+   |      + | The user is voiced in the channel in field 1   |
+   |      B | The user is a bot                              |
+   +--------+------------------------------------------------+
+   A ^ denotes that this value is only exposed if the client has negotiated the
+   netwolf.org/presence vendor CAP.
+7. The user's hop count followed by the user's realname. As Netwolf has no
+   concept of multiple linked servers, the hop count will always be 0.
+
+If a %format is specified, the response will be 0 or more RPL_WHOSPCRPL (354)
+numerics followed by RPL_ENDOFWHO (315). The reply will vary based on the
+format provided; the following format characters are supported. The ordering of
+format characters sent by the client is ignored; responses will always follow
+the order specified in the following table.
+
++--------+-------------------------------------------------------------+
+| Format | Description                                                 |
++--------+-------------------------------------------------------------+
+|      t | The token specified by the client, which must be numeric    |
+|        | and at most 3 digits                                        |
+|      c | The channel as described in field 1 of a standard WHO reply |
+|      u | The user's username                                         |
+|      i | The user's IP address, or 255.255.255.255 if you do not     |
+|        | have permission to view the user's IP address               |
+|      h | The user's hostname                                         |
+|      s | The server name                                             |
+|      n | The user's nickname                                         |
+|      f | The status as described in field 6 of a standard WHO reply  |
+|      d | The user's hop count (always 0)                             |
+|      l | The user's idle time in seconds, or 0 if you do not have    |
+|        | permission to view that user's idle time                    |
+|      a | The user's account name, or 0 if the user is logged out     |
+|      A | The user's account ID, or 0 if the user is logged out       |
+|      o | The user's channel operator level, or n/a if the user is    |
+|        | not an operator of the channel                              |
+|      r | The user's realname                                         |
++--------+-------------------------------------------------------------+
+
+Examples:
+
+WHO #help
+  Display all users in #help with standard replies.
+
+WHO 0 o
+  Display all IRC operators with standard replies.
+
+WHO 1.2.3.4/24 i
+  Display all users with IP addresses in the CIDR block 1.2.3.4/24 with
+  standard replies.
+
+WHO #help %tnuha,13
+  Display the nick, username, hostname, and account of all users in #help
+  along with a token value of 13 to tie this response back to the initial
+  query.
+
+WHO * r%nar :Foo bar*
+  Display the nick, account, and realname of all users whose realname begins
+  with the string "Foo bar". The first parameter is ignored.
+
+WHO #help r%nar :Foo bar*
+  Display the nick, account, and realname of all users in #help whose
+  realname begins with the string "Foo bar".

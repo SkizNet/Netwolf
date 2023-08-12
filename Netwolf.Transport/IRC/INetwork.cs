@@ -18,6 +18,30 @@ public interface INetwork : IDisposable, IAsyncDisposable
     bool IsConnected { get; }
 
     /// <summary>
+    /// Nickname for this connection.
+    /// Throws InvalidOperationException if not currently connected.
+    /// </summary>
+    string Nick { get; }
+
+    /// <summary>
+    /// Ident for this connection.
+    /// Throws InvalidOperationException if not currently connected.
+    /// </summary>
+    string Ident { get; }
+
+    /// <summary>
+    /// Hostname for this connection.
+    /// Throws InvalidOperationException if not currently connected.
+    /// </summary>
+    string Host { get; }
+
+    /// <summary>
+    /// Account name for this connection, or null if not logged in.
+    /// Throws InvalidOperationException if not currently connected.
+    /// </summary>
+    string? Account { get; }
+
+    /// <summary>
     /// Event raised whenever we receive a command from the network
     /// </summary>
     event EventHandler<NetworkEventArgs>? CommandReceived;

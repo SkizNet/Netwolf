@@ -14,15 +14,12 @@ namespace Netwolf.Test;
 /// Small barebones ircv3-compliant ircd with no actual network connectivity
 /// Much of this code will eventually move to Netwolf.Server once I start implementing that
 /// </summary>
-internal class FakeServer : IDisposable, IServer
+internal class FakeServer : IServer
 {
-    private ICommandFactory CommandFactory { get; init; }
-
-    private bool disposedValue;
-
-    private Server.Network Network { get; init; }
+    private Netwolf.Server.Network Network { get; init; }
 
     internal ConcurrentDictionary<IConnection, User> State { get; init; } = new();
+
     public string HostName => "irc.netwolf.org";
 
     public int Port => 6697;
@@ -31,7 +28,6 @@ internal class FakeServer : IDisposable, IServer
 
     public FakeServer(ICommandFactory commandFactory, ICommandDispatcher dispatcher)
     {
-        CommandFactory = commandFactory;
         Network = new(commandFactory, dispatcher);
     }
 
@@ -50,25 +46,5 @@ internal class FakeServer : IDisposable, IServer
     {
         cancellationToken.ThrowIfCancellationRequested();
         return await Task.Run(() => State[client].Queue.Take(cancellationToken)).ConfigureAwait(false);
-    }
-
-    protected virtual void Dispose(bool disposing)
-    {
-        if (!disposedValue)
-        {
-            if (disposing)
-            {
-                // TODO: dispose managed state (managed objects)
-            }
-
-            disposedValue = true;
-        }
-    }
-
-    public void Dispose()
-    {
-        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-        Dispose(disposing: true);
-        GC.SuppressFinalize(this);
     }
 }

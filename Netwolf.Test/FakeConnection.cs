@@ -64,7 +64,7 @@ internal class FakeConnection : IConnection
         {
             if (disposing)
             {
-                Server.Dispose();
+                // nothing to dispose
             }
 
             disposedValue = true;

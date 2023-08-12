@@ -252,7 +252,7 @@ public class Network : INetwork
                         pingTimeoutTimers.Add(Task.Delay(Options.PingTimeout, _messageLoopTokenSource.Token));
                         string cookie = String.Format("NWPC{0:X16}", Random.Shared.NextInt64());
                         pingTimeoutCookies.Add(cookie);
-                        Task.Run(() => SendAsync(PrepareCommand("PING", new string[] { cookie }, null), _messageLoopTokenSource.Token));
+                        _ = SendAsync(PrepareCommand("PING", new string[] { cookie }, null), _messageLoopTokenSource.Token);
                         break;
                     default:
                         // one of the pingTimeoutTimers fired or ReceiveAsync threw an exception
@@ -518,7 +518,7 @@ public class Network : INetwork
         return commands.ToArray();
     }
 
-    private async void UserRegistration(object? sender, NetworkEventArgs e)
+    private void UserRegistration(object? sender, NetworkEventArgs e)
     {
         if (sender is not ICommand command)
         {
@@ -540,9 +540,7 @@ public class Network : INetwork
                 string secondary = Options.SecondaryNick ?? $"{Options.PrimaryNick}_";
                 if (attempted == Options.PrimaryNick)
                 {
-                    await SendAsync(
-                            PrepareCommand("NICK", new string[] { secondary }, null),
-                            e.Token);
+                    _ = SendAsync(PrepareCommand("NICK", new string[] { secondary }, null), e.Token);
                 }
                 else if (attempted == secondary)
                 {
@@ -553,7 +551,16 @@ public class Network : INetwork
                 break;
             case "376":
             case "422":
-                // got MOTD, we've been registered
+                // got MOTD, we've been registered. But we might still not know our own ident/host,
+                // so send out a WHO for ourselves before handing control back to client
+                _ = SendAsync(PrepareCommand("WHO", new string[] { State.Nick }), e.Token);
+                break;
+            case "352":
+                State.Ident = command.Args[2];
+                State.Host = command.Args[3];
+                break;
+            case "315":
+                // end of WHO, so we've pulled our own client details and can hand back control
                 _userRegistrationCompletionSource!.SetResult();
                 break;
             case "CAP":
@@ -563,25 +570,8 @@ public class Network : INetwork
                 // SASL
                 break;
             case "900":
-                // successful SASL, which conveniently also tells us our hostmask too
-                // (avoids needing to do a /WHO on ourself to get that info)
+                // successful SASL, record our account name
                 State.Account = command.Args[2];
-                
-                // enclosed in a new scope to prevent the `bits` variable from leaking out of this case
-                {
-                    var bits = command.Args[1].Split(new char[] { '!', '@' }, 3);
-
-                    if (State.Ident == null)
-                    {
-                        State.Ident = bits[1];
-                    }
-
-                    if (State.Host == null)
-                    {
-                        State.Host = bits[2];
-                    }
-                }
-
                 break;
             case "902":
             case "904":

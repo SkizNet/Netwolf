@@ -132,7 +132,7 @@ public class CommandTests
 
     [DataTestMethod]
     [DynamicData(nameof(TestCommandParseData))]
-    public void TestCommandParse(string rawCommand, string? source, string verb, string[] args, object? tagsObject)
+    public void Valid_IRC_lines_parse_successfully(string rawCommand, string? source, string verb, string[] args, object? tagsObject)
     {
         var command = CommandFactory.Parse(CommandType.Server, rawCommand);
         Dictionary<string, string?> tags;

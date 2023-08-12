@@ -15,10 +15,21 @@ internal partial class Glob
     private readonly NFA Automota = new();
 
     /// <summary>
+    /// Retrieve a cached Glob, or construct a new one if no cached one is found
+    /// </summary>
+    /// <param name="patterns">A disjunction of patterns containing * and ? wildcards</param>
+    /// <returns>A Glob instance</returns>
+    internal static Glob For(params string[] patterns)
+    {
+        // TODO: implement cache
+        return new Glob(patterns);
+    }
+
+    /// <summary>
     /// Construct a new Glob
     /// </summary>
     /// <param name="patterns">Patterns containing * and ? wildcards</param>
-    internal Glob(params string[] patterns)
+    private Glob(params string[] patterns)
     {
         int cur = 0;
         int next = 0;
@@ -34,7 +45,7 @@ internal partial class Glob
                 return sb.ToString();
             });
 
-            // normalize pattern
+            // unicode normalization of pattern
             pattern = pattern.Normalize();
 
             // build an NFA to process the pattern
@@ -58,9 +69,11 @@ internal partial class Glob
                         Automota.AddTransition(cur, c, next);
                         break;
                 }
+
+                cur = next;
             }
 
-            Automota.MarkAccepting(next);
+            Automota.MarkAccepting(cur);
         }
 
         Automota.Compile();
@@ -69,9 +82,9 @@ internal partial class Glob
     /// <summary>
     /// Determine if this Glob matches the text.
     /// </summary>
-    /// <param name="text">Text to match, must be </param>
+    /// <param name="text">Text to match</param>
     /// <returns></returns>
-    internal bool IsMatch(string text)
+    public bool IsMatch(string text)
     {
         try
         {
@@ -83,5 +96,41 @@ internal partial class Glob
         }
 
         return Automota.Parse(text);
+    }
+
+    /// <summary>
+    /// Determine if this Glob matches at least one of the specified texts.
+    /// </summary>
+    /// <param name="texts">Text strings to match</param>
+    /// <returns></returns>
+    public bool MatchAny(params string[] texts)
+    {
+        foreach (var text in texts)
+        {
+            if (IsMatch(text))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Determine if this Glob matches all of the specified texts.
+    /// </summary>
+    /// <param name="texts">Text strings to match</param>
+    /// <returns></returns>
+    public bool MatchAll(params string[] texts)
+    {
+        foreach (var text in texts)
+        {
+            if (!IsMatch(text))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
