@@ -26,9 +26,9 @@ internal class FakeServer : IServer
 
     public bool SecureConnection => true;
 
-    public FakeServer(ICommandFactory commandFactory, ICommandDispatcher dispatcher)
+    public FakeServer(Netwolf.Server.Network network)
     {
-        Network = new(commandFactory, dispatcher);
+        Network = network;
     }
 
     internal void ConnectClient(IConnection connection)

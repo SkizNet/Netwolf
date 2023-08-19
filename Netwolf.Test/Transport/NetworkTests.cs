@@ -9,7 +9,7 @@ using Netwolf.Transport.Extensions.DependencyInjection;
 
 namespace Netwolf.Test.Transport;
 
-[TestClass]
+[TestClass, TestCategory("SkipWhenLiveUnitTesting")]
 public class NetworkTests
 {
     private ServiceProvider Container { get; init; }
@@ -43,7 +43,8 @@ public class NetworkTests
     [TestMethod]
     public async Task User_registration_succeeds()
     {
-        var server = ActivatorUtilities.CreateInstance<FakeServer>(Container);
+        using var scope = Container.CreateScope();
+        var server = ActivatorUtilities.CreateInstance<FakeServer>(scope.ServiceProvider);
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = networkFactory.Create("NetwolfTest", MakeOptions(server));
 

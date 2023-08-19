@@ -1,5 +1,6 @@
 ﻿using Netwolf.Server.ChannelModes;
 using Netwolf.Server.Internal;
+using Netwolf.Server.ISupport;
 using Netwolf.Transport.IRC;
 
 using Stubble.Core.Classes;
@@ -13,7 +14,7 @@ using System.Threading.Tasks;
 
 namespace Netwolf.Server.Commands;
 
-public class WhoCommand : ICommandHandler
+public class WhoCommand : ICommandHandler, IISupportTokenProvider
 {
     public string Command => "WHO";
 
@@ -309,5 +310,13 @@ public class WhoCommand : ICommandHandler
 
         response.AddNumeric(client, Numeric.RPL_ENDOFWHO, command.Args[0]);
         return Task.FromResult<ICommandResponse>(response);
+    }
+
+    IReadOnlyDictionary<string, object?> IISupportTokenProvider.GetTokens(Network network, User client)
+    {
+        return new Dictionary<string, object?>()
+        {
+            { ISupportToken.WHOX, null }
+        };
     }
 }

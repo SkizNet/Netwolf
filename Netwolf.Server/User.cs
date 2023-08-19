@@ -16,6 +16,8 @@ public class User : IDisposable
 {
     private bool disposedValue;
 
+    private ICommandFactory CommandFactory { get; init; }
+
     public Network Network { get; init; }
 
     // temporary probably; we eventually want to support multiple clients attached to a single user,
@@ -87,7 +89,7 @@ public class User : IDisposable
 
     public HashSet<string> OperPrivileges { get; init; } = new();
 
-    public User(Network network, IPAddress ip, int localPort, int remotePort)
+    public User(Network network, ICommandFactory commandFactory, IPAddress ip, int localPort, int remotePort)
     {
         Network = network;
         RealIP = ip;
@@ -155,7 +157,7 @@ public class User : IDisposable
     public void Send(string? source, string verb, IReadOnlyList<string?>? args = null, IReadOnlyDictionary<string, string?>? tags = null)
     {
         // TODO: inject tags based on negotated CAPs (or strip tags if client didn't do CAP negotation at all)
-        var command = Network.CommandFactory.CreateCommand(
+        var command = CommandFactory.CreateCommand(
             CommandType.Server,
             source ?? Network.ServerName,
             verb,
@@ -247,14 +249,14 @@ public class User : IDisposable
         if (LocalPort == 0 || RemotePort == 0)
         {
             // skip lookup if we don't have port data
-            Queue.Add(Network.CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** Ident lookup disabled; not checking ident" }, tags));
+            Queue.Add(CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** Ident lookup disabled; not checking ident" }, tags));
             ClearRegistrationFlag(RegistrationFlags.PendingIdentLookup).Send();
             return;
         }
 
         // set up the ~ prefix (cleared if we get a valid ident response back)
         IdentPrefix = "~";
-        Queue.Add(Network.CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** Checking ident..." }, tags));
+        Queue.Add(CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** Checking ident..." }, tags));
         using var socket = new Socket(RealIP.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
         using var timeSource = new CancellationTokenSource();
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(TokenSource.Token, timeSource.Token);
@@ -293,17 +295,17 @@ public class User : IDisposable
             // valid ident, keep the full (untruncated) version in the record as well for matching purposes
             IdentPrefix = String.Empty;
             FullIdent = ident;
-            Queue.Add(Network.CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** Got ident response" }, tags));
+            Queue.Add(CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** Got ident response" }, tags));
         }
         catch (Exception ex) when (ex is OperationCanceledException || ex is SocketException)
         {
             // if we were instructed to abort, do so early
             TokenSource.Token.ThrowIfCancellationRequested();
-            Queue.Add(Network.CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** No ident response; username prefixed with ~" }, tags));
+            Queue.Add(CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** No ident response; username prefixed with ~" }, tags));
         }
         catch (ArgumentException)
         {
-            Queue.Add(Network.CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** Invalid ident response; username prefixed with ~" }, tags));
+            Queue.Add(CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** Invalid ident response; username prefixed with ~" }, tags));
         }
         finally
         {
@@ -328,7 +330,7 @@ public class User : IDisposable
     {
         var tags = new Dictionary<string, string?>();
         TokenSource.Token.ThrowIfCancellationRequested();
-        Queue.Add(Network.CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** Looking up your hostname..." }, tags));
+        Queue.Add(CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** Looking up your hostname..." }, tags));
 
         using var timeSource = new CancellationTokenSource();
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(TokenSource.Token, timeSource.Token);
@@ -345,12 +347,12 @@ public class User : IDisposable
                 if (entry.HostName.Length > 63)
                 {
                     RealHost = RealIP.ToString();
-                    Queue.Add(Network.CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** Hostname too long; using your IP address" }, tags));
+                    Queue.Add(CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** Hostname too long; using your IP address" }, tags));
                 }
                 else
                 {
                     RealHost = entry.HostName;
-                    Queue.Add(Network.CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** Found your hostname" }, tags));
+                    Queue.Add(CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** Found your hostname" }, tags));
                 }
             }
         }
@@ -363,7 +365,7 @@ public class User : IDisposable
         if (!resolved)
         {
             RealHost = RealIP.ToString();
-            Queue.Add(Network.CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** Unable to resolve your hostname; using your IP address" }, tags));
+            Queue.Add(CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", new string[] { "*", "*** Unable to resolve your hostname; using your IP address" }, tags));
         }
 
         if (!await MaybeDoImplicitPassCommand(RegistrationFlags.PendingHostLookup))

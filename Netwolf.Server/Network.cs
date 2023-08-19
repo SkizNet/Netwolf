@@ -1,4 +1,5 @@
 ﻿using Netwolf.Server.Commands;
+using Netwolf.Server.ISupport;
 using Netwolf.Transport.IRC;
 
 using System;
@@ -14,9 +15,9 @@ namespace Netwolf.Server;
 
 public class Network
 {
-    internal ICommandFactory CommandFactory { get; init; }
+    protected ICommandFactory CommandFactory { get; init; }
 
-    internal ICommandDispatcher CommandDispatcher { get; init; }
+    protected IISupportResolver ISupportResolver { get; init; }
 
     public string NetworkName => "NetwolfTest";
 
@@ -48,55 +49,23 @@ public class Network
     internal int _pendingCount = 0;
     public int PendingCount => _pendingCount;
 
-    public Network(ICommandFactory commandFactory, ICommandDispatcher dispatcher)
+    public Network(ICommandFactory commandFactory, IISupportResolver iSupportResolver)
     {
         CommandFactory = commandFactory;
-        CommandDispatcher = dispatcher;
+        ISupportResolver = iSupportResolver;
     }
 
     internal MultiResponse ReportISupport(User client)
     {
         var batch = new MultiResponse();
-
-        // TODO: Make a lot of these configurable
-        var tokens = new OrderedDictionary()
-        {
-            { "AWAYLEN", 350 },
-            { "CASEMAPPING", "ascii" },
-            { "CHANLIMIT", "#:100" },
-            { "CHANMODES", "beIq,k,l,imnst" },
-            { "CHANNELLEN", 30 },
-            { "CHANTYPES", ChannelTypes },
-            { "ELIST", "CMNTU" },
-            { "EXCEPTS", "e" },
-            { "EXTBAN", "$,a" },
-            { "HOSTLEN", 64 },
-            { "INVEX", "I" },
-            { "KICKLEN", 350 },
-            { "MAXLIST", "beq:100,I:100" },
-            { "MODES", 4 },
-            { "MONITOR", 100 },
-            { "NAMELEN", 150 },
-            { "NETWORK", NetworkName },
-            { "NICKLEN", 20 },
-            { "PREFIX", "(aohv)&@%+" },
-            { "SAFELIST", null },
-            { "SILENCE", 100 },
-            { "STATUSMSG", "&@%+" },
-            { "TARGMAX", "ACCEPT:,JOIN:,KICK:1,LIST:1,MONITOR:,NAMES:1,NOTICE:4,PART:,PRIVMSG:4,WHOIS:1" },
-            { "TOPICLEN", 350 },
-            { "UTF8ONLY", null },
-            { "USERLEN", 11 },
-            { "WHOX", null }
-        };
+        var tokens = ISupportResolver.Resolve(this, client);
 
         for (int i = 0; i < tokens.Count; i += 10)
         {
             var slice = tokens
-                .Cast<DictionaryEntry>()
                 .Skip(i)
                 .Take(10)
-                .Select(e => e.Value != null ? $"{e.Key}={e.Value}" : e.Key.ToString()!)
+                .Select(e => e.Value != null ? $"{e.Key}={e.Value}" : e.Key)
                 .ToArray();
 
             batch.AddNumeric(client, Numeric.RPL_ISUPPORT, slice);

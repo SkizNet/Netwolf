@@ -61,6 +61,10 @@ public partial class NickCommand : ICommandHandler
 
             response = client.ClearRegistrationFlag(RegistrationFlags.PendingNick);
         }
+        else
+        {
+            // TODO: notify the client and everyone sharing a channel with the client of the nick change
+        }
 
         return response;
     }
