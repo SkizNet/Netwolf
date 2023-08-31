@@ -1,4 +1,6 @@
-﻿using Netwolf.Server;
+﻿using Microsoft.Extensions.DependencyInjection;
+
+using Netwolf.Server;
 using Netwolf.Server.Commands;
 using Netwolf.Transport.IRC;
 
@@ -16,7 +18,7 @@ namespace Netwolf.Test;
 /// </summary>
 internal class FakeServer : IServer
 {
-    private Netwolf.Server.Network Network { get; init; }
+    private IServiceProvider Services { get; init; }
 
     internal ConcurrentDictionary<IConnection, User> State { get; init; } = new();
 
@@ -26,14 +28,14 @@ internal class FakeServer : IServer
 
     public bool SecureConnection => true;
 
-    public FakeServer(Netwolf.Server.Network network)
+    public FakeServer(IServiceProvider services)
     {
-        Network = network;
+        Services = services;
     }
 
     internal void ConnectClient(IConnection connection)
     {
-        State[connection] = new User(Network, IPAddress.Loopback, 0, 0);
+        State[connection] = ActivatorUtilities.CreateInstance<User>(Services, IPAddress.Loopback, 0, 0);
     }
 
     internal void DisconnectClient(IConnection connection)

@@ -1,4 +1,7 @@
-﻿using Netwolf.Server.ChannelModes;
+﻿using Microsoft.Extensions.Options;
+
+using Netwolf.Server.Capabilities.Vendor;
+using Netwolf.Server.ChannelModes;
 using Netwolf.Server.Internal;
 using Netwolf.Server.ISupport;
 using Netwolf.Transport.IRC;
@@ -24,6 +27,8 @@ public class WhoCommand : ICommandHandler, IISupportTokenProvider
     public bool HasChannel => false;
 
     public bool AllowBeforeRegistration => false;
+
+    private bool WhoxEnabled { get; init; }
 
     private static string[] ResolveAttributes(User client, User target, IEnumerable<char> attributes)
     {
@@ -58,6 +63,11 @@ public class WhoCommand : ICommandHandler, IISupportTokenProvider
         }
 
         return false;
+    }
+
+    public WhoCommand(IOptionsSnapshot<ServerOptions> options)
+    {
+        WhoxEnabled = options.Value.EnabledFeatures.Contains("WHOX");
     }
 
     public Task<ICommandResponse> ExecuteAsync(ICommand command, User client, Channel? channel, CancellationToken cancellationToken)
@@ -121,6 +131,12 @@ public class WhoCommand : ICommandHandler, IISupportTokenProvider
             }
         }
 
+        // if WHOX isn't enabled, clear it out
+        if (!WhoxEnabled)
+        {
+            whox = null;
+        }
+
         IEnumerable<User> targets = network.Clients.Values;
 
         // if the first mask is a channel, use it even if a second mask is provided
@@ -159,7 +175,7 @@ public class WhoCommand : ICommandHandler, IISupportTokenProvider
         if (!operspy)
         {
             // secret channel that we aren't on?
-            if (lookupChan != null && lookupChan.HasMode<SecretMode>() && !lookupChan.Members.ContainsKey(client))
+            if (lookupChan != null && lookupChan.HasMode<SecretChannelMode>() && !lookupChan.Members.ContainsKey(client))
             {
                 targets = Array.Empty<User>();
             }
@@ -223,7 +239,17 @@ public class WhoCommand : ICommandHandler, IISupportTokenProvider
             if (whox.Contains('f'))
             {
                 var flags = new StringBuilder();
-                flags.Append(target.Away ? 'G' : 'H');
+
+                if (client.HasCapability<PresenceCapability>())
+                {
+                    // TODO: support O (for offline) and M (for mobile) once we figure out how that should work
+                    flags.Append(target.Away ? 'G' : 'H');
+                }
+                else
+                {
+                    flags.Append(target.Away ? 'G' : 'H');
+                }
+                
                 if (target.HasPrivilege("oper:general"))
                 {
                     flags.Append('*');
@@ -312,11 +338,15 @@ public class WhoCommand : ICommandHandler, IISupportTokenProvider
         return Task.FromResult<ICommandResponse>(response);
     }
 
-    IReadOnlyDictionary<string, object?> IISupportTokenProvider.GetTokens(Network network, User client)
+    IReadOnlyDictionary<string, object?> IISupportTokenProvider.GetTokens(User client)
     {
-        return new Dictionary<string, object?>()
+        Dictionary<string, object?> dict = new();
+
+        if (WhoxEnabled)
         {
-            { ISupportToken.WHOX, null }
-        };
+            dict[ISupportToken.WHOX] = null;
+        }
+
+        return dict;
     }
 }

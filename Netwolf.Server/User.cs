@@ -9,6 +9,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
+using Netwolf.Server.Capabilities;
 
 namespace Netwolf.Server;
 
@@ -49,6 +50,14 @@ public class User : IDisposable
     public string UserParam1 { get; internal set; } = null!;
 
     public string UserParam2 { get; internal set; } = null!;
+
+    /// <summary>
+    /// Highest client-specified version passed to CAP LS, or 301 if they didn't pass a version.
+    /// 0 if the client never executed CAP LS or CAP REQ.
+    /// </summary>
+    public int CapabilityVersion { get; internal set; }
+
+    internal HashSet<ICapability> Capabilities { get; set; } = new();
 
     private int LocalPort { get; init; }
 
@@ -92,6 +101,7 @@ public class User : IDisposable
     public User(Network network, ICommandFactory commandFactory, IPAddress ip, int localPort, int remotePort)
     {
         Network = network;
+        CommandFactory = commandFactory;
         RealIP = ip;
         LocalPort = localPort;
         RemotePort = remotePort;
@@ -152,6 +162,12 @@ public class User : IDisposable
     public bool HasAnyPrivilege(params string[] privs)
     {
         return privs.Any(p => HasPrivilege(p));
+    }
+
+    public bool HasCapability<T>()
+        where T : ICapability, new()
+    {
+        return Capabilities.Contains(new T());
     }
 
     public void Send(string? source, string verb, IReadOnlyList<string?>? args = null, IReadOnlyDictionary<string, string?>? tags = null)

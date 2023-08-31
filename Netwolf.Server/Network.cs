@@ -58,7 +58,7 @@ public class Network
     internal MultiResponse ReportISupport(User client)
     {
         var batch = new MultiResponse();
-        var tokens = ISupportResolver.Resolve(this, client);
+        var tokens = ISupportResolver.Resolve(client);
 
         for (int i = 0; i < tokens.Count; i += 10)
         {

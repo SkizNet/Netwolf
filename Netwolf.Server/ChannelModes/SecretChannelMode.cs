@@ -4,7 +4,7 @@ using Netwolf.Server.Channels;
 namespace Netwolf.Server.ChannelModes;
 
 [AppliesToChannel<TextChannel>]
-public sealed class TopicLockMode : ParameterlessChannelMode<TopicLockMode>
+public sealed class SecretChannelMode : ParameterlessChannelMode<SecretChannelMode>
 {
-    public override char ModeChar => 't';
+    public override char ModeChar => 's';
 }

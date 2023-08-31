@@ -8,5 +8,5 @@ namespace Netwolf.Server.ISupport;
 
 public interface IISupportResolver
 {
-    public IReadOnlyDictionary<string, object?> Resolve(Network network, User user);
+    public IReadOnlyDictionary<string, object?> Resolve(User user);
 }

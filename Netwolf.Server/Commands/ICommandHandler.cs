@@ -1,4 +1,5 @@
-﻿using Netwolf.Transport.IRC;
+﻿using Netwolf.Server.Internal;
+using Netwolf.Transport.IRC;
 
 namespace Netwolf.Server.Commands;
 

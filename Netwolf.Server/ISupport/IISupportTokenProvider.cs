@@ -8,7 +8,7 @@ namespace Netwolf.Server.ISupport;
 
 public interface IISupportTokenProvider
 {
-    IReadOnlyDictionary<string, object?> GetTokens(Network network, User client);
+    IReadOnlyDictionary<string, object?> GetTokens(User client);
 
     /// <summary>
     /// Merge multiple values together into a single ISUPPORT token.

@@ -12,7 +12,14 @@ namespace Netwolf.Server.ISupport;
 /// </summary>
 internal class DefaultTokenProvider : IISupportTokenProvider
 {
-    IReadOnlyDictionary<string, object?> IISupportTokenProvider.GetTokens(Network network, User client)
+    private Network Network { get; init; }
+
+    public DefaultTokenProvider(Network network)
+    {
+        Network = network;
+    }
+
+    IReadOnlyDictionary<string, object?> IISupportTokenProvider.GetTokens(User client)
     {
         return new Dictionary<string, object?>()
         {
@@ -21,7 +28,7 @@ internal class DefaultTokenProvider : IISupportTokenProvider
             { "CHANLIMIT", "#:100" },
             { "CHANMODES", "beIq,k,l,imnst" },
             { "CHANNELLEN", 30 },
-            { "CHANTYPES", network.ChannelTypes },
+            { "CHANTYPES", Network.ChannelTypes },
             { "ELIST", "CMNTU" },
             { "EXCEPTS", "e" },
             { "EXTBAN", "$,a" },
@@ -32,7 +39,7 @@ internal class DefaultTokenProvider : IISupportTokenProvider
             { "MODES", 4 },
             { "MONITOR", 100 },
             { "NAMELEN", 150 },
-            { "NETWORK", network.NetworkName },
+            { "NETWORK", Network.NetworkName },
             { "NICKLEN", 20 },
             { "PREFIX", "(aohv)&@%+" },
             { "SAFELIST", null },

@@ -16,7 +16,8 @@ public class NumericResponse : CommandResponse
         : base(user, null, ((int)numeric).ToString("D3"))
     {
         string? description = typeof(Numeric).GetField(numeric.ToString())!.GetCustomAttributes<DisplayAttribute>().FirstOrDefault()?.GetDescription();
-        var realArgs = new List<string>() { user.Nickname };
+        // Nickname might be null if we need to send a numeric before the user sends a valid NICK message
+        var realArgs = new List<string>() { user.Nickname ?? "*" };
         realArgs.AddRange(args);
         if (description != null)
         {

@@ -162,6 +162,8 @@ public enum Numeric : int
     ERR_WASNOSUCHNICK = 406,
     [Display(Description = "No origin specified")]
     ERR_NOORIGIN = 409,
+    [Display(Description = "Invalid CAP command")]
+    ERR_INVALIDCAPCOMMAND = 410,
     [Display(Description = "Input line was too long")]
     ERR_INPUTTOOLONG = 417,
     [Display(Description = "Unknown command")]

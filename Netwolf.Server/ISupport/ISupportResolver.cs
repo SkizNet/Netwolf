@@ -1,6 +1,9 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
 using Netwolf.Server.Commands;
+using Netwolf.Server.Internal;
 
 using System;
 using System.Collections.Generic;
@@ -16,39 +19,30 @@ public class ISupportResolver : IISupportResolver
 
     private List<IISupportTokenProvider> TokenProviders { get; init; }
 
-    public ISupportResolver(IServiceProvider serviceProvider, ILogger<IISupportResolver> logger)
+    public ISupportResolver(IServiceProvider serviceProvider, ILogger<IISupportResolver> logger, IOptionsSnapshot<ServerOptions> options)
     {
         Logger = logger;
 
         // DefaultTokenProvider should always be first; it's an internal class so the loop below won't construct a 2nd one
-        TokenProviders = new() { new DefaultTokenProvider() };
+        TokenProviders = new() { (IISupportTokenProvider)ActivatorUtilities.CreateInstance(serviceProvider, typeof(DefaultTokenProvider)) };
 
         // populate TokenProviders from all concrete classes across all assemblies that implement IISupportTokenProvider
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        Logger.LogTrace("Scanning for ISUPPORT token providers");
+        foreach (var provider in TypeDiscovery.GetTypes<IISupportTokenProvider>(serviceProvider, options))
         {
-            Logger.LogTrace("Scanning {Assembly} for ISUPPORT token providers", assembly.FullName);
-
-            foreach (var type in assembly.ExportedTypes)
-            {
-                if (type.IsAbstract || !type.IsAssignableTo(typeof(IISupportTokenProvider)))
-                {
-                    continue;
-                }
-
-                TokenProviders.Add((IISupportTokenProvider)ActivatorUtilities.CreateInstance(serviceProvider, type));
-                logger.LogTrace("Found {Type}", type.FullName);
-            }
+            TokenProviders.Add(provider);
+            logger.LogTrace("Found {Type}", provider.GetType().FullName);
         }
     }
 
-    public IReadOnlyDictionary<string, object?> Resolve(Network network, User user)
+    public IReadOnlyDictionary<string, object?> Resolve(User user)
     {
         Dictionary<string, object?> tokens = new();
         Dictionary<string, List<object?>> staging = new();
 
         foreach (var provider in TokenProviders)
         {
-            var res = provider.GetTokens(network, user);
+            var res = provider.GetTokens(user);
             foreach (var (key, token) in res)
             {
                 if (staging.ContainsKey(key))
