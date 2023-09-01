@@ -36,7 +36,7 @@ public class CapCommand : ICommandHandler
         var subCommand = command.Args[0].ToUpperInvariant();
         return subCommand switch
         {
-            "LS" => HandleLs(command, client, cancellationToken),
+            "LS" => await HandleLs(command, client, cancellationToken),
             "LIST" => await HandleList(command, client, cancellationToken),
             "REQ" => await HandleReq(command, client, cancellationToken),
             "END" => await HandleEnd(command, client, cancellationToken),
@@ -44,7 +44,7 @@ public class CapCommand : ICommandHandler
         };
     }
 
-    private ICommandResponse HandleLs(ICommand command, User client, CancellationToken cancellationToken)
+    private async Task<ICommandResponse> HandleLs(ICommand command, User client, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
