@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
+using Netwolf.Server.Capabilities;
 using Netwolf.Server.Commands;
 using Netwolf.Server.ISupport;
 using Netwolf.Server.Users;
@@ -39,6 +40,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICommandDispatcher, CommandDispatcher>();
         services.AddScoped<IISupportResolver, ISupportResolver>();
         services.AddScoped<IUserFactory, UserFactory>();
+        services.AddScoped<ICapabilityManager, CapabilityManager>();
 
         // let consumers register an IConfigureOptions<ServerOptions> if they wish, but these are here in case we need them later
         //services.AddTransient<IPostConfigureOptions<ServerOptions>, PostConfigureServerOptions>();

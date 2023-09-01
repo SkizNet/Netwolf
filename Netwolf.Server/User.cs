@@ -25,6 +25,8 @@ public class User : IDisposable
     // and also potentially per-channel/group "profiles" for the user, which means most of these details won't be (only) top-level
     internal BlockingCollection<ICommand> Queue { get; init; } = new();
 
+    public int MaxBytesPerLine { get; set; } = 512;
+
     public string Nickname { get; internal set; } = null!;
 
     public string LookupKey => Nickname.ToUpperInvariant();
@@ -182,6 +184,14 @@ public class User : IDisposable
 
         // TODO: Check for SendQ limits here
         Queue.Add(command);
+    }
+
+    internal void AddRegistrationFlag(RegistrationFlags flag)
+    {
+        if (!Registered)
+        {
+            RegistrationFlags |= flag;
+        }
     }
 
     internal ICommandResponse ClearRegistrationFlag(RegistrationFlags flag)
