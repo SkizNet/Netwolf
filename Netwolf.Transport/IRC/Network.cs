@@ -565,6 +565,40 @@ public class Network : INetwork
                 break;
             case "CAP":
                 // CAP negotation, figure out which subcommand we have
+                switch (command.Args[1])
+                {
+                    case "LS":
+                        // request supported CAPs; might be multi-line so don't act until we get everything
+                        break;
+                    case "ACK":
+                        // mark CAPs as enabled client-side, then finish cap negotiation
+                        _ = SendAsync(PrepareCommand("CAP", new string[] { "END" }), e.Token);
+                        break;
+                    case "NAK":
+                        // we couldn't set CAPs, bail out
+                        _ = SendAsync(PrepareCommand("CAP", new string[] { "END" }), e.Token);
+                        break;
+                    case "NEW":
+                        // see if we should enable any new CAPs; don't send CAP END in any event here
+                        break;
+                    case "DEL":
+                        // mark CAPs as disabled client-side if applicable; don't send CAP END in any event here
+                        break;
+                    default:
+                        // not something we recognize; log but otherwise ignore
+                        Logger.LogInformation("Received unrecognized CAP {Command} from server (potentially broken ircd)", command.Args[1]);
+                        break;
+                }
+
+                break;
+            case "410":
+                // CAP command failed, bail out
+                // although if it's saying our CAP END failed (broken ircd), don't cause an infinite loop
+                if (command.Args[1] != "END")
+                {
+                    _ = SendAsync(PrepareCommand("CAP", new string[] { "END" }), e.Token);
+                }
+
                 break;
             case "AUTHENTICATE":
                 // SASL

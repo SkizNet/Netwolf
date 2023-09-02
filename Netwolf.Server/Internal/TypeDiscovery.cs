@@ -50,7 +50,7 @@ internal static class TypeDiscovery
         {
             foreach (var type in assembly.ExportedTypes)
             {
-                if (type.IsAbstract || !type.IsAssignableTo(typeof(T)) || !collection.Contains(typeof(T)))
+                if (type.IsAbstract || !type.IsAssignableTo(typeof(T)) || !collection.Contains(type))
                 {
                     continue;
                 }

@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using Microsoft.Extensions.DependencyInjection;
 
 namespace Netwolf.Server.ISupport;
 
@@ -12,15 +8,21 @@ namespace Netwolf.Server.ISupport;
 /// </summary>
 internal class DefaultTokenProvider : IISupportTokenProvider
 {
-    private Network Network { get; init; }
+    private IServiceProvider Provider { get; init; }
 
-    public DefaultTokenProvider(Network network)
+    public DefaultTokenProvider(IServiceProvider provider)
     {
-        Network = network;
+        // FIXME: this is temporary until we get rid of the Network service
+        // we should instead pull in the ChannelManager (or whatever it'd be called) to grab channel types,
+        // and the options snapshot for network config to obtain the network name
+        // relying on Network here causes a DI loop since Network needs an IISupportTokenProvider
+        Provider = provider;
     }
 
     IReadOnlyDictionary<string, object?> IISupportTokenProvider.GetTokens(User client)
     {
+        var network = Provider.GetRequiredService<Network>();
+
         return new Dictionary<string, object?>()
         {
             { "AWAYLEN", 350 },
@@ -28,7 +30,7 @@ internal class DefaultTokenProvider : IISupportTokenProvider
             { "CHANLIMIT", "#:100" },
             { "CHANMODES", "beIq,k,l,imnst" },
             { "CHANNELLEN", 30 },
-            { "CHANTYPES", Network.ChannelTypes },
+            { "CHANTYPES", network.ChannelTypes },
             { "ELIST", "CMNTU" },
             { "EXCEPTS", "e" },
             { "EXTBAN", "$,a" },
@@ -39,7 +41,7 @@ internal class DefaultTokenProvider : IISupportTokenProvider
             { "MODES", 4 },
             { "MONITOR", 100 },
             { "NAMELEN", 150 },
-            { "NETWORK", Network.NetworkName },
+            { "NETWORK", network.NetworkName },
             { "NICKLEN", 20 },
             { "PREFIX", "(aohv)&@%+" },
             { "SAFELIST", null },

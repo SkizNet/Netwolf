@@ -37,19 +37,88 @@ public class CapCommand : ICommandHandler
         return subCommand switch
         {
             "LS" => await HandleLs(command, client, cancellationToken),
-            "LIST" => await HandleList(command, client, cancellationToken),
+            "LIST" => await HandleList(client, cancellationToken),
             "REQ" => await HandleReq(command, client, cancellationToken),
-            "END" => await HandleEnd(command, client, cancellationToken),
+            "END" => client.ClearRegistrationFlag(RegistrationFlags.PendingCapNegotation),
             _ => new NumericResponse(client, Numeric.ERR_INVALIDCAPCOMMAND, subCommand),
         };
     }
 
-    private async Task<ICommandResponse> HandleLs(ICommand command, User client, CancellationToken cancellationToken)
+    private static ICommandResponse SplitCapabilityList(User client, string subcommand, IEnumerable<ICapability> capabilities)
+    {
+        List<string> tokens = new();
+
+        // don't show values if the CAP version is 301 or if we're replying to CAP LIST
+        bool showValue = client.CapabilityVersion > 301 && subcommand == "LS";
+
+        // this might be pre-registration, so client.Nickname might be null; use * if that's the case
+        string nick = client.Nickname ?? "*";
+
+        foreach (var cap in capabilities)
+        {
+            if (showValue && cap.Value != null)
+            {
+                tokens.Add($"{cap.Name}={cap.Value}");
+            }
+            else
+            {
+                tokens.Add(cap.Name);
+            }
+        }
+
+        if (client.CapabilityVersion == 301)
+        {
+            // no multiline support; prioritize listing standard (non-draft, non-vendor) caps
+            tokens.Sort((x, y) =>
+            {
+                int xIsLowPriority = x.Contains('/') ? 1 : 0;
+                int yIsLowPriority = y.Contains('/') ? 1 : 0;
+
+                if ((xIsLowPriority ^ yIsLowPriority) != 0)
+                {
+                    return xIsLowPriority.CompareTo(yIsLowPriority);
+                }
+
+                return x.CompareTo(y);
+            });
+
+            // account for the prefix ":servername CAP nick subcommand :" and the CRLF suffix
+            int consumedBytes = client.Network.ServerName.Length + nick.Length + subcommand.Length + 11;
+            var param = String.Join(' ', tokens.TakeWhile(t => (consumedBytes += t.Length) <= client.MaxBytesPerLine));
+
+            return new CommandResponse(client, null, "CAP", nick, subcommand, param);
+        }
+        else
+        {
+            // account for the prefix ":servername CAP nick subcommand * :" and the CRLF suffix
+            int maxBytes = client.MaxBytesPerLine - (client.Network.ServerName.Length + nick.Length + subcommand.Length + 13);
+            int consumedBytes = 0;
+            List<string> param = new();
+            var response = new MultiResponse();
+
+            foreach (var token in tokens)
+            {
+                if (consumedBytes + token.Length > maxBytes)
+                {
+                    response.Add(new CommandResponse(client, null, "CAP", nick, subcommand, "*", String.Join(' ', param)));
+                    consumedBytes = 0;
+                    param.Clear();
+                }
+
+                param.Add(token);
+                consumedBytes += token.Length;
+            }
+
+            response.Add(new CommandResponse(client, null, "CAP", nick, subcommand, String.Join(' ', param)));
+            return response;
+        }
+    }
+
+    private Task<ICommandResponse> HandleLs(ICommand command, User client, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         int version = 301;
-        var nick = client.Nickname ?? "*";
 
         if (command.Args.Count > 1)
         {
@@ -57,7 +126,7 @@ public class CapCommand : ICommandHandler
             if (!Int32.TryParse(command.Args[1], out version))
             {
                 // client gave us garbage
-                return new NumericResponse(client, Numeric.ERR_INVALIDCAPCOMMAND, "LS");
+                return Task.FromResult<ICommandResponse>(new NumericResponse(client, Numeric.ERR_INVALIDCAPCOMMAND, "LS"));
             }
 
             // 301 is the lowest version that could be supported, so normalize anything lower to that
@@ -76,65 +145,70 @@ public class CapCommand : ICommandHandler
             _ = CapabilityManager.ApplyCapabilitySet(client, new[] { "cap-notify" }, Array.Empty<string>());
         }
 
-        List<string> tokens = new();
+        return Task.FromResult(SplitCapabilityList(client, "LS", CapabilityManager.GetAllCapabilities()));
+    }
 
-        foreach (var cap in CapabilityManager.GetAllCapabilities())
+    private Task<ICommandResponse> HandleList(User client, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return Task.FromResult(SplitCapabilityList(client, "LIST", client.Capabilities));
+    }
+
+    private Task<ICommandResponse> HandleReq(ICommand command, User client, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (command.Args.Count == 0 || String.IsNullOrWhiteSpace(command.Args[0]))
         {
-            if (version >= 302 && cap.Value != null)
+            // nothing requested
+            return Task.FromResult<ICommandResponse>(new NumericResponse(client, Numeric.ERR_INVALIDCAPCOMMAND, "REQ"));
+        }
+
+        HashSet<string> add = new();
+        HashSet<string> remove = new();
+
+        foreach (var token in command.Args[0].Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (token[0] == '-')
             {
-                tokens.Add($"{cap.Name}={cap.Value}");
+                add.Remove(token[1..]);
+                remove.Add(token[1..]);
             }
             else
             {
-                tokens.Add(cap.Name);
+                add.Add(token);
+                remove.Remove(token);
             }
         }
 
-        if (version == 301)
+        // if we were given a long REQ, we may need multiple lines for the ACK or NAK
+        string subcommand = CapabilityManager.ApplyCapabilitySet(client, add, remove) ? "ACK" : "NAK";
+        var tokens = add.Concat(remove.Select(x => $"-{x}"));
+        string nick = client.Nickname ?? "*";
+
+        // account for ":servername CAP nick ACK|NAK :" prefix and CRLF suffix
+        int maxBytes = client.MaxBytesPerLine - (client.Network.ServerName.Length + nick.Length + 14);
+        int consumedBytes = 0;
+        List<string> param = new();
+        var response = new MultiResponse();
+
+        foreach (var token in tokens)
         {
-            // no multiline support; prioritize listing standard (non-draft, non-vendor) caps
-            tokens.Sort((x, y) =>
+            if (consumedBytes + token.Length > maxBytes)
             {
-                int xIsLowPriority = x.Contains('/') ? 1 : 0;
-                int yIsLowPriority = y.Contains('/') ? 1 : 0;
-
-                if ((xIsLowPriority ^ yIsLowPriority) != 0)
-                {
-                    return xIsLowPriority.CompareTo(yIsLowPriority);
-                }
-
-                return x.CompareTo(y);
-            });
-
-            // account for the prefix ":servername CAP nick LS :" and the CRLF suffix
-            int consumedBytes = client.Network.ServerName.Length + nick.Length + 13;
-            var param = String.Join(' ', tokens.TakeWhile(t => (consumedBytes += t.Length) <= client.MaxBytesPerLine));
-
-            return new CommandResponse(client, null, "CAP", nick, "LS", param);
-        }
-        else
-        {
-            // account for the prefix ":servername CAP nick LS * :" and the CRLF suffix
-            int maxBytes = client.MaxBytesPerLine - (client.Network.ServerName.Length + nick.Length + 15);
-            int consumedBytes = 0;
-            List<string> param = new();
-            var response = new MultiResponse();
-
-            foreach (var token in tokens)
-            {
-                if (consumedBytes + token.Length > maxBytes)
-                {
-                    response.Add(new CommandResponse(client, null, "CAP", nick, "LS", "*", String.Join(' ', param)));
-                    consumedBytes = 0;
-                    param.Clear();
-                }
-
-                param.Add(token);
-                consumedBytes += token.Length;
+                // unlike multiline LS/LIST, the spec doesn't tell us to add an extra * param for multiline ACK/NAK
+                response.Add(new CommandResponse(client, null, "CAP", nick, subcommand, String.Join(' ', param)));
+                consumedBytes = 0;
+                param.Clear();
             }
 
-            response.Add(new CommandResponse(client, null, "CAP", nick, "LS", String.Join(' ', param)));
-            return response;
+            param.Add(token);
+            consumedBytes += token.Length;
         }
+
+        response.Add(new CommandResponse(client, null, "CAP", nick, subcommand, String.Join(' ', param)));
+
+        return Task.FromResult<ICommandResponse>(response);
     }
 }
