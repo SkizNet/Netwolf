@@ -24,4 +24,8 @@ public class IrcState
     /// Our account for this connection, or <c>null</c> if we don't have one
     /// </summary>
     public string? Account { get; internal set; }
+
+    internal Dictionary<string, string?> SupportedCaps { get; init; } = new();
+
+    internal HashSet<string> EnabledCaps { get; init; } = new();
 }

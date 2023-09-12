@@ -39,7 +39,9 @@ public class CapCommand : ICommandHandler
             "LS" => await HandleLs(command, client, cancellationToken),
             "LIST" => await HandleList(client, cancellationToken),
             "REQ" => await HandleReq(command, client, cancellationToken),
-            "END" => client.ClearRegistrationFlag(RegistrationFlags.PendingCapNegotation),
+            "END" => await client.MaybeDoImplicitPassCommand(RegistrationFlags.PendingCapNegotation)
+                ? client.ClearRegistrationFlag(RegistrationFlags.PendingCapNegotation)
+                : new ErrorResponse(client, "You do not have access to this network (missing password?)."),
             _ => new NumericResponse(client, Numeric.ERR_INVALIDCAPCOMMAND, subCommand),
         };
     }
@@ -159,7 +161,7 @@ public class CapCommand : ICommandHandler
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (command.Args.Count == 0 || String.IsNullOrWhiteSpace(command.Args[0]))
+        if (command.Args.Count != 2 || String.IsNullOrWhiteSpace(command.Args[1]))
         {
             // nothing requested
             return Task.FromResult<ICommandResponse>(new NumericResponse(client, Numeric.ERR_INVALIDCAPCOMMAND, "REQ"));
@@ -168,7 +170,7 @@ public class CapCommand : ICommandHandler
         HashSet<string> add = new();
         HashSet<string> remove = new();
 
-        foreach (var token in command.Args[0].Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        foreach (var token in command.Args[1].Split(' ', StringSplitOptions.RemoveEmptyEntries))
         {
             if (token[0] == '-')
             {

@@ -115,6 +115,15 @@ public class Network : INetwork
     /// <inheritdoc />
     public event EventHandler<NetworkEventArgs>? Disconnected;
 
+    /// <inheritdoc />
+    public event EventHandler<CapEventArgs>? CapReceived;
+
+    /// <inheritdoc />
+    public event EventHandler<CapEventArgs>? CapEnabled;
+
+    /// <inheritdoc />
+    public event EventHandler<CapEventArgs>? CapDisabled;
+
     /// <summary>
     /// Create a new Network that can be connected to.
     /// </summary>
@@ -124,6 +133,8 @@ public class Network : INetwork
     /// </param>
     /// <param name="options">Network options.</param>
     /// <param name="logger">Logger to use.</param>
+    /// <param name="commandFactory"></param>
+    /// <param name="connectionFactory"></param>
     public Network(
         string name,
         NetworkOptions options,
@@ -243,6 +254,7 @@ public class Network : INetwork
                             }
                         }
 
+                        OnCommandReceived(command, _messageLoopTokenSource.Token);
                         CommandReceived?.Invoke(command, new(this, command, _messageLoopTokenSource.Token));
                         break;
                     case 2:
@@ -344,10 +356,8 @@ public class Network : INetwork
                 // (we want to bounce/reconnect if that fails for whatever reason)
                 Logger.LogInformation("Connected to {server}.", server);
 
-                // set up command handlers for user registration (ensuring it is only registered once)
+                // set up disconnection handler for user registration (ensuring it is only registered once)
                 _userRegistrationCompletionSource = new TaskCompletionSource();
-                CommandReceived -= UserRegistration;
-                CommandReceived += UserRegistration;
                 Disconnected -= AbortUserRegistration;
                 Disconnected += AbortUserRegistration;
 
@@ -399,7 +409,6 @@ public class Network : INetwork
                 if (_userRegistrationCompletionSource.Task.IsCompletedSuccessfully)
                 {
                     // user registration succeeded, exit out of the connect loop
-                    CommandReceived -= UserRegistration;
                     Disconnected -= AbortUserRegistration;
                     _userRegistrationCompletionSource = null;
                     return;
@@ -518,100 +527,263 @@ public class Network : INetwork
         return commands.ToArray();
     }
 
-    private void UserRegistration(object? sender, NetworkEventArgs e)
+    private void OnCommandReceived(ICommand command, CancellationToken cancellationToken)
     {
-        if (sender is not ICommand command)
+        if (!IsConnected)
         {
-            return;
+            // callbacks we only handle if we're pre-registration
+            switch (command.Verb)
+            {
+                case "001":
+                    State.Nick = command.Args[0];
+                    break;
+                case "432":
+                case "433":
+                    // primary nick didn't work for whatever reason, try secondary
+                    string attempted = command.Args[0];
+                    string secondary = Options.SecondaryNick ?? $"{Options.PrimaryNick}_";
+                    if (attempted == Options.PrimaryNick)
+                    {
+                        _ = SendAsync(PrepareCommand("NICK", new string[] { secondary }, null), cancellationToken);
+                    }
+                    else if (attempted == secondary)
+                    {
+                        // both taken? abort
+                        Logger.LogWarning("Server rejected both primary and secondary nicks.");
+                    }
+
+                    break;
+                case "376":
+                case "422":
+                    // got MOTD, we've been registered. But we might still not know our own ident/host,
+                    // so send out a WHO for ourselves before handing control back to client
+                    _ = SendAsync(PrepareCommand("WHO", new string[] { State.Nick }), cancellationToken);
+                    break;
+                case "352":
+                    State.Ident = command.Args[2];
+                    State.Host = command.Args[3];
+                    break;
+                case "315":
+                    // end of WHO, so we've pulled our own client details and can hand back control
+                    _userRegistrationCompletionSource!.SetResult();
+                    break;
+                case "410":
+                    // CAP command failed, bail out
+                    // although if it's saying our CAP END failed (broken ircd), don't cause an infinite loop
+                    if (command.Args[1] != "END")
+                    {
+                        _ = SendAsync(PrepareCommand("CAP", new string[] { "END" }), cancellationToken);
+                    }
+
+                    break;
+                case "AUTHENTICATE":
+                    // SASL
+                    break;
+                case "900":
+                    // successful SASL, record our account name
+                    State.Account = command.Args[2];
+                    break;
+                case "902":
+                case "904":
+                case "905":
+                case "906":
+                    // SASL failed
+                    break;
+            }
         }
 
+        // callbacks we always handle, even post-registration
         switch (command.Verb)
         {
-            case "001":
-                State.Nick = command.Args[0];
-                break;
             case "005":
                 // process ISUPPORT tokens
                 break;
-            case "432":
-            case "433":
-                // primary nick didn't work for whatever reason, try secondary
-                string attempted = command.Args[0];
-                string secondary = Options.SecondaryNick ?? $"{Options.PrimaryNick}_";
-                if (attempted == Options.PrimaryNick)
-                {
-                    _ = SendAsync(PrepareCommand("NICK", new string[] { secondary }, null), e.Token);
-                }
-                else if (attempted == secondary)
-                {
-                    // both taken? abort
-                    Logger.LogWarning("Server rejected both primary and secondary nicks.");
-                }
-
-                break;
-            case "376":
-            case "422":
-                // got MOTD, we've been registered. But we might still not know our own ident/host,
-                // so send out a WHO for ourselves before handing control back to client
-                _ = SendAsync(PrepareCommand("WHO", new string[] { State.Nick }), e.Token);
-                break;
-            case "352":
-                State.Ident = command.Args[2];
-                State.Host = command.Args[3];
-                break;
-            case "315":
-                // end of WHO, so we've pulled our own client details and can hand back control
-                _userRegistrationCompletionSource!.SetResult();
-                break;
             case "CAP":
-                // CAP negotation, figure out which subcommand we have
-                switch (command.Args[1])
+                // CAP negotation
+                OnCapCommand(command, cancellationToken);
+                break;
+        }
+    }
+
+    private void OnCapCommand(ICommand command, CancellationToken cancellationToken)
+    {
+        // CAPs that are always enabled if supported by the server, because we support them in this layer
+        HashSet<string> defaultCaps = new()
+        {
+            "cap-notify",
+            "message-ids",
+            "message-tags",
+            "server-time",
+        };
+
+        // figure out which subcommand we have
+        // CAP nickname subcommand args...
+        switch (command.Args[1])
+        {
+            case "LS":
+            case "NEW":
                 {
-                    case "LS":
-                        // request supported CAPs; might be multi-line so don't act until we get everything
-                        break;
-                    case "ACK":
-                        // mark CAPs as enabled client-side, then finish cap negotiation
-                        _ = SendAsync(PrepareCommand("CAP", new string[] { "END" }), e.Token);
-                        break;
-                    case "NAK":
-                        // we couldn't set CAPs, bail out
-                        _ = SendAsync(PrepareCommand("CAP", new string[] { "END" }), e.Token);
-                        break;
-                    case "NEW":
-                        // see if we should enable any new CAPs; don't send CAP END in any event here
-                        break;
-                    case "DEL":
-                        // mark CAPs as disabled client-side if applicable; don't send CAP END in any event here
-                        break;
-                    default:
-                        // not something we recognize; log but otherwise ignore
-                        Logger.LogInformation("Received unrecognized CAP {Command} from server (potentially broken ircd)", command.Args[1]);
-                        break;
+                    string caps;
+                    bool final = false;
+                    // request supported CAPs; might be multi-line so don't act until we get everything
+                    if (command.Args[1] == "LS" && command.Args[2] == "*")
+                    {
+                        // multiline
+                        caps = command.Args[3];
+                    }
+                    else
+                    {
+                        // final LS
+                        caps = command.Args[2];
+                        final = true;
+                    }
+
+                    foreach (var cap in caps.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        string key = cap;
+                        string? value = null;
+
+                        if (cap.Contains('='))
+                        {
+                            var bits = cap.Split('=', 2);
+                            key = bits[0];
+                            value = bits[1];
+                        }
+
+                        State.SupportedCaps[key] = value;
+                    }
+
+                    if (final)
+                    {
+                        List<string> request = new();
+
+                        foreach (var (key, value) in State.SupportedCaps)
+                        {
+                            var args = new CapEventArgs(this, key, value, command.Args[1], cancellationToken);
+                            CapReceived?.Invoke(this, args);
+                            if (args.EnableCap || defaultCaps.Contains(key))
+                            {
+                                request.Add(key);
+                            }
+                            else if (key == "sasl")
+                            {
+                                // negotiate SASL if AuthType is compatible with the SASL mechs supported by the server
+                                HashSet<string> supportedSaslTypes = new();
+
+                                switch (Options.AuthType)
+                                {
+                                    case AuthType.None:
+                                    case AuthType.NickServCertFp:
+                                    case AuthType.NickServIdentify:
+                                        // explicitly requested to *not* use SASL
+                                        break;
+                                    case AuthType.SaslPlain:
+                                        supportedSaslTypes.Add("PLAIN");
+                                        break;
+                                    case AuthType.SaslExternal:
+                                        supportedSaslTypes.Add("EXTERNAL");
+                                        break;
+                                    case AuthType.SaslScramSha256:
+                                        supportedSaslTypes.Add("SCRAM-SHA-256");
+                                        break;
+                                    case null:
+                                        if (Options.AccountCertificateFile != null)
+                                        {
+                                            supportedSaslTypes.Add("EXTERNAL");
+                                        }
+
+                                        if (Options.AccountPassword != null)
+                                        {
+                                            supportedSaslTypes.Add("PLAIN");
+                                            supportedSaslTypes.Add("SCRAM-SHA-256");
+                                        }
+
+                                        break;
+                                }
+
+                                if (value == null || supportedSaslTypes.Intersect(value.Split(',')).Any())
+                                {
+                                    request.Add("sasl");
+                                }
+                            }
+                        }
+
+                        // handle extremely large cap sets by breaking into multiple CAP REQ commands;
+                        // we want to ensure the server's response (ACK or NAK) fits within 512 bytes with protocol overhead
+                        // :server CAP nick ACK :data\r\n -- 14 bytes of overhead (leaving 498), plus nicklen, plus serverlen
+                        // we reserve another 64 bytes just in case there is other unexpected overhead. better to send an extra
+                        // CAP REQ than to be rejected because the server reply is longer than we anticipated it'd be
+                        int maxBytes = 434 - (State.Nick?.Length ?? 1) - (command.Source?.Length ?? 0);
+                        int consumedBytes = 0;
+                        List<string> param = new();
+
+                        foreach (var token in request)
+                        {
+                            if (consumedBytes + token.Length > maxBytes)
+                            {
+                                _ = SendAsync(PrepareCommand("CAP", new string[] { "REQ", String.Join(" ", param) }), cancellationToken);
+                                consumedBytes = 0;
+                                param.Clear();
+                            }
+
+                            param.Add(token);
+                            consumedBytes += token.Length;
+                        }
+
+                        if (param.Count > 0)
+                        {
+                            _ = SendAsync(PrepareCommand("CAP", new string[] { "REQ", String.Join(" ", param) }), cancellationToken);
+                        }
+                        else if (!IsConnected)
+                        {
+                            // we don't support any of the server's caps, so end cap negotiation here
+                            _ = SendAsync(PrepareCommand("CAP", new string[] { "END" }), cancellationToken);
+                        }
+                    }
                 }
 
                 break;
-            case "410":
-                // CAP command failed, bail out
-                // although if it's saying our CAP END failed (broken ircd), don't cause an infinite loop
-                if (command.Args[1] != "END")
+            case "ACK":
+            case "LIST":
                 {
-                    _ = SendAsync(PrepareCommand("CAP", new string[] { "END" }), e.Token);
+                    // mark CAPs as enabled client-side, then finish cap negotiation if this was an ACK (not a LIST)
+                    foreach (var cap in command.Args[2].Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        State.EnabledCaps.Add(cap);
+                        var args = new CapEventArgs(this, cap, null, command.Args[1], cancellationToken);
+                        CapEnabled?.Invoke(this, args);
+                    }
+
+                    if (command.Args[1] == "ACK" && !IsConnected)
+                    {
+                        _ = SendAsync(PrepareCommand("CAP", new string[] { "END" }), cancellationToken);
+                    }
                 }
 
                 break;
-            case "AUTHENTICATE":
-                // SASL
+            case "DEL":
+                {
+                    // mark CAPs as disabled client-side if applicable; don't send CAP END in any event here
+                    foreach (var cap in command.Args[2].Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        State.EnabledCaps.Remove(cap);
+                        var args = new CapEventArgs(this, cap, null, command.Args[1], cancellationToken);
+                        CapDisabled?.Invoke(this, args);
+                    }
+                }
+
                 break;
-            case "900":
-                // successful SASL, record our account name
-                State.Account = command.Args[2];
+            case "NAK":
+                // we couldn't set CAPs, bail out
+                if (!IsConnected)
+                {
+                    _ = SendAsync(PrepareCommand("CAP", new string[] { "END" }), cancellationToken);
+                }
+
                 break;
-            case "902":
-            case "904":
-            case "905":
-            case "906":
-                // SASL failed
+            default:
+                // not something we recognize; log but otherwise ignore
+                Logger.LogInformation("Received unrecognized CAP {Command} from server (potentially broken ircd)", command.Args[1]);
                 break;
         }
     }

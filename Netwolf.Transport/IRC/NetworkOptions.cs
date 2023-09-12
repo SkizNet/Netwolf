@@ -125,7 +125,7 @@ public class NetworkOptions
     public string? AccountCertificatePassword { get; set; }
 
     /// <summary>
-    /// Authentication type to use. If unset, uses the most secure method available
+    /// Authentication type to use. If <c>null</c>, uses the most secure method available
     /// to us based on the network's SASL support and whether <see cref="AccountCertificate"/> or
     /// <see cref="AccountPassword"/> are defined. The following are tried (in order):
     /// <list type="number">

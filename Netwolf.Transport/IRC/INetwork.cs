@@ -54,6 +54,29 @@ public interface INetwork : IDisposable, IAsyncDisposable
     event EventHandler<NetworkEventArgs>? Disconnected;
 
     /// <summary>
+    /// Event raised for each new CAP we receive from the network. This is fired
+    /// once per capability mentioned in a CAP LS or CAP NEW command. Listeners
+    /// can modify the <see cref="CapEventArgs.EnableCap"/> property to have
+    /// us automatically send a CAP REQ once all event handlers have finished.
+    /// </summary>
+    event EventHandler<CapEventArgs>? CapReceived;
+
+    /// <summary>
+    /// Event raised for each CAP that is enabled by the network. This is fired
+    /// once per capability mentioned in the CAP ACK or CAP LIST commands. It is possible
+    /// for this to fire multiple times for the same capability.
+    /// </summary>
+    event EventHandler<CapEventArgs>? CapEnabled;
+
+    /// <summary>
+    /// Event raised for each CAP that is no longer supported by the network.
+    /// This is fired once per capability mentioned in the CAP DEL command.
+    /// It is possible for this to fire on a cap that was not previously listed in a
+    /// CapEnabled event, so listeners should not assume that the cap was previously enabled.
+    /// </summary>
+    event EventHandler<CapEventArgs>? CapDisabled;
+
+    /// <summary>
     /// Connect to the network and perform user registration. If the passed-in
     /// cancellation token has a timeout, that timeout will apply to all connection
     /// attempts, rather than any individual connection. Individual connection
