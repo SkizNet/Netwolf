@@ -3,6 +3,8 @@
 using Netwolf.Server.Commands;
 using Netwolf.Transport.IRC;
 
+using System.Security.Authentication.ExtendedProtection;
+
 namespace Netwolf.Test;
 
 internal class FakeConnection : IConnection
@@ -81,5 +83,10 @@ internal class FakeConnection : IConnection
     {
         Dispose();
         return ValueTask.CompletedTask;
+    }
+
+    public ChannelBinding? GetChannelBinding(ChannelBindingKind kind)
+    {
+        return null;
     }
 }

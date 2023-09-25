@@ -110,7 +110,14 @@ public class NetworkOptions
     }
 
     /// <summary>
-    /// Password to log into the user's account.
+    /// Should we attempt to impersonate another account? Some services may allow this with sufficient privileges.
+    /// This should be the account name of the account to impersonate, or <c>null</c> if not impersonating.
+    /// Has no effect if SASL is not in use.
+    /// </summary>
+    public string? ImpersonateAccount { get; set; }
+
+    /// <summary>
+    /// Password to log into the user's account via SASL.
     /// </summary>
     public string? AccountPassword { get; set; }
 
@@ -125,21 +132,32 @@ public class NetworkOptions
     public string? AccountCertificatePassword { get; set; }
 
     /// <summary>
-    /// Authentication type to use. If <c>null</c>, uses the most secure method available
-    /// to us based on the network's SASL support and whether <see cref="AccountCertificate"/> or
-    /// <see cref="AccountPassword"/> are defined. The following are tried (in order):
-    /// <list type="number">
-    /// <item><description>SASL EXTERNAL</description></item>
-    /// <item><description>SASL SCRAM-SHA256</description></item>
-    /// <item><description>SASL PLAIN</description></item>
-    /// <item><description>NickServ IDENTIFY</description></item>
-    /// <item><description>None</description></item>
-    /// </list>
-    /// Note that NickServ CertFP is not on the autodetection list, as we have no means
-    /// of verifying whether or not the remote NickServ supports CertFP. If the remote
-    /// network does not have services, ensure that <see cref="AccountPassword"/> is <c>null</c>.
+    /// Authentication type to use. If <c>true</c> (default), attempts SASL authentication
+    /// based on the network's SASL support and whether <see cref="AccountCertificate"/> or
+    /// <see cref="AccountPassword"/> are defined. By default, EXTERNAL, SCRAM-*, and PLAIN
+    /// are supported, although consumers may replace the <see cref="Sasl.ISaslMechanismFactory"/>
+    /// service to support additional algorithms.
     /// </summary>
-    public AuthType? AuthType { get; set; }
+    public bool UseSasl { get; set; } = true;
+
+    /// <summary>
+    /// If <c>true</c>, allow SASL PLAIN even over connections that are not encrypted.
+    /// This is generally insecure, although if encryption is performed at a lower level (e.g. VPN/tor)
+    /// then it may be fine to use.
+    /// </summary>
+    public bool AllowInsecureSaslPlain { get; set; } = false;
+
+    /// <summary>
+    /// If we attempt SASL and it fails, should we continue with the connection?
+    /// This has no effect if the server doesn't advertise SASL support.
+    /// </summary>
+    public bool AbortOnSaslFailure { get; set; } = true;
+
+    /// <summary>
+    /// SASL mechanisms we will never attempt, even if supported by the server and our config.
+    /// Values must be ALL UPPERCASE.
+    /// </summary>
+    public HashSet<string> DisabledSaslMechs { get; init; } = new();
 
     /// <summary>
     /// If set, and supported by the server, use CPRIVMSG and CNOTICE for outgoing messages

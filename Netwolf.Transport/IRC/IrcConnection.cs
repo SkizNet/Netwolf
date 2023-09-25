@@ -8,6 +8,7 @@ using System.IO.Pipelines;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication.ExtendedProtection;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -284,6 +285,23 @@ public class IrcConnection : IConnection
                 return CommandFactory.Parse(CommandType.Server, message);
             }
         }
+    }
+
+    public ChannelBinding? GetChannelBinding(ChannelBindingKind kind)
+    {
+        if (Stream is SslStream sslStream)
+        {
+            try
+            {
+                return sslStream.TransportContext.GetChannelBinding(kind);
+            }
+            catch (NotSupportedException)
+            {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

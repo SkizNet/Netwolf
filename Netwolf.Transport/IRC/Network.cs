@@ -3,6 +3,11 @@ using Microsoft.Extensions.Logging;
 
 using Netwolf.Transport.Exceptions;
 using Netwolf.Transport.Internal;
+using Netwolf.Transport.Sasl;
+
+using System.Buffers.Text;
+using System.Security.Authentication.ExtendedProtection;
+using System.Text;
 
 namespace Netwolf.Transport.IRC;
 
@@ -27,6 +32,8 @@ public class Network : INetwork
 
     protected IConnectionFactory ConnectionFactory { get; init; }
 
+    protected ISaslMechanismFactory SaslMechanismFactory { get; init; }
+
     /// <summary>
     /// Cancellation token for <see cref="_messageLoop"/>, used when disposing this <see cref="Network"/> instance.
     /// </summary>
@@ -46,6 +53,11 @@ public class Network : INetwork
     /// Completion source used in <see cref="ConnectAsync(CancellationToken)"/> to block the function until user registration completes
     /// </summary>
     private TaskCompletionSource? _userRegistrationCompletionSource;
+
+    /// <summary>
+    /// Server we are connected to, null if not connected
+    /// </summary>
+    private IServer? Server { get; set; }
 
     private IConnection? _connection;
 
@@ -125,6 +137,36 @@ public class Network : INetwork
     public event EventHandler<CapEventArgs>? CapDisabled;
 
     /// <summary>
+    /// SASL mechanisms that are supported by both the server and us.
+    /// We will try these in order of most to least secure.
+    /// If the server doesn't support CAP version 302, this will only be the mechanisms
+    /// selected by the client and doesn't necessarily speak to server support.
+    /// Mechanisms will be removed from this set as they are tried so that we don't re-try them.
+    /// </summary>
+    private HashSet<string> SaslMechs { get; set; } = new();
+
+    /// <summary>
+    /// SASL mechanism that is currently in use, or <c>null</c> if SASL isn't being attempted or failed
+    /// </summary>
+    private ISaslMechanism? SelectedSaslMech { get; set; }
+
+    /// <summary>
+    /// Maximum length of SaslBuffer (64 KiB base64-encoded, 48 KiB after decoding).
+    /// We abort SASL if the server sends more data than this
+    /// </summary>
+    private const int SASL_BUFFER_MAX_LENGTH = 65536;
+
+    /// <summary>
+    /// Buffer 
+    /// </summary>
+    private StringBuilder SaslBuffer { get; set; } = new();
+
+    /// <summary>
+    /// If true, suspend sending CAP END when receiving an ACK until SASL finishes
+    /// </summary>
+    public bool SuspendCapEndForSasl { get; set; } = false;
+
+    /// <summary>
     /// Create a new Network that can be connected to.
     /// </summary>
     /// <param name="name">
@@ -135,12 +177,14 @@ public class Network : INetwork
     /// <param name="logger">Logger to use.</param>
     /// <param name="commandFactory"></param>
     /// <param name="connectionFactory"></param>
+    /// <param name="saslMechanismFactory"></param>
     public Network(
         string name,
         NetworkOptions options,
         ILogger<INetwork> logger,
         ICommandFactory commandFactory,
-        IConnectionFactory connectionFactory)
+        IConnectionFactory connectionFactory,
+        ISaslMechanismFactory saslMechanismFactory)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(options);
@@ -150,6 +194,7 @@ public class Network : INetwork
         Logger = logger;
         CommandFactory = commandFactory;
         ConnectionFactory = connectionFactory;
+        SaslMechanismFactory = saslMechanismFactory;
 
         // spin up the message loop for this Network
         _messageLoop = Task.Run(MessageLoop);
@@ -325,6 +370,7 @@ public class Network : INetwork
                 using var timer = new CancellationTokenSource();
                 using var aggregate = CancellationTokenSource.CreateLinkedTokenSource(timer.Token, cancellationToken);
                 _connection = ConnectionFactory.Create(this, server, Options);
+                Server = server;
 
                 if (Options.ConnectTimeout != TimeSpan.Zero)
                 {
@@ -447,6 +493,7 @@ public class Network : INetwork
             }
 
             _connection = null;
+            Server = null;
             _messageLoopCompletionSource.SetResult();
         }
     }
@@ -576,19 +623,6 @@ public class Network : INetwork
                     }
 
                     break;
-                case "AUTHENTICATE":
-                    // SASL
-                    break;
-                case "900":
-                    // successful SASL, record our account name
-                    State.Account = command.Args[2];
-                    break;
-                case "902":
-                case "904":
-                case "905":
-                case "906":
-                    // SASL failed
-                    break;
             }
         }
 
@@ -601,6 +635,26 @@ public class Network : INetwork
             case "CAP":
                 // CAP negotation
                 OnCapCommand(command, cancellationToken);
+                break;
+            case "AUTHENTICATE":
+                // SASL
+                OnSaslCommand(command, cancellationToken);
+                break;
+            case "900":
+                // successful SASL, record our account name
+                State.Account = command.Args[2];
+                break;
+            case "904":
+            case "905":
+                // SASL failed, retry with next mech
+                break;
+            case "902":
+            case "906":
+            case "907":
+                // SASL failed, don't retry
+                break;
+            case "908":
+                // failed, but will also get a 904, simply update supported mechs
                 break;
         }
     }
@@ -665,45 +719,22 @@ public class Network : INetwork
                             {
                                 request.Add(key);
                             }
-                            else if (key == "sasl")
+                            else if (key == "sasl" && Options.UseSasl && State.Account == null)
                             {
-                                // negotiate SASL if AuthType is compatible with the SASL mechs supported by the server
-                                HashSet<string> supportedSaslTypes = new();
+                                // negotiate SASL
+                                HashSet<string> supportedSaslTypes = new(SaslMechanismFactory.GetSupportedMechanisms(Options, Server!));
 
-                                switch (Options.AuthType)
+                                if (value != null)
                                 {
-                                    case AuthType.None:
-                                    case AuthType.NickServCertFp:
-                                    case AuthType.NickServIdentify:
-                                        // explicitly requested to *not* use SASL
-                                        break;
-                                    case AuthType.SaslPlain:
-                                        supportedSaslTypes.Add("PLAIN");
-                                        break;
-                                    case AuthType.SaslExternal:
-                                        supportedSaslTypes.Add("EXTERNAL");
-                                        break;
-                                    case AuthType.SaslScramSha256:
-                                        supportedSaslTypes.Add("SCRAM-SHA-256");
-                                        break;
-                                    case null:
-                                        if (Options.AccountCertificateFile != null)
-                                        {
-                                            supportedSaslTypes.Add("EXTERNAL");
-                                        }
-
-                                        if (Options.AccountPassword != null)
-                                        {
-                                            supportedSaslTypes.Add("PLAIN");
-                                            supportedSaslTypes.Add("SCRAM-SHA-256");
-                                        }
-
-                                        break;
+                                    supportedSaslTypes.IntersectWith(value.Split(','));
                                 }
 
-                                if (value == null || supportedSaslTypes.Intersect(value.Split(',')).Any())
+                                supportedSaslTypes.ExceptWith(Options.DisabledSaslMechs);
+
+                                if (value == null || supportedSaslTypes.Any())
                                 {
                                     request.Add("sasl");
+                                    SaslMechs = supportedSaslTypes;
                                 }
                             }
                         }
@@ -752,9 +783,16 @@ public class Network : INetwork
                         State.EnabledCaps.Add(cap);
                         var args = new CapEventArgs(this, cap, null, command.Args[1], cancellationToken);
                         CapEnabled?.Invoke(this, args);
+
+                        if (command.Args[1] == "ACK" && cap == "sasl")
+                        {
+                            // if we're not registered yet, suspend registration until SASL finishes
+                            SuspendCapEndForSasl = !IsConnected;
+                            AttemptSasl(cancellationToken);
+                        }
                     }
 
-                    if (command.Args[1] == "ACK" && !IsConnected)
+                    if (command.Args[1] == "ACK" && !IsConnected && !SuspendCapEndForSasl)
                     {
                         _ = SendAsync(PrepareCommand("CAP", new string[] { "END" }), cancellationToken);
                     }
@@ -785,6 +823,128 @@ public class Network : INetwork
                 // not something we recognize; log but otherwise ignore
                 Logger.LogInformation("Received unrecognized CAP {Command} from server (potentially broken ircd)", command.Args[1]);
                 break;
+        }
+    }
+
+    private void AttemptSasl(CancellationToken cancellationToken)
+    {
+        foreach (var mech in SaslMechanismFactory.GetSupportedMechanisms(Options, Server!))
+        {
+            if (SaslMechs.Contains(mech))
+            {
+                SelectedSaslMech = SaslMechanismFactory.CreateMechanism(mech, Options);
+                if (SelectedSaslMech.SupportsChannelBinding)
+                {
+                    var uniqueData = Connection.GetChannelBinding(ChannelBindingKind.Unique);
+                    var endpointData = Connection.GetChannelBinding(ChannelBindingKind.Endpoint);
+
+                    if (!SelectedSaslMech.SetChannelBindingData(uniqueData, endpointData))
+                    {
+                        // we want binding but it's not supported; skip this mech
+                        SelectedSaslMech = null;
+                        SaslMechs.Remove(mech);
+                        continue;
+                    }
+                }
+
+                SaslMechs.Remove(mech);
+                _ = SendAsync(PrepareCommand("AUTHENTICATE", new string[] { mech }), cancellationToken);
+                return;
+            }
+        }
+
+        // no more mechs in common
+        SelectedSaslMech = null;
+
+        if (SuspendCapEndForSasl)
+        {
+            SuspendCapEndForSasl = false;
+            _ = SendAsync(PrepareCommand("CAP", new string[] { "END" }), cancellationToken);
+        }
+    }
+
+    private void OnSaslCommand(ICommand command, CancellationToken cancellationToken)
+    {
+        bool done = false;
+
+        if (SelectedSaslMech == null)
+        {
+            // unexpected AUTHENTICATE command; ignore
+            return;
+        }
+
+        if (command.Args[0] == "+")
+        {
+            // have full server response, do whatever we need with it
+            done = true;
+        }
+        else
+        {
+            SaslBuffer.Append(command.Args[0]);
+
+            // received the last line of data
+            if (command.Args[0].Length < 400)
+            {
+                done = true;
+            }
+
+            // prevent DOS from malicious servers by making buffer expand forever
+            // if the buffer grows too large, we abort SASL
+            if (SaslBuffer.Length > SASL_BUFFER_MAX_LENGTH)
+            {
+                SaslBuffer.Clear();
+                SelectedSaslMech = null;
+                _ = SendAsync(PrepareCommand("AUTHENTICATE", new string[] { "*" }), cancellationToken);
+            }
+        }
+
+        if (done)
+        {
+            byte[] data;
+            if (SaslBuffer.Length > 0)
+            {
+                data = Convert.FromBase64String(SaslBuffer.ToString());
+                SaslBuffer.Clear();
+            }
+            else
+            {
+                data = Array.Empty<byte>();
+            }
+
+            bool success = SelectedSaslMech!.Authenticate(data, out var responseBytes);
+
+            if (!success)
+            {
+                // abort SASL
+                SelectedSaslMech = null;
+                _ = SendAsync(PrepareCommand("AUTHENTICATE", new string[] { "*" }), cancellationToken);
+            }
+            else
+            {
+                // send response
+                if (responseBytes.Length == 0)
+                {
+                    _ = SendAsync(PrepareCommand("AUTHENTICATE", new string[] { "+" }), cancellationToken);
+                }
+                else
+                {
+                    var response = Convert.ToBase64String(responseBytes);
+                    int start = 0;
+
+                    do
+                    {
+                        int end = Math.Min(start + 400, response.Length);
+                        _ = SendAsync(PrepareCommand("AUTHENTICATE", new string[] { response[start..end] }), cancellationToken);
+                        start = end;
+                    } while (start < response.Length);
+
+                    if (response.Length % 400 == 0)
+                    {
+                        // if we sent exactly 400 bytes in the last line, send a blank line to let server know we're done
+                        _ = SendAsync(PrepareCommand("AUTHENTICATE", new string[] { "+" }), cancellationToken);
+                    }
+                }
+            }
         }
     }
 

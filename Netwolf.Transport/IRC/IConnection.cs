@@ -1,4 +1,6 @@
-﻿namespace Netwolf.Transport.IRC;
+﻿using System.Security.Authentication.ExtendedProtection;
+
+namespace Netwolf.Transport.IRC;
 
 public interface IConnection : IDisposable, IAsyncDisposable
 {
@@ -52,4 +54,14 @@ public interface IConnection : IDisposable, IAsyncDisposable
     /// </summary>
     /// <returns></returns>
     Task DisconnectAsync();
+
+    /// <summary>
+    /// Retrieve the specified channel binding kind from this connection,
+    /// or <c>null</c> if channel binding is not supported for this connection
+    /// or <paramref name="kind"/> is not a supported <see cref="ChannelBindingKind"/>
+    /// for this connection.
+    /// </summary>
+    /// <param name="kind">Kind of channel binding to retrieve</param>
+    /// <returns></returns>
+    ChannelBinding? GetChannelBinding(ChannelBindingKind kind);
 }

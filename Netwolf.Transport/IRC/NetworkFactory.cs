@@ -1,5 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 
+using Netwolf.Transport.Sasl;
+
 namespace Netwolf.Transport.IRC;
 
 public class NetworkFactory : INetworkFactory
@@ -10,15 +12,18 @@ public class NetworkFactory : INetworkFactory
 
     protected IConnectionFactory ConnectionFactory { get; set; }
 
-    public NetworkFactory(ILogger<INetwork> logger, ICommandFactory commandFactory, IConnectionFactory connectionFactory)
+    protected ISaslMechanismFactory SaslMechanismFactory { get; set; }
+
+    public NetworkFactory(ILogger<INetwork> logger, ICommandFactory commandFactory, IConnectionFactory connectionFactory, ISaslMechanismFactory saslMechanismFactory)
     {
         Logger = logger;
         CommandFactory = commandFactory;
         ConnectionFactory = connectionFactory;
+        SaslMechanismFactory = saslMechanismFactory;
     }
 
     public INetwork Create(string name, NetworkOptions options)
     {
-        return new Network(name, options, Logger, CommandFactory, ConnectionFactory);
+        return new Network(name, options, Logger, CommandFactory, ConnectionFactory, SaslMechanismFactory);
     }
 }
