@@ -1,4 +1,5 @@
 ﻿using Netwolf.Transport.Extensions;
+using Netwolf.Transport.MFA;
 
 using System;
 using System.Buffers.Text;
@@ -24,9 +25,13 @@ public sealed class SaslScram : ISaslMechanism
 
     private ChannelBinding? EndpointBindingData { get; set; }
 
+    private HashAlgorithmName HashName { get; init; }
+
     private Func<byte[], byte[]> Hash { get; init; }
 
     private Func<byte[], byte[], byte[]> Hmac { get; init; }
+
+    private IMfaMechanism? MFA { get; init; }
 
     private int HashSize { get; init; }
 
@@ -48,7 +53,9 @@ public sealed class SaslScram : ISaslMechanism
 
     private string ExpectedServerSignature { get; set; } = null!;
 
-    public SaslScram(string hashName, string username, string? impersonate, string password, bool plus = false)
+    private byte[]? MfaChallenge { get; set; }
+
+    public SaslScram(string hashName, string username, string? impersonate, string password, bool plus = false, IMfaMechanism? mfa = null)
     {
         if (hashName == null)
         {
@@ -58,14 +65,22 @@ public sealed class SaslScram : ISaslMechanism
         switch (hashName)
         {
             case "SHA-1":
+                HashName = HashAlgorithmName.SHA1;
                 Hash = SHA1.HashData;
                 Hmac = HMACSHA1.HashData;
                 HashSize = SHA1.HashSizeInBytes;
                 break;
             case "SHA-256":
+                HashName = HashAlgorithmName.SHA256;
                 Hash = SHA256.HashData;
                 Hmac = HMACSHA256.HashData;
                 HashSize = SHA256.HashSizeInBytes;
+                break;
+            case "SHA-512":
+                HashName = HashAlgorithmName.SHA512;
+                Hash = SHA512.HashData;
+                Hmac = HMACSHA512.HashData;
+                HashSize = SHA512.HashSizeInBytes;
                 break;
             default:
                 throw new ArgumentException("Unsupported hash name", nameof(hashName));
@@ -80,6 +95,7 @@ public sealed class SaslScram : ISaslMechanism
             ?? throw new ArgumentNullException(nameof(password));
         // 128-bit random nonce (trailing ='s are unnecessary and don't add to security of nonce)
         Nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16)).TrimEnd('=');
+        MFA = mfa;
     }
 
     // This needs some refactoring into helper methods
@@ -93,7 +109,7 @@ public sealed class SaslScram : ISaslMechanism
         }
 
         // all fields recognized by the SCRAM standard
-        string recognized = "anmrcsipve";
+        string recognized = "anmrcsipveltf";
 
         State++;
         if (State == 1)
@@ -224,9 +240,14 @@ public sealed class SaslScram : ISaslMechanism
                         return false;
                     }
                 }
+                else if (i >= 3 && d[0] == "l" && MfaChallenge == null)
+                {
+                    // optional extension from https://datatracker.ietf.org/doc/draft-ietf-kitten-scram-2fa/
+                    MfaChallenge = Convert.FromBase64String(d[1]);
+                }
                 else if (i >= 3 && !recognized.Contains(d[0][0]))
                 {
-                    // optional extensions; ignore
+                    // unrecognized optional extensions; ignore
                 }
                 else
                 {
@@ -275,27 +296,18 @@ public sealed class SaslScram : ISaslMechanism
             sb.Append(",r=");
             sb.Append(Nonce);
 
-            // proof
-
-            // last 4 bytes of initial are {0, 0, 0, 1} (the integer 1 in big endian byte order)
-            // new byte[] initializes everything to 0, so we just need to set the 1.
-            var initial = new byte[salt!.Length + 4];
-            Array.Copy(salt, initial, salt.Length);
-            initial[^1] = 1;
-
-            var saltedPassword = new byte[HashSize];
-            buffer = Hmac(Password, initial);
-            Array.Copy(buffer, saltedPassword, buffer.Length);
-
-            for (int i = 1; i < iterations; ++i)
+            // MFA
+            if (MFA != null)
             {
-                buffer = Hmac(Password, buffer);
-                for (int j = 0; j < buffer.Length; ++j)
-                {
-                    saltedPassword[j] ^= buffer[j];
-                }
+                sb.Append(",t=");
+                sb.Append(MFA.ScramName);
+                sb.Append(",f=");
+                // accessing .Result blocks the async method; we can maybe refactor this method later to be async-friendly
+                sb.Append(MFA.GetTokenAsync().Result);
             }
 
+            // proof
+            var saltedPassword = Rfc2898DeriveBytes.Pbkdf2(Password, salt!, iterations, HashName, HashSize);
             var clientKey = Hmac(saltedPassword, "Client Key".EncodeUtf8());
             var serverKey = Hmac(saltedPassword, "Server Key".EncodeUtf8());
             var storedKey = Hash(clientKey);
