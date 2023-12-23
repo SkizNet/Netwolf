@@ -6,14 +6,8 @@ using Netwolf.Server.Internal;
 using Netwolf.Server.ISupport;
 using Netwolf.Transport.IRC;
 
-using Stubble.Core.Classes;
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace Netwolf.Server.Commands;
 
