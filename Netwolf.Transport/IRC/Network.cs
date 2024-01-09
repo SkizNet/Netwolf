@@ -143,7 +143,7 @@ public class Network : INetwork
     /// selected by the client and doesn't necessarily speak to server support.
     /// Mechanisms will be removed from this set as they are tried so that we don't re-try them.
     /// </summary>
-    private HashSet<string> SaslMechs { get; set; } = new();
+    private HashSet<string> SaslMechs { get; set; } = [];
 
     /// <summary>
     /// SASL mechanism that is currently in use, or <c>null</c> if SASL isn't being attempted or failed
@@ -165,6 +165,10 @@ public class Network : INetwork
     /// If true, suspend sending CAP END when receiving an ACK until SASL finishes
     /// </summary>
     public bool SuspendCapEndForSasl { get; set; } = false;
+
+    private static readonly string[] _END = ["END"];
+    private static readonly string[] _STAR = ["*"];
+    private static readonly string[] _PLUS = ["+"];
 
     /// <summary>
     /// Create a new Network that can be connected to.
@@ -266,7 +270,7 @@ public class Network : INetwork
                     tasks.Add(Connection.ReceiveAsync(_messageLoopTokenSource.Token)); // index 1
                 }
 
-                int index = Task.WaitAny(tasks.ToArray(), _messageLoopTokenSource.Token);
+                int index = Task.WaitAny([.. tasks], _messageLoopTokenSource.Token);
                 switch (index)
                 {
                     case 0:
@@ -299,8 +303,17 @@ public class Network : INetwork
                             }
                         }
 
-                        OnCommandReceived(command, _messageLoopTokenSource.Token);
-                        CommandReceived?.Invoke(command, new(this, command, _messageLoopTokenSource.Token));
+                        try
+                        {
+                            OnCommandReceived(command, _messageLoopTokenSource.Token);
+                            CommandReceived?.Invoke(command, new(this, command, _messageLoopTokenSource.Token));
+                        }
+                        catch (Exception e)
+                        {
+                            // if a command callback failed due to an exception, don't crash the message loop
+                            Logger.LogError(e, "An error occurred while handling a {Command} from the server", command.Verb);
+                        }
+                        
                         break;
                     case 2:
                         // pingTimer fired, send a PING and reset the timer
@@ -441,7 +454,7 @@ public class Network : INetwork
                     // handle CAP negotiation (and SASL), or be disconnected outright. This will block the
                     // ConnectAsync method until registration is fully completed (whether successfully or not).
                     registrationComplete = Task.WaitAll(
-                        new[] { _userRegistrationCompletionSource.Task },
+                        [_userRegistrationCompletionSource.Task],
                         (int)Options.ConnectTimeout.TotalMilliseconds,
                         cancellationToken);
                 }
@@ -542,7 +555,7 @@ public class Network : INetwork
         };
 
         string hostmask = $"{State.Nick}!{State.Ident}@{State.Host}";
-        List<string> args = new() { target };
+        List<string> args = [target];
 
         // :<hostmask> <verb> <target> :<text>\r\n -- 2 colons + 3 spaces + CRLF = 7 syntax characters. If CPRIVMSG/CNOTICE, one extra space is needed.
         // we build in an additional safety buffer of 14 bytes to account for cases where our hostmask is out of sync or the server adds additional context
@@ -571,7 +584,7 @@ public class Network : INetwork
                 ));
         }
 
-        return commands.ToArray();
+        return [.. commands];
     }
 
     private void OnCommandReceived(ICommand command, CancellationToken cancellationToken)
@@ -619,7 +632,7 @@ public class Network : INetwork
                     // although if it's saying our CAP END failed (broken ircd), don't cause an infinite loop
                     if (command.Args[1] != "END")
                     {
-                        _ = SendAsync(PrepareCommand("CAP", new string[] { "END" }), cancellationToken);
+                        _ = SendAsync(PrepareCommand("CAP", _END), cancellationToken);
                     }
 
                     break;
@@ -656,19 +669,23 @@ public class Network : INetwork
             case "908":
                 // failed, but will also get a 904, simply update supported mechs
                 break;
+            case "PING":
+                // send a PONG
+                _ = SendAsync(PrepareCommand("PONG", new string[] { command.Args[0] }), cancellationToken);
+                break;
         }
     }
 
     private void OnCapCommand(ICommand command, CancellationToken cancellationToken)
     {
         // CAPs that are always enabled if supported by the server, because we support them in this layer
-        HashSet<string> defaultCaps = new()
-        {
+        HashSet<string> defaultCaps =
+        [
             "cap-notify",
             "message-ids",
             "message-tags",
             "server-time",
-        };
+        ];
 
         // figure out which subcommand we have
         // CAP nickname subcommand args...
@@ -709,17 +726,13 @@ public class Network : INetwork
 
                     if (final)
                     {
-                        List<string> request = new();
+                        List<string> request = [];
 
                         foreach (var (key, value) in State.SupportedCaps)
                         {
                             var args = new CapEventArgs(this, key, value, command.Args[1], cancellationToken);
                             CapReceived?.Invoke(this, args);
-                            if (args.EnableCap || defaultCaps.Contains(key))
-                            {
-                                request.Add(key);
-                            }
-                            else if (key == "sasl" && Options.UseSasl && State.Account == null)
+                            if (key == "sasl" && Options.UseSasl && State.Account == null)
                             {
                                 // negotiate SASL
                                 HashSet<string> supportedSaslTypes = new(SaslMechanismFactory.GetSupportedMechanisms(Options, Server!));
@@ -731,11 +744,15 @@ public class Network : INetwork
 
                                 supportedSaslTypes.ExceptWith(Options.DisabledSaslMechs);
 
-                                if (value == null || supportedSaslTypes.Any())
+                                if (value == null || supportedSaslTypes.Count != 0)
                                 {
                                     request.Add("sasl");
                                     SaslMechs = supportedSaslTypes;
                                 }
+                            }
+                            else if (args.EnableCap || defaultCaps.Contains(key))
+                            {
+                                request.Add(key);
                             }
                         }
 
@@ -746,7 +763,7 @@ public class Network : INetwork
                         // CAP REQ than to be rejected because the server reply is longer than we anticipated it'd be
                         int maxBytes = 434 - (State.Nick?.Length ?? 1) - (command.Source?.Length ?? 0);
                         int consumedBytes = 0;
-                        List<string> param = new();
+                        List<string> param = [];
 
                         foreach (var token in request)
                         {
@@ -768,7 +785,7 @@ public class Network : INetwork
                         else if (!IsConnected)
                         {
                             // we don't support any of the server's caps, so end cap negotiation here
-                            _ = SendAsync(PrepareCommand("CAP", new string[] { "END" }), cancellationToken);
+                            _ = SendAsync(PrepareCommand("CAP", _END), cancellationToken);
                         }
                     }
                 }
@@ -794,7 +811,7 @@ public class Network : INetwork
 
                     if (command.Args[1] == "ACK" && !IsConnected && !SuspendCapEndForSasl)
                     {
-                        _ = SendAsync(PrepareCommand("CAP", new string[] { "END" }), cancellationToken);
+                        _ = SendAsync(PrepareCommand("CAP", _END), cancellationToken);
                     }
                 }
 
@@ -815,7 +832,7 @@ public class Network : INetwork
                 // we couldn't set CAPs, bail out
                 if (!IsConnected)
                 {
-                    _ = SendAsync(PrepareCommand("CAP", new string[] { "END" }), cancellationToken);
+                    _ = SendAsync(PrepareCommand("CAP", _END), cancellationToken);
                 }
 
                 break;
@@ -859,7 +876,7 @@ public class Network : INetwork
         if (SuspendCapEndForSasl)
         {
             SuspendCapEndForSasl = false;
-            _ = SendAsync(PrepareCommand("CAP", new string[] { "END" }), cancellationToken);
+            _ = SendAsync(PrepareCommand("CAP", _END), cancellationToken);
         }
     }
 
@@ -894,7 +911,7 @@ public class Network : INetwork
             {
                 SaslBuffer.Clear();
                 SelectedSaslMech = null;
-                _ = SendAsync(PrepareCommand("AUTHENTICATE", new string[] { "*" }), cancellationToken);
+                _ = SendAsync(PrepareCommand("AUTHENTICATE", _STAR), cancellationToken);
             }
         }
 
@@ -908,7 +925,7 @@ public class Network : INetwork
             }
             else
             {
-                data = Array.Empty<byte>();
+                data = [];
             }
 
             bool success = SelectedSaslMech!.Authenticate(data, out var responseBytes);
@@ -917,14 +934,14 @@ public class Network : INetwork
             {
                 // abort SASL
                 SelectedSaslMech = null;
-                _ = SendAsync(PrepareCommand("AUTHENTICATE", new string[] { "*" }), cancellationToken);
+                _ = SendAsync(PrepareCommand("AUTHENTICATE", _STAR), cancellationToken);
             }
             else
             {
                 // send response
                 if (responseBytes.Length == 0)
                 {
-                    _ = SendAsync(PrepareCommand("AUTHENTICATE", new string[] { "+" }), cancellationToken);
+                    _ = SendAsync(PrepareCommand("AUTHENTICATE", _PLUS), cancellationToken);
                 }
                 else
                 {
@@ -941,7 +958,7 @@ public class Network : INetwork
                     if (response.Length % 400 == 0)
                     {
                         // if we sent exactly 400 bytes in the last line, send a blank line to let server know we're done
-                        _ = SendAsync(PrepareCommand("AUTHENTICATE", new string[] { "+" }), cancellationToken);
+                        _ = SendAsync(PrepareCommand("AUTHENTICATE", _PLUS), cancellationToken);
                     }
                 }
             }

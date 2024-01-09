@@ -24,7 +24,7 @@ public class ISupportResolver : IISupportResolver
         Logger = logger;
 
         // DefaultTokenProvider should always be first; it's an internal class so the loop below won't construct a 2nd one
-        TokenProviders = new() { (IISupportTokenProvider)ActivatorUtilities.CreateInstance(serviceProvider, typeof(DefaultTokenProvider)) };
+        TokenProviders = [(IISupportTokenProvider)ActivatorUtilities.CreateInstance(serviceProvider, typeof(DefaultTokenProvider))];
 
         // populate TokenProviders from all concrete classes across all assemblies that implement IISupportTokenProvider
         Logger.LogTrace("Scanning for ISUPPORT token providers");
@@ -37,21 +37,21 @@ public class ISupportResolver : IISupportResolver
 
     public IReadOnlyDictionary<string, object?> Resolve(User user)
     {
-        Dictionary<string, object?> tokens = new();
-        Dictionary<string, List<object?>> staging = new();
+        Dictionary<string, object?> tokens = [];
+        Dictionary<string, List<object?>> staging = [];
 
         foreach (var provider in TokenProviders)
         {
             var res = provider.GetTokens(user);
             foreach (var (key, token) in res)
             {
-                if (staging.ContainsKey(key))
+                if (staging.TryGetValue(key, out var value))
                 {
-                    staging[key].Add(token);
+                    value.Add(token);
                 }
                 else
                 {
-                    staging[key] = new List<object?>() { token };
+                    staging[key] = [token];
                 }
             }
         }

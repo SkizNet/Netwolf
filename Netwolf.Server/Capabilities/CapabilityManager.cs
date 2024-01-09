@@ -20,12 +20,12 @@ public class CapabilityManager : ICapabilityManager
         logger.LogTrace("Scanning for capabilities");
         foreach (var cap in TypeDiscovery.GetTypes<ICapability>(provider, options))
         {
-            if (Capabilities.ContainsKey(cap.Name))
+            if (Capabilities.TryGetValue(cap.Name, out var value))
             {
                 logger.LogWarning("{Type1} introduces duplicate capability {Name}; already defined by {Type2}",
                     cap.GetType().FullName,
                     cap.Name,
-                    Capabilities[cap.Name].GetType().FullName);
+                    value.GetType().FullName);
 
                 continue;
             }

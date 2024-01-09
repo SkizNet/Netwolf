@@ -17,7 +17,7 @@ internal partial class CommandDispatcher : ICommandDispatcher
 
     private ILogger Logger { get; init; }
 
-    private Dictionary<string, ICommandHandler> Commands { get; init; } = new();
+    private Dictionary<string, ICommandHandler> Commands { get; init; } = [];
 
     public CommandDispatcher(IServiceProvider provider, ILogger<ICommandDispatcher> logger, IOptionsSnapshot<ServerOptions> options)
     {

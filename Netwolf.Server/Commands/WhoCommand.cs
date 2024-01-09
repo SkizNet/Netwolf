@@ -26,7 +26,7 @@ public class WhoCommand : ICommandHandler, IISupportTokenProvider
 
     private static string[] ResolveAttributes(User client, User target, IEnumerable<char> attributes)
     {
-        List<string> values = new();
+        List<string> values = [];
         foreach (var attribute in attributes)
         {
             values.Add(attribute switch
@@ -147,9 +147,9 @@ public class WhoCommand : ICommandHandler, IISupportTokenProvider
             mask = command.Args[2];
         }
         // if we weren't given a second mask, check if the first one is a nickname
-        else if (network.Clients.ContainsKey(lookupKey))
+        else if (network.Clients.TryGetValue(lookupKey, out var value))
         {
-            targets = new User[] { network.Clients[lookupKey] };
+            targets = new User[] { value };
         }
 
         // if the mask isn't 0 or *, apply it
@@ -334,7 +334,7 @@ public class WhoCommand : ICommandHandler, IISupportTokenProvider
 
     IReadOnlyDictionary<string, object?> IISupportTokenProvider.GetTokens(User client)
     {
-        Dictionary<string, object?> dict = new();
+        Dictionary<string, object?> dict = [];
 
         if (WhoxEnabled)
         {
