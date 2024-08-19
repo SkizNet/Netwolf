@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 
 using Netwolf.Server.Commands;
 using Netwolf.Server.Internal;
+using Netwolf.Transport.IRC;
 
 using System;
 using System.Collections.Generic;
@@ -35,10 +36,10 @@ public class ISupportResolver : IISupportResolver
         }
     }
 
-    public IReadOnlyDictionary<string, object?> Resolve(User user)
+    public IReadOnlyDictionary<ISupportToken, object?> Resolve(User user)
     {
-        Dictionary<string, object?> tokens = [];
-        Dictionary<string, List<object?>> staging = [];
+        Dictionary<ISupportToken, object?> tokens = [];
+        Dictionary<ISupportToken, List<object?>> staging = [];
 
         foreach (var provider in TokenProviders)
         {

@@ -16,14 +16,20 @@ public class NetworkEventArgs : EventArgs
     public ICommand? Command { get; init; }
 
     /// <summary>
+    /// Exception raised by the event, if any.
+    /// </summary>
+    public Exception? Exception { get; init; }
+
+    /// <summary>
     /// Cancellation token to use for any asynchronous tasks awaited by the event.
     /// </summary>
     public CancellationToken Token { get; init; }
 
-    internal NetworkEventArgs(INetwork network, ICommand? command = null, CancellationToken token = default)
+    internal NetworkEventArgs(INetwork network, CancellationToken token, ICommand? command = null, Exception? ex = null)
     {
         Network = network;
         Command = command;
         Token = token;
+        Exception = ex;
     }
 }

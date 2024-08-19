@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Netwolf.Transport.IRC;
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -8,5 +10,5 @@ namespace Netwolf.Server.ISupport;
 
 public interface IISupportResolver
 {
-    public IReadOnlyDictionary<string, object?> Resolve(User user);
+    public IReadOnlyDictionary<ISupportToken, object?> Resolve(User user);
 }

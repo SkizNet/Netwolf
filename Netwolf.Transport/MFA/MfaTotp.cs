@@ -1,10 +1,5 @@
-﻿using System;
-using System.Buffers.Binary;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Buffers.Binary;
 using System.Security.Cryptography;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Netwolf.Transport.MFA;
 
@@ -60,8 +55,8 @@ public class MfaTotp : IMfaMechanism
 
     private TokenRetrievalCallback? Callback { get; init; }
 
-    private readonly int[] _powersOf10Cache = new int[]
-    {
+    private readonly int[] _powersOf10Cache =
+    [
         1,
         10,
         100,
@@ -72,7 +67,7 @@ public class MfaTotp : IMfaMechanism
         10000000,
         100000000,
         1000000000,
-    };
+    ];
 
     /// <summary>
     /// Create a new TOTP MFA instance with a known secret key.

@@ -36,7 +36,7 @@ public interface IConnection : IDisposable, IAsyncDisposable
     /// will block indefinitely until the command is sent.
     /// </param>
     /// <returns></returns>
-    Task UnsafeSendAsync(string command, CancellationToken cancellationToken);
+    Task UnsafeSendRawAsync(string command, CancellationToken cancellationToken);
 
     /// <summary>
     /// Receive a command from the remote server

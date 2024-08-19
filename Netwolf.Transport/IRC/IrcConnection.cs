@@ -215,12 +215,12 @@ public class IrcConnection : IConnection
     /// <inheritdoc />
     public Task SendAsync(ICommand command, CancellationToken cancellationToken)
     {
-        return UnsafeSendAsync(command.FullCommand, cancellationToken);
+        return UnsafeSendRawAsync(command.FullCommand, cancellationToken);
     }
 
     private static readonly byte[] _crlf = "\r\n".EncodeUtf8();
 
-    public async Task UnsafeSendAsync(string command, CancellationToken cancellationToken)
+    public async Task UnsafeSendRawAsync(string command, CancellationToken cancellationToken)
     {
         if (Writer == null)
         {

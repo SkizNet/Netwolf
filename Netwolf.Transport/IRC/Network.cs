@@ -306,7 +306,7 @@ public class Network : INetwork
                         try
                         {
                             OnCommandReceived(command, _messageLoopTokenSource.Token);
-                            CommandReceived?.Invoke(command, new(this, command, _messageLoopTokenSource.Token));
+                            CommandReceived?.Invoke(command, new(this, _messageLoopTokenSource.Token, command));
                         }
                         catch (Exception e)
                         {
@@ -322,7 +322,7 @@ public class Network : INetwork
                         pingTimeoutTimers.Add(Task.Delay(Options.PingTimeout, _messageLoopTokenSource.Token));
                         string cookie = String.Format("NWPC{0:X16}", Random.Shared.NextInt64());
                         pingTimeoutCookies.Add(cookie);
-                        _ = SendAsync(PrepareCommand("PING", new string[] { cookie }, null), _messageLoopTokenSource.Token);
+                        _ = SendAsync(PrepareCommand("PING", [cookie], null), _messageLoopTokenSource.Token);
                         break;
                     default:
                         // one of the pingTimeoutTimers fired or ReceiveAsync threw an exception
@@ -335,7 +335,7 @@ public class Network : INetwork
                                 await _connection.DisconnectAsync().ConfigureAwait(false);
                                 _connection = null;
 
-                                Disconnected?.Invoke(tasks[index].Exception, new(this));
+                                Disconnected?.Invoke(this, new(this, _messageLoopTokenSource.Token, null, tasks[index].Exception));
                             }
                         });
                         break;
@@ -429,17 +429,17 @@ public class Network : INetwork
 
                 try
                 {
-                    await SendRawAsync("CAP LS 302", cancellationToken);
+                    await UnsafeSendRawAsync("CAP LS 302", cancellationToken);
 
                     if (Options.ServerPassword != null)
                     {
                         await SendAsync(
-                            PrepareCommand("PASS", new string[] { Options.ServerPassword }, null),
+                            PrepareCommand("PASS", [Options.ServerPassword], null),
                             cancellationToken);
                     }
 
                     await SendAsync(
-                        PrepareCommand("NICK", new string[] { Options.PrimaryNick }, null),
+                        PrepareCommand("NICK", [Options.PrimaryNick], null),
                         cancellationToken);
 
                     // Most networks outright ignore params 2 and 3.
@@ -447,7 +447,7 @@ public class Network : INetwork
                     // Others may allow an arbitrary user mode string in param 2 prefixed with +.
                     // For widest compatibility, leave both unspecified and just handle umodes post-registration.
                     await SendAsync(
-                        PrepareCommand("USER", new string[] { Options.Ident, "0", "*", Options.RealName }),
+                        PrepareCommand("USER", [Options.Ident, "0", "*", Options.RealName]),
                         cancellationToken);
 
                     // Handle any responses to the above. Notably, we might need to choose a new nickname,
@@ -491,12 +491,11 @@ public class Network : INetwork
     }
 
     /// <inheritdoc />
-    public async Task DisconnectAsync(string reason, CancellationToken cancellationToken = default)
+    public async Task DisconnectAsync(string reason)
     {
         try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            await SendAsync(PrepareCommand("QUIT", new string[] { reason }, null), cancellationToken).ConfigureAwait(false);
+            await SendAsync(PrepareCommand("QUIT", [reason], null)).ConfigureAwait(false);
         }
         finally
         {
@@ -509,6 +508,8 @@ public class Network : INetwork
             Server = null;
             _messageLoopCompletionSource.SetResult();
         }
+
+        Disconnected?.Invoke(this, new(this, default));
     }
 
     /// <inheritdoc />
@@ -517,9 +518,10 @@ public class Network : INetwork
         return Connection.SendAsync(command, cancellationToken);
     }
 
-    private Task SendRawAsync(string command, CancellationToken cancellationToken)
+    /// <inheritdoc />
+    public Task UnsafeSendRawAsync(string command, CancellationToken cancellationToken)
     {
-        return Connection.UnsafeSendAsync(command, cancellationToken);
+        return Connection.UnsafeSendRawAsync(command, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -529,7 +531,7 @@ public class Network : INetwork
             CommandType.Client,
             $"{State.Nick}!{State.Ident}@{State.Host}",
             verb,
-            (args ?? Array.Empty<object?>()).Select(o => o?.ToString()).Where(o => o != null).ToList(),
+            (args ?? []).Select(o => o?.ToString()).Where(o => o != null).ToList(),
             (tags ?? new Dictionary<string, object?>()).ToDictionary(o => o.Key, o => o.Value?.ToString()));
     }
 
@@ -644,6 +646,20 @@ public class Network : INetwork
         {
             case "005":
                 // process ISUPPORT tokens
+                // first arg is our nick and last arg is the trailing "is supported by this server" so omit both
+                for (int i = 1; i < command.Args.Count - 1; i++)
+                {
+                    var token = command.Args[i];
+                    if (token.Contains('='))
+                    {
+                        var splitToken = token.Split('=', 2);
+                        State.ISupport[new(splitToken[0])] = splitToken[1];
+                    }
+                    else
+                    {
+                        State.ISupport[new(token)] = null;
+                    }
+                }
                 break;
             case "CAP":
                 // CAP negotation
@@ -671,7 +687,7 @@ public class Network : INetwork
                 break;
             case "PING":
                 // send a PONG
-                _ = SendAsync(PrepareCommand("PONG", new string[] { command.Args[0] }), cancellationToken);
+                _ = SendAsync(PrepareCommand("PONG", [command.Args[0]]), cancellationToken);
                 break;
         }
     }
@@ -967,9 +983,9 @@ public class Network : INetwork
 
     private void AbortUserRegistration(object? sender, NetworkEventArgs e)
     {
-        if (sender is AggregateException ex)
+        if (e.Exception != null)
         {
-            _userRegistrationCompletionSource?.SetException(ex);
+            _userRegistrationCompletionSource?.SetException(e.Exception);
         }
         else
         {

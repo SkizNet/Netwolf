@@ -332,9 +332,9 @@ public class WhoCommand : ICommandHandler, IISupportTokenProvider
         return Task.FromResult<ICommandResponse>(response);
     }
 
-    IReadOnlyDictionary<string, object?> IISupportTokenProvider.GetTokens(User client)
+    IReadOnlyDictionary<ISupportToken, object?> IISupportTokenProvider.GetTokens(User client)
     {
-        Dictionary<string, object?> dict = [];
+        Dictionary<ISupportToken, object?> dict = [];
 
         if (WhoxEnabled)
         {

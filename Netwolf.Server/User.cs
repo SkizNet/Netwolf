@@ -220,7 +220,10 @@ public class User : IDisposable
                 batch.AddNumeric(this, Numeric.RPL_MYINFO, Network.ServerName, Network.Version, Network.UserModes, Network.ChannelModes, Network.ChannelModesWithParams);
                 batch.AddRange(Network.ReportISupport(this));
                 batch.AddRange(ListUsersCommand.ExecuteInternal(this));
-                batch.AddNumeric(this, Numeric.RPL_UMODEIS, ModeString);
+                if (ModeString != "+")
+                {
+                    batch.AddNumeric(this, Numeric.RPL_UMODEIS, ModeString);
+                }
                 batch.AddRange(MotdCommand.ExecuteInternal(this));
 
                 return batch;

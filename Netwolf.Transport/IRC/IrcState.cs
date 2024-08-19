@@ -25,7 +25,9 @@ public class IrcState
     /// </summary>
     public string? Account { get; internal set; }
 
-    internal Dictionary<string, string?> SupportedCaps { get; init; } = new();
+    internal Dictionary<string, string?> SupportedCaps { get; init; } = [];
 
-    internal HashSet<string> EnabledCaps { get; init; } = new();
+    internal HashSet<string> EnabledCaps { get; init; } = [];
+
+    internal Dictionary<ISupportToken, string?> ISupport { get; init; } = [];
 }

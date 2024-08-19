@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Netwolf.Transport.IRC;
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -8,7 +10,7 @@ namespace Netwolf.Server.ISupport;
 
 public interface IISupportTokenProvider
 {
-    IReadOnlyDictionary<string, object?> GetTokens(User client);
+    IReadOnlyDictionary<ISupportToken, object?> GetTokens(User client);
 
     /// <summary>
     /// Merge multiple values together into a single ISUPPORT token.
@@ -20,5 +22,5 @@ public interface IISupportTokenProvider
     /// <param name="key">The ISUPPORT parameter being merged</param>
     /// <param name="tokens">The tokens to merge together into the parameter. All items are guaranteed to be non-null.</param>
     /// <returns>The merged token, or null if this token provider is not responsible for the specified key</returns>
-    object? MergeTokens(string key, IEnumerable<object> tokens) => null;
+    object? MergeTokens(ISupportToken key, IEnumerable<object> tokens) => null;
 }

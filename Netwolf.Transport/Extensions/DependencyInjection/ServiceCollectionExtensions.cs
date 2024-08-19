@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Netwolf.Transport.Sasl;
 
@@ -13,10 +14,10 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddTransportServices(this IServiceCollection services)
     {
         // Client services
-        services.AddSingleton<IRC.INetworkFactory, IRC.NetworkFactory>();
-        services.AddSingleton<IRC.ICommandFactory, IRC.CommandFactory>();
-        services.AddSingleton<IRC.IConnectionFactory, IRC.ConnectionFactory>();
-        services.AddSingleton<ISaslMechanismFactory, SaslMechanismFactory>();
+        services.TryAddSingleton<IRC.INetworkFactory, IRC.NetworkFactory>();
+        services.TryAddSingleton<IRC.ICommandFactory, IRC.CommandFactory>();
+        services.TryAddSingleton<IRC.IConnectionFactory, IRC.ConnectionFactory>();
+        services.TryAddSingleton<ISaslMechanismFactory, SaslMechanismFactory>();
 
         return services;
     }

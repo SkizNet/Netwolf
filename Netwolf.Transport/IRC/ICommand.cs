@@ -23,6 +23,23 @@ public interface ICommand
     string Verb { get; }
 
     /// <summary>
+    /// If this command represents a numeric, this is the numeric's value.
+    /// Otherwise, this will be <c>null</c>.
+    /// </summary>
+    int? Numeric
+    {
+        get
+        {
+            if (int.TryParse(Verb, out int numeric) && numeric > 0 && numeric < 1000)
+            {
+                return numeric;
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Command arguments, normalized such that all arguments except for the final
     /// argument lack spaces, are not empty strings, and do not begin with colons,
     /// and the final argument may have spaces, may be an empty string, or may begin with a colon.

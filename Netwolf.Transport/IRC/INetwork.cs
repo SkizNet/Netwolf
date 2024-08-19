@@ -47,8 +47,7 @@ public interface INetwork : IDisposable, IAsyncDisposable
     event EventHandler<NetworkEventArgs>? CommandReceived;
 
     /// <summary>
-    /// Event raised whenever we become disconnected for any reason except when
-    /// <see cref="DisconnectAsync(String, CancellationToken)"/> is called. The
+    /// Event raised whenever we become disconnected for any reason. The
     /// <c>sender</c> parameter will be the exception(s) thrown, if any.
     /// </summary>
     event EventHandler<NetworkEventArgs>? Disconnected;
@@ -121,14 +120,22 @@ public interface INetwork : IDisposable, IAsyncDisposable
     Task SendAsync(ICommand command, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Cleanly disconnect from the network.
-    /// If the connection cannot be cleanly closed in time, it will be forcibly closed instead.
+    /// Send a raw command to the network.
+    /// No validation or manipulation is performed; can be dangerous.
+    /// DO NOT USE with untrusted input.
     /// </summary>
-    /// <param name="reason">Reason used in the QUIT message, displayed to others on the network</param>
+    /// <param name="command">Command to send which conforms to the IRC protocol</param>
     /// <param name="cancellationToken">
-    /// Cancellation token; passing <see cref="CancellationToken.None"/> (the default)
-    /// will block indefinitely until the connection is cleanly closed by the other end.
+    /// Cancellation token; passing <see cref="CancellationToken.None"/>
+    /// will block indefinitely until the command is sent.
     /// </param>
     /// <returns></returns>
-    Task DisconnectAsync(string reason, CancellationToken cancellationToken = default);
+    Task UnsafeSendRawAsync(string command, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Disconnect from the network. This task cannot be cancelled.
+    /// </summary>
+    /// <param name="reason">Reason used in the QUIT message, displayed to others on the network</param>
+    /// <returns></returns>
+    Task DisconnectAsync(string reason);
 }

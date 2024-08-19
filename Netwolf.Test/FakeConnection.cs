@@ -55,7 +55,7 @@ internal class FakeConnection : IConnection
         result.Send();
     }
 
-    public Task UnsafeSendAsync(string command, CancellationToken cancellationToken)
+    public Task UnsafeSendRawAsync(string command, CancellationToken cancellationToken)
     {
         return SendAsync(CommandFactory.Parse(CommandType.Client, command), cancellationToken);
     }
