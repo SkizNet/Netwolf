@@ -5,15 +5,15 @@ using System.Text;
 
 using DatabaseRecord = System.Tuple<string, string, string>;
 
-namespace Netwolf.Generator;
+namespace Netwolf.Generator.Transport;
 
 [Generator]
-public class UnicodeHelperGenerator : ISourceGenerator
+public class UnicodeHelperGenerator : IIncrementalGenerator
 {
-    public void Execute(GeneratorExecutionContext context)
+    public void Execute(SourceProductionContext context, string? assemblyName)
     {
         // only execute in Netwolf.Transport
-        if (context.Compilation.AssemblyName != "Netwolf.Transport")
+        if (assemblyName != "Netwolf.Transport")
         {
             return;
         }
@@ -137,8 +137,10 @@ namespace Netwolf.Transport.Internal
         context.AddSource("UnicodeHelper.g.cs", sb.ToString());
     }
 
-    public void Initialize(GeneratorInitializationContext context)
+    public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        // No initialization needed
+        var provider = context.CompilationProvider.Select(static (compilation, _) => compilation.AssemblyName);
+
+        context.RegisterSourceOutput(provider, Execute);
     }
 }

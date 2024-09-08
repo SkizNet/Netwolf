@@ -2,10 +2,15 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using Netwolf.BotFramework.Attributes;
+using Netwolf.BotFramework.CommandParser;
 using Netwolf.BotFramework.Exceptions;
 using Netwolf.BotFramework.Internal;
 using Netwolf.Transport.IRC;
 
+using System.Collections.Concurrent;
+using System.Collections.Immutable;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -18,19 +23,55 @@ namespace Netwolf.BotFramework;
 /// Attributes are used to decorate methods to describe how it interacts with the bots,
 /// e.g. the CommandAttribute is used to define commands the bot responds to from IRC.
 /// </summary>
-public abstract class Bot : IBot
+public abstract class Bot
 {
-    protected ILogger<Bot> Logger { get; init; }
+    /// <summary>
+    /// Name of the bot
+    /// </summary>
+    protected string BotName { get; private init; }
 
-    protected BotOptions Options { get; init; }
+    /// <summary>
+    /// Logger used to log events
+    /// </summary>
+    protected ILogger<Bot> Logger { get; private init; }
 
-    protected INetwork Network { get; init; }
+    /// <summary>
+    /// A snapshot of the bot options as defined by configuration
+    /// </summary>
+    protected BotOptions Options { get; private init; }
 
-    private object Lock { get; init; } = new();
+    /// <summary>
+    /// The network the bot is connected to.
+    /// </summary>
+    protected INetwork Network { get; private init; }
 
+    /// <summary>
+    /// Internal marker for when bot initialization completes
+    /// (i.e. connected to IRC and joined all configured channels).
+    /// User commands are not executed until initialization completes.
+    /// </summary>
+    private bool Initialized { get; set; } = false;
+
+    /// <summary>
+    /// TCS used to keep the main execution Task suspended until the bot disconnects
+    /// </summary>
     private TaskCompletionSource DisconnectionSource { get; init; }
 
+    /// <summary>
+    /// Pending async tasks that we my need to prematurely cancel.
+    /// I don't like this design... maybe just use a CancellationTokenSource instead
+    /// since that's kinda why it exists. Can make a hybrid source between stoppingToken
+    /// passed into ExecuteAsync plus our own settable token for when DisconnectAsync is called.
+    /// </summary>
     private PendingTaskCollection PendingTasks { get; init; } = new();
+
+    /// <summary>
+    /// All known bot commands, currently they must be defined on the bot class itself.
+    /// Not mutated after bot init (there is no runtime support to add new commands),
+    /// so all operations are read-only and thus it is safe to access the Dictionary across multiple threads.
+    /// This will need to be adjusted if command addition/removal is supported at runtime.
+    /// </summary>
+    private Dictionary<string, CommandDescriptor> RegisteredCommands { get; init; } = [];
 
     /// <summary>
     /// Public constructor. If making your own constructor ensure it has a <c>string botName</c>
@@ -47,6 +88,7 @@ public abstract class Bot : IBot
         INetworkFactory networkFactory,
         string botName)
     {
+        BotName = botName;
         Logger = logger;
         Options = options.Get(botName);
         Network = networkFactory.Create(botName, Options);
@@ -55,6 +97,23 @@ public abstract class Bot : IBot
         Network.CapReceived += OnCapReceived;
         Network.CommandReceived += OnCommandReceived;
         Network.Disconnected += OnDisconnected;
+
+        // Add commands from CommandAttributes specified on the bot type
+        List<string> commands = [];
+        foreach (var method in GetType().GetMethods())
+        {
+            var command = method.GetCustomAttribute<CommandAttribute>();
+            if (command != null)
+            {
+                command.SetNameIfNull(method.Name);
+                var descriptor = new CommandDescriptor(method, command, this);
+                commands.Add(command.Name!);
+                if (!RegisteredCommands.TryAdd(command.Name!, descriptor))
+                {
+                    throw new InvalidOperationException($"The command {command.Name} is already defined for this bot.");
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -149,7 +208,12 @@ public abstract class Bot : IBot
 
     private void OnCommandReceived(object? sender, NetworkEventArgs e)
     {
-        throw new NotImplementedException();
+        // Only handle user commands if we're fully initialized;
+        // this ensures all necessary state is in place before command processing
+        if (!Initialized)
+        {
+            return;
+        }
     }
 
     private void OnCapReceived(object? sender, CapEventArgs e)
@@ -157,7 +221,7 @@ public abstract class Bot : IBot
         throw new NotImplementedException();
     }
 
-    public async Task ExecuteAsync(CancellationToken stoppingToken)
+    internal async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Connect to the network
         await Network.ConnectAsync(stoppingToken).ConfigureAwait(false);
@@ -194,17 +258,26 @@ public abstract class Bot : IBot
         await operCompletionSource.Task.WaitAsync(stoppingToken).ConfigureAwait(false);
 
         // Join configured channels
+        List<Task> joinTasks = [];
         foreach (var channel in Options.Channels)
         {
             if (channel.Split(' ', 2) is [var name, var key])
             {
-                _ = JoinChannelAsync(name, key, stoppingToken);
+                joinTasks.Add(JoinChannelAsync(name, key, stoppingToken));
             }
             else
             {
-                _ = JoinChannelAsync(channel, stoppingToken);
+                joinTasks.Add(JoinChannelAsync(channel, stoppingToken));
             }
         }
+
+        if (!Task.WaitAll([.. joinTasks], Options.JoinTimeout, CancellationToken.None))
+        {
+            Logger.LogWarning("Initial JOINs are taking longer than {Time}ms to resolve. This could be a bug, please investigate further.", Options.JoinTimeout);
+        }
+
+        Initialized = true;
+        Logger.LogInformation("Bot initialization successful");
 
         // Pause execution task until we're disconnected to prevent overall process from terminating early
         await DisconnectionSource.Task.WaitAsync(stoppingToken).ConfigureAwait(false);

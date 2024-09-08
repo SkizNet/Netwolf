@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 
 using Netwolf.BotFramework.Internal;
+using Netwolf.BotFramework.Services;
 using Netwolf.Transport.Extensions.DependencyInjection;
 
 using System;
@@ -19,7 +20,7 @@ public static class BotFrameworkExtensions
     /// <summary>
     /// All service keys for registered bots
     /// </summary>
-    internal static HashSet<string> RegisteredBots = [];
+    internal static Dictionary<string, Type> RegisteredBots = [];
 
     /// <summary>
     /// Registers a new bot to be executed in the background immediately.
@@ -32,17 +33,17 @@ public static class BotFrameworkExtensions
     public static IServiceCollection AddBot<TBot>(this IServiceCollection services, string botName)
         where TBot : Bot
     {
-        if (RegisteredBots.Contains(botName))
+        if (RegisteredBots.ContainsKey(botName))
         {
             throw new ArgumentException($"Bot names must be unique; received duplicate bot name {botName}", nameof(botName));
         }
 
         // no-ops if transport services are already registered, so this is safe to call multiple times
         services.AddTransportServices();
+        services.AddSingleton<BotRegistry>();
         services.AddHostedService<BotRunnerService>();
 
-        services.AddKeyedTransient<IBot, TBot>(botName, (provider, key) => ActivatorUtilities.CreateInstance<TBot>(provider, [key!]));
-        RegisteredBots.Add(botName);
+        RegisteredBots[botName] = typeof(TBot);
         return services;
     }
 }

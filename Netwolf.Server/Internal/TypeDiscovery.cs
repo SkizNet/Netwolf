@@ -36,10 +36,12 @@ internal static class TypeDiscovery
         else if (typeof(T) == typeof(IISupportTokenProvider))
         {
             // ISUPPORT token providers are only enabled if they were also enabled via some other mechanism
-            collection = new();
-            collection.AddRange(options.Value.EnabledCommands);
-            collection.AddRange(options.Value.EnabledCapabilities);
-            collection.AddRange(options.Value.EnabledChannelModes);
+            collection =
+            [
+                .. options.Value.EnabledCommands,
+                .. options.Value.EnabledCapabilities,
+                .. options.Value.EnabledChannelModes,
+            ];
         }
         else
         {

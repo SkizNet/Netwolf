@@ -65,4 +65,13 @@ public class BotOptions : NetworkOptions
     /// a placeholder that will be replaced with <see cref="ServiceOperPassword"/> at runtime.
     /// </summary>
     public string ServiceOperCommand { get; set; } = "PRIVMSG OperServ :IDENTIFY {password}";
+
+    /// <summary>
+    /// How long (in milliseconds) to wait for all JOINs to complete on bot startup before
+    /// proceeding anyway. If joins take longer than this to succeed or fail, this could
+    /// indicate an issue with how this library handles the ircd or that the ircd is silently
+    /// failing the JOIN commands. More investigation should be performed in either scenario
+    /// by examining debug logs.
+    /// </summary>
+    public int JoinTimeout { get; set; } = 30_000;
 }
