@@ -10,6 +10,7 @@ using Netwolf.Transport.IRC;
 
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Data.Common;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -23,8 +24,10 @@ namespace Netwolf.BotFramework;
 /// Attributes are used to decorate methods to describe how it interacts with the bots,
 /// e.g. the CommandAttribute is used to define commands the bot responds to from IRC.
 /// </summary>
-public abstract class Bot
+public abstract class Bot : IDisposable, IAsyncDisposable
 {
+    private bool _disposed = false;
+
     /// <summary>
     /// Name of the bot
     /// </summary>
@@ -58,12 +61,9 @@ public abstract class Bot
     private TaskCompletionSource DisconnectionSource { get; init; }
 
     /// <summary>
-    /// Pending async tasks that we my need to prematurely cancel.
-    /// I don't like this design... maybe just use a CancellationTokenSource instead
-    /// since that's kinda why it exists. Can make a hybrid source between stoppingToken
-    /// passed into ExecuteAsync plus our own settable token for when DisconnectAsync is called.
+    /// Allows for cancelling all outstanding Tasks when <see cref="DisconnectAsync(string)"/> is called.
     /// </summary>
-    private PendingTaskCollection PendingTasks { get; init; } = new();
+    private CancellationTokenSource? CancellationSource { get; set; }
 
     /// <summary>
     /// All known bot commands, currently they must be defined on the bot class itself.
@@ -123,8 +123,10 @@ public abstract class Bot
     /// <returns></returns>
     public async Task DisconnectAsync(string reason)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         // cancel all pending operations
-        PendingTasks.Dispose();
+        CancellationSource?.Cancel();
 
         // send a QUIT
         await Network.DisconnectAsync(reason);
@@ -137,13 +139,33 @@ public abstract class Bot
 
     public async Task JoinChannelAsync(string name, string? key = null, CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (!Network.IsConnected)
+        {
+            throw new InvalidOperationException("Bot is not connected to the network.");
+        }
+
         // TODO: validate that the channel name starts with a channel prefix character
         // (and have a different API for /join 0 -- aka part all channels)
-        using var pendingTask = PendingTasks.Create();
-        var opSource = pendingTask.Source;
+        TaskCompletionSource opSource = new();
+
+        // it's (mostly) safe to continue to use linkedToken after linkedTokenSource is disposed
+        // linkedToken.WaitHandle will throw an exception but simply checking cancellation state is safe
+        // CancellationSource is guaranteed non-null here since ExecuteAsync() populates it and that was guaranteed to run first in order to get this far
+        using var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, CancellationSource!.Token);
+        var linkedToken = linkedTokenSource.Token;
+
+        linkedToken.ThrowIfCancellationRequested();
 
         void handler(object? sender, NetworkEventArgs args)
         {
+            if (linkedToken.IsCancellationRequested)
+            {
+                opSource.SetCanceled(linkedToken);
+                return;
+            }
+
             switch (args.Command?.Verb)
             {
                 case "403":
@@ -182,11 +204,11 @@ public abstract class Bot
         
         Network.CommandReceived += handler;
         var command = Network.PrepareCommand("JOIN", [name, key]);
-        await Network.SendAsync(command, cancellationToken).ConfigureAwait(false);
+        await Network.SendAsync(command, linkedToken).ConfigureAwait(false);
 
         try
         {
-            await opSource.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await opSource.Task.WaitAsync(linkedToken).ConfigureAwait(false);
         }
         finally
         {
@@ -206,14 +228,66 @@ public abstract class Bot
         }
     }
 
-    private void OnCommandReceived(object? sender, NetworkEventArgs e)
+    private async void OnCommandReceived(object? sender, NetworkEventArgs e)
     {
         // Only handle user commands if we're fully initialized;
         // this ensures all necessary state is in place before command processing
-        if (!Initialized)
+        // Also only handle commands sent as PRIVMSG, not NOTICE
+        if (!Initialized || e.Command!.Verb != "PRIVMSG")
         {
             return;
         }
+
+        
+        bool toBot = e.Command!.Args[0] == Network.Nick;
+        bool haveCommand = TryParseCommandAndArgs(e.Command!.Args[1].AsSpan(), out var command, out var args);
+
+        if (haveCommand || toBot)
+        {
+            if (RegisteredCommands.TryGetValue(command, out var descriptor))
+            {
+                switch ((descriptor.Metadata.Targeting, toBot))
+                {
+                    case (CommandTargeting.AllowAll, _):
+                    case (CommandTargeting.ChannelOnly, false):
+                    case (CommandTargeting.PrivateOnly, true):
+                        // await this to ensure exceptions are raised
+                        await descriptor.InvokeAsync(args, default);
+                        break;
+                }
+            }
+        }
+    }
+
+    private bool TryParseCommandAndArgs(ReadOnlySpan<char> line, out string command, out string[] args)
+    {
+        bool haveCommand = false;
+        string nickPrefix = $"{Network.Nick}: ";
+
+        if (line.StartsWith(Options.CommandPrefix))
+        {
+            haveCommand = true;
+            line = line[Options.CommandPrefix.Length..];
+        }
+        else if (line.StartsWith(nickPrefix))
+        {
+            haveCommand = true;
+            line = line[nickPrefix.Length..].TrimStart(' ');
+        }
+
+        if (!haveCommand)
+        {
+            command = string.Empty;
+            args = [];
+            return false;
+        }
+
+        // some extra copying is performed here since the ReadOnlySpan<char>.Split() methods suck in .NET 8
+        // As of .NET 9 this API surface is far improved and we can avoid copies until the assignments to command/args
+        var split = line.ToString().Split(' ');
+        command = split[0];
+        args = split[1..];
+        return true;
     }
 
     private void OnCapReceived(object? sender, CapEventArgs e)
@@ -223,8 +297,12 @@ public abstract class Bot
 
     internal async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Set up CancellationSource
+        CancellationSource = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        var linkedToken = CancellationSource.Token;
+
         // Connect to the network
-        await Network.ConnectAsync(stoppingToken).ConfigureAwait(false);
+        await Network.ConnectAsync(linkedToken).ConfigureAwait(false);
 
         // Oper up if necessary; regular oper comes first since soper might require us to be an oper
         var operCompletionSource = new TaskCompletionSource();
@@ -233,11 +311,11 @@ public abstract class Bot
             // RSA.Create() isn't supported on browsers, so skip challenge support on them
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Create("browser")) && Options.ChallengeKeyFile != null)
             {
-                await DoChallengeAsync(Options.OperName, Options.ChallengeKeyFile, Options.ChallengeKeyPassword, operCompletionSource, stoppingToken).ConfigureAwait(false);
+                await DoChallengeAsync(Options.OperName, Options.ChallengeKeyFile, Options.ChallengeKeyPassword, operCompletionSource, linkedToken).ConfigureAwait(false);
             }
             else if (Options.OperPassword != null)
             {
-                await DoOperAsync(Options.OperName, Options.OperPassword, operCompletionSource, stoppingToken).ConfigureAwait(false);
+                await DoOperAsync(Options.OperName, Options.OperPassword, operCompletionSource, linkedToken).ConfigureAwait(false);
             }
             else
             {
@@ -246,16 +324,16 @@ public abstract class Bot
             }
         }
 
-        await operCompletionSource.Task.WaitAsync(stoppingToken).ConfigureAwait(false);
+        await operCompletionSource.Task.WaitAsync(linkedToken).ConfigureAwait(false);
 
         // attempt soper
         operCompletionSource = new();
         if (Options.ServiceOperPassword != null)
         {
-            await DoServicesOperAsync(Options.ServiceOperCommand, Options.ServiceOperPassword, operCompletionSource, stoppingToken).ConfigureAwait(false);
+            await DoServicesOperAsync(Options.ServiceOperCommand, Options.ServiceOperPassword, operCompletionSource, linkedToken).ConfigureAwait(false);
         }
 
-        await operCompletionSource.Task.WaitAsync(stoppingToken).ConfigureAwait(false);
+        await operCompletionSource.Task.WaitAsync(linkedToken).ConfigureAwait(false);
 
         // Join configured channels
         List<Task> joinTasks = [];
@@ -263,11 +341,11 @@ public abstract class Bot
         {
             if (channel.Split(' ', 2) is [var name, var key])
             {
-                joinTasks.Add(JoinChannelAsync(name, key, stoppingToken));
+                joinTasks.Add(JoinChannelAsync(name, key, linkedToken));
             }
             else
             {
-                joinTasks.Add(JoinChannelAsync(channel, stoppingToken));
+                joinTasks.Add(JoinChannelAsync(channel, linkedToken));
             }
         }
 
@@ -280,6 +358,8 @@ public abstract class Bot
         Logger.LogInformation("Bot initialization successful");
 
         // Pause execution task until we're disconnected to prevent overall process from terminating early
+        // Waiting on stoppingToken directly rather than linkedToken is intentional; linkedToken is cancelled when DisconnectAsync() is called,
+        // which is before the proper completion is fired for DisconnectionSource. stoppingToken can be used to indicate an unclean shutdown.
         await DisconnectionSource.Task.WaitAsync(stoppingToken).ConfigureAwait(false);
     }
 
@@ -399,5 +479,40 @@ public abstract class Bot
         // TODO: introduce an option of a string to look for in the event of a successful soper, and assume we failed if we don't get that by the timeout
         await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
         completionSource.SetResult();
+    }
+
+    protected virtual async ValueTask DisposeAsyncCore()
+    {
+        CancellationSource?.Dispose();
+        await Network.DisposeAsync().ConfigureAwait(false);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await DisposeAsyncCore().ConfigureAwait(false);
+        Dispose(disposing: false);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            if (disposing)
+            {
+                // CancellationSource could be null if we dispose before calling ExecuteAsync, despite it being marked non-nullable
+                CancellationSource?.Dispose();
+                Network.Dispose();
+            }
+
+            _disposed = true;
+        }
+    }
+
+    public void Dispose()
+    {
+        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
     }
 }

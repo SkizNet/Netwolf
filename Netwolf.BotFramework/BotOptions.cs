@@ -74,4 +74,10 @@ public class BotOptions : NetworkOptions
     /// by examining debug logs.
     /// </summary>
     public int JoinTimeout { get; set; } = 30_000;
+
+    /// <summary>
+    /// Prefix to look for when checking if in-channel messages are bot commands.
+    /// The prefix is optional when addressing the bot via PM.
+    /// </summary>
+    public string CommandPrefix { get; set; } = "!";
 }

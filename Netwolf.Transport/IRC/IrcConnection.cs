@@ -90,6 +90,8 @@ public class IrcConnection : IConnection
     /// <inheritdoc />
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         if (Socket != null || Stream != null)
         {
             throw new InvalidOperationException("Connection has already been established.");
@@ -194,6 +196,7 @@ public class IrcConnection : IConnection
     /// <inheritdoc />
     public async Task DisconnectAsync()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         await Task.Run(Disconnect).ConfigureAwait(false);
     }
 
@@ -222,6 +225,8 @@ public class IrcConnection : IConnection
 
     public async Task UnsafeSendRawAsync(string command, CancellationToken cancellationToken)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         if (Writer == null)
         {
             throw new InvalidOperationException("Cannot send to a closed connection.");
@@ -260,6 +265,8 @@ public class IrcConnection : IConnection
 
     public async Task<ICommand> ReceiveAsync(CancellationToken cancellationToken)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         if (Reader == null)
         {
             throw new InvalidOperationException("Cannot receive from a closed connection.");
@@ -329,8 +336,6 @@ public class IrcConnection : IConnection
                 ClientCertificate?.Dispose();
                 ClientCertificate = null;
             }
-
-            // Free unmanaged resources here
 
             _disposed = true;
         }

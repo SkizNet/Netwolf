@@ -22,6 +22,11 @@ internal class CommandDescriptor
     internal MethodInvoker Method { get; init; }
 
     /// <summary>
+    /// Command attribute specifying commnd metadata
+    /// </summary>
+    internal CommandAttribute Metadata { get; init; }
+
+    /// <summary>
     /// Class instance if invoking a class method
     /// </summary>
     internal object? Instance { get; init; }
@@ -44,6 +49,7 @@ internal class CommandDescriptor
         }
 
         Instance = instance;
+        Metadata = attribute;
         IsAsync = method.ReturnType.IsAssignableTo(typeof(Task));
 
         // This is also checked at design/compile time via the Netwolf.Analyzers package for better dev experience

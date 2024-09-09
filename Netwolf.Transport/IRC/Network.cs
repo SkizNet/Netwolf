@@ -64,7 +64,14 @@ public class Network : INetwork
     /// <summary>
     /// A connection to the network
     /// </summary>
-    protected IConnection Connection => _connection ?? throw new InvalidOperationException("Network is disconnected.");
+    protected IConnection Connection
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return _connection ?? throw new InvalidOperationException("Network is disconnected.");
+        }
+    }
 
     /// <summary>
     /// Network state
@@ -212,6 +219,7 @@ public class Network : INetwork
     {
         _messageLoopTokenSource.Cancel();
         await _messageLoop.ConfigureAwait(false);
+        _messageLoopTokenSource.Dispose();
         await NullableHelper.DisposeAsyncIfNotNull(_connection).ConfigureAwait(false);
     }
 
@@ -230,6 +238,7 @@ public class Network : INetwork
             {
                 _messageLoopTokenSource.Cancel();
                 _messageLoop.Wait();
+                _messageLoopTokenSource.Dispose();
                 _connection?.Dispose();
             }
 
@@ -246,112 +255,107 @@ public class Network : INetwork
 
     private void MessageLoop()
     {
-        try
-        {
-            var tasks = new List<Task>();
-            var pingTimer = Task.Delay(Options.PingInterval, _messageLoopTokenSource.Token);
-            var pingTimeoutTimers = new List<Task>();
-            var pingTimeoutCookies = new List<string>();
+        var tasks = new List<Task>();
+        var token = _messageLoopTokenSource.Token;
+        var pingTimer = Task.Delay(Options.PingInterval, token);
+        var pingTimeoutTimers = new List<Task>();
+        var pingTimeoutCookies = new List<string>();
 
-            while (true)
+        while (true)
+        {
+            tasks.Clear();
+            tasks.Add(_messageLoopCompletionSource.Task); // index 0
+
+            if (IsConnected)
             {
-                tasks.Clear();
-                tasks.Add(_messageLoopCompletionSource.Task); // index 0
-
-                if (IsConnected)
-                {
-                    tasks.Add(Connection.ReceiveAsync(_messageLoopTokenSource.Token)); // index 1
-                    tasks.Add(pingTimer); // index 2
-                    tasks.AddRange(pingTimeoutTimers); // index 3+
-                }
-                else if (_connection != null)
-                {
-                    // in user registration (not fully connected yet, so do not send any PINGs)
-                    tasks.Add(Connection.ReceiveAsync(_messageLoopTokenSource.Token)); // index 1
-                }
-
-                int index = Task.WaitAny([.. tasks], _messageLoopTokenSource.Token);
-                switch (index)
-                {
-                    case 0:
-                        // _messageLoopCompletionSource.Task fired, indicating a (dis)connection
-                        // reset the source and timers
-                        _messageLoopCompletionSource = new TaskCompletionSource();
-                        pingTimer = Task.Delay(Options.PingInterval, _messageLoopTokenSource.Token);
-                        pingTimeoutTimers.Clear();
-                        pingTimeoutCookies.Clear();
-                        break;
-                    case 1:
-                        // Connection.ReceiveAsync fired, so we have a command to dispatch
-                        if (tasks[index].Status == TaskStatus.Faulted)
-                        {
-                            // Remote end died, close the connection
-                            goto default;
-                        }
-
-                        var command = ((Task<ICommand>)tasks[index]).Result;
-
-                        // Handle PONG specially so we can manage our timers
-                        // receiving a cookie back will invalidate that timer and all timers issued prior to the cookie
-                        if (command.Verb == "PONG" && command.Args.Count == 2)
-                        {
-                            int cookieIndex = pingTimeoutCookies.IndexOf(command.Args[1]);
-                            if (cookieIndex != -1)
-                            {
-                                pingTimeoutTimers.RemoveRange(0, cookieIndex + 1);
-                                pingTimeoutCookies.RemoveRange(0, cookieIndex + 1);
-                            }
-                        }
-
-                        try
-                        {
-                            OnCommandReceived(command, _messageLoopTokenSource.Token);
-                            CommandReceived?.Invoke(command, new(this, _messageLoopTokenSource.Token, command));
-                        }
-                        catch (Exception e)
-                        {
-                            // if a command callback failed due to an exception, don't crash the message loop
-                            Logger.LogError(e, "An error occurred while handling a {Command} from the server", command.Verb);
-                        }
-                        
-                        break;
-                    case 2:
-                        // pingTimer fired, send a PING and reset the timer
-                        // in the future we could detect other activity and hold off on sending PINGs if they're not needed
-                        pingTimer = Task.Delay(Options.PingInterval, _messageLoopTokenSource.Token);
-                        pingTimeoutTimers.Add(Task.Delay(Options.PingTimeout, _messageLoopTokenSource.Token));
-                        string cookie = String.Format("NWPC{0:X16}", Random.Shared.NextInt64());
-                        pingTimeoutCookies.Add(cookie);
-                        _ = SendAsync(PrepareCommand("PING", [cookie], null), _messageLoopTokenSource.Token);
-                        break;
-                    default:
-                        // one of the pingTimeoutTimers fired or ReceiveAsync threw an exception
-                        // this leaves the internal state "dirty" (by not cleaning up pingTimeoutTimers/Cookies, etc.)
-                        // but on reconnect the completion source will be flagged and reset those
-                        Task.Run(async () =>
-                        {
-                            if (_connection != null)
-                            {
-                                await _connection.DisconnectAsync().ConfigureAwait(false);
-                                _connection = null;
-
-                                Disconnected?.Invoke(this, new(this, _messageLoopTokenSource.Token, null, tasks[index].Exception));
-                            }
-                        });
-                        break;
-                }
+                tasks.Add(Connection.ReceiveAsync(token)); // index 1
+                tasks.Add(pingTimer); // index 2
+                tasks.AddRange(pingTimeoutTimers); // index 3+
             }
-        }
-        catch (OperationCanceledException)
-        {
-            // cancellation requested, which only happens in Dispose(), so dispose of our token source
-            _messageLoopTokenSource.Dispose();
+            else if (_connection != null)
+            {
+                // in user registration (not fully connected yet, so do not send any PINGs)
+                tasks.Add(Connection.ReceiveAsync(token)); // index 1
+            }
+
+            int index = Task.WaitAny([.. tasks], token);
+            switch (index)
+            {
+                case 0:
+                    // _messageLoopCompletionSource.Task fired, indicating a (dis)connection
+                    // reset the source and timers
+                    _messageLoopCompletionSource = new TaskCompletionSource();
+                    pingTimer = Task.Delay(Options.PingInterval, token);
+                    pingTimeoutTimers.Clear();
+                    pingTimeoutCookies.Clear();
+                    break;
+                case 1:
+                    // Connection.ReceiveAsync fired, so we have a command to dispatch
+                    if (tasks[index].Status == TaskStatus.Faulted)
+                    {
+                        // Remote end died, close the connection
+                        goto default;
+                    }
+
+                    var command = ((Task<ICommand>)tasks[index]).Result;
+
+                    // Handle PONG specially so we can manage our timers
+                    // receiving a cookie back will invalidate that timer and all timers issued prior to the cookie
+                    if (command.Verb == "PONG" && command.Args.Count == 2)
+                    {
+                        int cookieIndex = pingTimeoutCookies.IndexOf(command.Args[1]);
+                        if (cookieIndex != -1)
+                        {
+                            pingTimeoutTimers.RemoveRange(0, cookieIndex + 1);
+                            pingTimeoutCookies.RemoveRange(0, cookieIndex + 1);
+                        }
+                    }
+
+                    try
+                    {
+                        OnCommandReceived(command, token);
+                        CommandReceived?.Invoke(command, new(this, token, command));
+                    }
+                    catch (Exception e)
+                    {
+                        // if a command callback failed due to an exception, don't crash the message loop
+                        Logger.LogError(e, "An error occurred while handling a {Command} from the server", command.Verb);
+                    }
+                        
+                    break;
+                case 2:
+                    // pingTimer fired, send a PING and reset the timer
+                    // in the future we could detect other activity and hold off on sending PINGs if they're not needed
+                    pingTimer = Task.Delay(Options.PingInterval, token);
+                    pingTimeoutTimers.Add(Task.Delay(Options.PingTimeout, token));
+                    string cookie = String.Format("NWPC{0:X16}", Random.Shared.NextInt64());
+                    pingTimeoutCookies.Add(cookie);
+                    _ = SendAsync(PrepareCommand("PING", [cookie], null), token);
+                    break;
+                default:
+                    // one of the pingTimeoutTimers fired or ReceiveAsync threw an exception
+                    // this leaves the internal state "dirty" (by not cleaning up pingTimeoutTimers/Cookies, etc.)
+                    // but on reconnect the completion source will be flagged and reset those
+                    Task.Run(async () =>
+                    {
+                        if (_connection != null)
+                        {
+                            await _connection.DisconnectAsync().ConfigureAwait(false);
+                            _connection = null;
+
+                            Disconnected?.Invoke(this, new(this, token, null, tasks[index].Exception));
+                        }
+                    });
+                    break;
+            }
         }
     }
 
     /// <inheritdoc />
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         if (_connection != null)
         {
             Logger.LogError("Network is already connected.");
@@ -493,6 +497,8 @@ public class Network : INetwork
     /// <inheritdoc />
     public async Task DisconnectAsync(string reason)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         try
         {
             await SendAsync(PrepareCommand("QUIT", [reason], null)).ConfigureAwait(false);
