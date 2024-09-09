@@ -18,6 +18,12 @@ public class BotRegistry
         KnownBots.Add(name, bot);
     }
 
+    internal Bot? Remove(string name)
+    {
+        KnownBots.Remove(name, out var bot);
+        return bot;
+    }
+
     public Bot GetBotByName(string name)
     {
         return KnownBots[name];
