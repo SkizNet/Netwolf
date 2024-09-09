@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Collections.Immutable;
+using System.Text;
 
 namespace Netwolf.Transport.IRC;
 
@@ -44,13 +45,13 @@ public interface ICommand
     /// argument lack spaces, are not empty strings, and do not begin with colons,
     /// and the final argument may have spaces, may be an empty string, or may begin with a colon.
     /// </summary>
-    IReadOnlyList<string> Args { get; }
+    ImmutableList<string> Args { get; }
 
     /// <summary>
     /// Tags to be sent to the remote network as part of this command.
     /// A <c>null</c> value indicates that the tag will be sent without a value.
     /// </summary>
-    IReadOnlyDictionary<string, string?> Tags { get; }
+    ImmutableDictionary<string, string?> Tags { get; }
 
     /// <summary>
     /// If <c>true</c>, the final argument in <see cref="Args"/> will have a colon prefixed to it

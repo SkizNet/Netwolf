@@ -252,7 +252,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
                     case (CommandTargeting.ChannelOnly, false):
                     case (CommandTargeting.PrivateOnly, true):
                         // await this to ensure exceptions are raised
-                        await descriptor.InvokeAsync(args, default);
+                        await descriptor.InvokeAsync(args, e.Command.Tags, default);
                         break;
                 }
             }

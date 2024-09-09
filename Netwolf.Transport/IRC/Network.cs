@@ -218,7 +218,7 @@ public class Network : INetwork
     protected virtual async ValueTask DisposeAsyncCore()
     {
         _messageLoopTokenSource.Cancel();
-        await _messageLoop.ConfigureAwait(false);
+        await _messageLoop.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         _messageLoopTokenSource.Dispose();
         await NullableHelper.DisposeAsyncIfNotNull(_connection).ConfigureAwait(false);
     }
@@ -237,7 +237,7 @@ public class Network : INetwork
             if (disposing)
             {
                 _messageLoopTokenSource.Cancel();
-                _messageLoop.Wait();
+                _messageLoop.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing).GetAwaiter().GetResult();
                 _messageLoopTokenSource.Dispose();
                 _connection?.Dispose();
             }

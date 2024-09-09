@@ -1,4 +1,6 @@
-﻿namespace Netwolf.Transport.IRC;
+﻿using System.Collections.Immutable;
+
+namespace Netwolf.Transport.IRC;
 
 /// <summary>
 /// Represents a command that can be sent to or received from a network
@@ -11,9 +13,9 @@ public class Command : ICommand
 
     public string Verb { get; init; }
 
-    public IReadOnlyList<string> Args { get; init; }
+    public ImmutableList<string> Args { get; init; }
 
-    public IReadOnlyDictionary<string, string?> Tags { get; init; }
+    public ImmutableDictionary<string, string?> Tags { get; init; }
 
     public bool HasTrailingArg { get; init; }
 
@@ -22,8 +24,8 @@ public class Command : ICommand
         CommandType = options.CommandType;
         Source = options.Source;
         Verb = options.Verb;
-        Args = options.Args;
-        Tags = options.Tags;
+        Args = [.. options.Args];
+        Tags = options.Tags.ToImmutableDictionary();
         HasTrailingArg = options.HasTrailingArg;
     }
 }

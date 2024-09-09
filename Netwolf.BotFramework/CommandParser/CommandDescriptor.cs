@@ -73,7 +73,7 @@ internal class CommandDescriptor
         }).ToImmutableList();
     }
 
-    public Task InvokeAsync(string[] args, CancellationToken cancellationToken)
+    public Task InvokeAsync(string[] args, IReadOnlyDictionary<string, string?> tags, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
