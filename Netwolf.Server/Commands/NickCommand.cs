@@ -1,4 +1,7 @@
-﻿using Netwolf.Server.Internal;
+﻿using Netwolf.PluginFramework.Commands;
+using Netwolf.PluginFramework.Context;
+using Netwolf.Server.Internal;
+using Netwolf.Server.Users;
 using Netwolf.Transport.IRC;
 
 using System;
@@ -10,7 +13,7 @@ using System.Threading.Tasks;
 
 namespace Netwolf.Server.Commands;
 
-public partial class NickCommand : ICommandHandler
+public partial class NickCommand : IServerCommandHandler
 {
     // RFC 2812 nickname validation
     [GeneratedRegex("[a-zA-Z[\\]\\\\`_^{}|][a-zA-Z0-9[\\]\\\\`_^{}|-]*")]
@@ -18,15 +21,12 @@ public partial class NickCommand : ICommandHandler
 
     public string Command => "NICK";
 
-    public string? Privilege => null;
-
-    public bool HasChannel => false;
-
     public bool AllowBeforeRegistration => true;
 
-    public async Task<ICommandResponse> ExecuteAsync(ICommand command, User client, Channel? channel, CancellationToken cancellationToken)
+    public async Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var client = ((ServerContext)sender).User!;
 
         if (command.Args.Count == 0)
         {

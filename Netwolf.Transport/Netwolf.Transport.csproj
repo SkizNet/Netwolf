@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Netwolf.Generator\Netwolf.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Netwolf.PluginFramework\Netwolf.PluginFramework.csproj" />
   </ItemGroup>
 
 </Project>

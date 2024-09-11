@@ -1,6 +1,8 @@
-﻿using Netwolf.Server.Capabilities;
+﻿using Netwolf.PluginFramework.Commands;
+using Netwolf.PluginFramework.Context;
+using Netwolf.Server.Capabilities;
 using Netwolf.Server.Internal;
-using Netwolf.Transport.IRC;
+using Netwolf.Server.Users;
 
 using System;
 using System.Collections.Generic;
@@ -10,11 +12,9 @@ using System.Threading.Tasks;
 
 namespace Netwolf.Server.Commands;
 
-public class CapCommand : ICommandHandler
+public class CapCommand : IServerCommandHandler
 {
     public string Command => "CAP";
-
-    public bool HasChannel => false;
 
     private ICapabilityManager CapabilityManager { get; init; }
 
@@ -23,9 +23,10 @@ public class CapCommand : ICommandHandler
         CapabilityManager = capabilityManager;
     }
 
-    public async Task<ICommandResponse> ExecuteAsync(ICommand command, User client, Channel? channel, CancellationToken cancellationToken)
+    public async Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var client = ((ServerContext)sender).User!;
 
         if (command.Args.Count == 0)
         {

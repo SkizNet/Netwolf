@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.Security;
 
 namespace Netwolf.Server;
 
@@ -206,7 +207,7 @@ public enum Numeric : int
     ERR_BADCHANNELKEY = 475,
     [Display(Description = "Bad channel mask")]
     ERR_BADCHANMASK = 476,
-    [Display(Description = "Permission denied: you are not an IRC operator")]
+    [Display(Description = "You do not have permission to execute this command")]
     ERR_NOPRIVILEGES = 481,
     [Display(Description = "Permission denied: missing channel privileges")]
     ERR_CHANOPPRIVSNEEDED = 482,
@@ -222,4 +223,6 @@ public enum Numeric : int
     ERR_HELPNOTFOUND = 524,
     [Display(Description = "Key is not well-formed")]
     ERR_INVALIDKEY = 525,
+    [Display(Description = "Permission denied: missing oper privileges")]
+    ERR_NOPRIVS = 723,
 }

@@ -10,6 +10,8 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
 using Netwolf.Server.Capabilities;
+using Netwolf.PluginFramework.Commands;
+using Netwolf.PluginFramework.Context;
 
 namespace Netwolf.Server;
 

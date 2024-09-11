@@ -1,9 +1,12 @@
 ﻿using Microsoft.Extensions.Options;
 
+using Netwolf.PluginFramework.Commands;
+using Netwolf.PluginFramework.Context;
 using Netwolf.Server.Capabilities.Vendor;
 using Netwolf.Server.ChannelModes;
 using Netwolf.Server.Internal;
 using Netwolf.Server.ISupport;
+using Netwolf.Server.Users;
 using Netwolf.Transport.IRC;
 
 using System.Net;
@@ -11,16 +14,9 @@ using System.Text;
 
 namespace Netwolf.Server.Commands;
 
-public class WhoCommand : ICommandHandler, IISupportTokenProvider
+public class WhoCommand : IServerCommandHandler, IISupportTokenProvider
 {
     public string Command => "WHO";
-
-    public string? Privilege => null;
-
-    // We optionally take a channel but don't require one, so that is handled in the Execute logic
-    public bool HasChannel => false;
-
-    public bool AllowBeforeRegistration => false;
 
     private bool WhoxEnabled { get; init; }
 
@@ -64,9 +60,10 @@ public class WhoCommand : ICommandHandler, IISupportTokenProvider
         WhoxEnabled = options.Value.EnabledFeatures.Contains("WHOX");
     }
 
-    public Task<ICommandResponse> ExecuteAsync(ICommand command, User client, Channel? channel, CancellationToken cancellationToken)
+    public Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var client = ((ServerContext)sender).User!;
 
         if (command.Args.Count == 0)
         {
@@ -252,19 +249,19 @@ public class WhoCommand : ICommandHandler, IISupportTokenProvider
                 if (channelResult != "*")
                 {
                     var privs = client.Network.Channels[channelResult.ToUpperInvariant()].GetPrivilegesFor(target);
-                    if (privs.Contains("channel:*"))
+                    if (privs.Contains("chan:*"))
                     {
                         flags.Append('&');
                     }
-                    else if (privs.Contains("channel:op"))
+                    else if (privs.Contains("chan:op"))
                     {
                         flags.Append('@');
                     }
-                    else if (privs.Contains("channel:halfop"))
+                    else if (privs.Contains("chan:halfop"))
                     {
                         flags.Append('%');
                     }
-                    else if (privs.Contains("channel:voice"))
+                    else if (privs.Contains("chan:voice"))
                     {
                         flags.Append('+');
                     }
@@ -300,15 +297,15 @@ public class WhoCommand : ICommandHandler, IISupportTokenProvider
                 if (channelResult != "*")
                 {
                     var privs = client.Network.Channels[channelResult.ToUpperInvariant()].GetPrivilegesFor(target);
-                    if (privs.Contains("channel:*"))
+                    if (privs.Contains("chan:*"))
                     {
                         args.Add("1");
                     }
-                    else if (privs.Contains("channel:op"))
+                    else if (privs.Contains("chan:op"))
                     {
                         args.Add("10");
                     }
-                    else if (privs.Contains("channel:halfop"))
+                    else if (privs.Contains("chan:halfop"))
                     {
                         args.Add("100");
                     }

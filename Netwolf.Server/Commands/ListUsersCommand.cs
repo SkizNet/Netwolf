@@ -1,4 +1,7 @@
-﻿using Netwolf.Transport.IRC;
+﻿using Netwolf.PluginFramework.Commands;
+using Netwolf.PluginFramework.Context;
+using Netwolf.Server.Users;
+using Netwolf.Transport.IRC;
 
 using System;
 using System.Collections.Generic;
@@ -8,20 +11,14 @@ using System.Threading.Tasks;
 
 namespace Netwolf.Server.Commands;
 
-public class ListUsersCommand : ICommandHandler
+public class ListUsersCommand : IServerCommandHandler
 {
     public string Command => "LUSERS";
 
-    public string? Privilege => null;
-
-    public bool HasChannel => false;
-
-    public bool AllowBeforeRegistration => false;
-
-    public Task<ICommandResponse> ExecuteAsync(ICommand command, User client, Channel? channel, CancellationToken cancellationToken)
+    public Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult<ICommandResponse>(ExecuteInternal(client));
+        return Task.FromResult<ICommandResponse>(ExecuteInternal(((ServerContext)sender).User!));
     }
 
     internal static MultiResponse ExecuteInternal(User client)

@@ -1,10 +1,10 @@
 ﻿using System.Collections.Immutable;
 using System.Text;
 
-namespace Netwolf.Transport.IRC;
+namespace Netwolf.PluginFramework.Commands;
 
 /// <summary>
-/// General client interface for a <see cref="Command"/>.
+/// General interface for a command sent to or received from the server.
 /// </summary>
 public interface ICommand
 {

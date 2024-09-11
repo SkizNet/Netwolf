@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using Netwolf.PluginFramework.Commands;
 using Netwolf.Server.Capabilities;
 using Netwolf.Server.ChannelModes;
 using Netwolf.Server.Commands;
@@ -21,7 +22,7 @@ internal static class TypeDiscovery
     {
         List<Type> collection;
 
-        if (typeof(T) == typeof(ICommandHandler))
+        if (typeof(T) == typeof(ICommandHandler<ICommandResponse>))
         {
             collection = options.Value.EnabledCommands;
         }

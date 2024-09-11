@@ -2,6 +2,10 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
+using Netwolf.PluginFramework.Commands;
+using Netwolf.PluginFramework.Context;
+using Netwolf.PluginFramework.Extensions.DependencyInjection;
+using Netwolf.PluginFramework.Permissions;
 using Netwolf.Server.Capabilities;
 using Netwolf.Server.Commands;
 using Netwolf.Server.ISupport;
@@ -34,13 +38,18 @@ public static class ServiceCollectionExtensions
 
     private static IServiceCollection AddServerServicesBase(IServiceCollection services)
     {
+        // register IContextAugmenter before calling AddPluginFrameworkServices so we don't register the dummy augmenter (slight perf gain)
+        services.AddSingleton<IContextAugmenter, ChannelContextAugmenter>();
+        services.AddPluginFrameworkServices();
+
         // TODO: get rid of the Network class entirely.
         // a service scope indicates a "network" and we should just expose the necessary lookups, registries, etc. from there
         services.AddScoped<Network>();
-        services.AddScoped<ICommandDispatcher, CommandDispatcher>();
         services.AddScoped<IISupportResolver, ISupportResolver>();
         services.AddScoped<IUserFactory, UserFactory>();
         services.AddScoped<ICapabilityManager, CapabilityManager>();
+        services.AddSingleton<ICommandValidator<ICommandResponse>, CommandValidator>();
+        services.AddSingleton<IPermissionManager, ServerPermissionManager>();
 
         // let consumers register an IConfigureOptions<ServerOptions> if they wish, but these are here in case we need them later
         //services.AddTransient<IPostConfigureOptions<ServerOptions>, PostConfigureServerOptions>();

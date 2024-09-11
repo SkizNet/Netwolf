@@ -1,5 +1,8 @@
-﻿using Netwolf.Server.Extensions.Internal;
+﻿using Netwolf.PluginFramework.Commands;
+using Netwolf.PluginFramework.Context;
+using Netwolf.Server.Extensions.Internal;
 using Netwolf.Server.Internal;
+using Netwolf.Server.Users;
 using Netwolf.Transport.IRC;
 
 using System;
@@ -10,18 +13,17 @@ using System.Threading.Tasks;
 
 namespace Netwolf.Server.Commands;
 
-public class UserCommand : ICommandHandler
+public class UserCommand : IServerCommandHandler
 {
     public string Command => "USER";
 
-    public string? Privilege => null;
-
-    public bool HasChannel => false;
-
     public bool AllowBeforeRegistration => true;
 
-    public async Task<ICommandResponse> ExecuteAsync(ICommand command, User client, Channel? channel, CancellationToken cancellationToken)
+    public async Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        var client = ((ServerContext)sender).User!;
+
         if (client.Registered)
         {
             return new NumericResponse(client, Numeric.ERR_ALREADYREGISTERED);

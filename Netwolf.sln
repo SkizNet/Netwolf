@@ -16,7 +16,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Netwolf.Test", "Netwolf.Tes
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Netwolf.Server", "Netwolf.Server\Netwolf.Server.csproj", "{33577B40-4631-4EBD-8F9E-CF91EE339BFF}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Netwolf.BotFramework", "Netwolf.BotFramework\Netwolf.BotFramework.csproj", "{6DF86CA6-29F0-418E-820A-4B601966556B}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Netwolf.BotFramework", "Netwolf.BotFramework\Netwolf.BotFramework.csproj", "{6DF86CA6-29F0-418E-820A-4B601966556B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Netwolf.PluginFramework", "Netwolf.PluginFramework\Netwolf.PluginFramework.csproj", "{6DD0F6D3-C3F3-4399-859A-71893768C22A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -44,6 +46,10 @@ Global
 		{6DF86CA6-29F0-418E-820A-4B601966556B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6DF86CA6-29F0-418E-820A-4B601966556B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6DF86CA6-29F0-418E-820A-4B601966556B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6DD0F6D3-C3F3-4399-859A-71893768C22A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6DD0F6D3-C3F3-4399-859A-71893768C22A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6DD0F6D3-C3F3-4399-859A-71893768C22A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6DD0F6D3-C3F3-4399-859A-71893768C22A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

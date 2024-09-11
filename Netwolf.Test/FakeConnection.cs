@@ -1,6 +1,10 @@
 ﻿using Microsoft.Extensions.Logging;
 
+using Netwolf.PluginFramework.Commands;
+using Netwolf.Server;
 using Netwolf.Server.Commands;
+using Netwolf.Server.Exceptions;
+using Netwolf.Server.Users;
 using Netwolf.Transport.IRC;
 
 using System.Security.Authentication.ExtendedProtection;
@@ -13,13 +17,13 @@ internal class FakeConnection : IConnection
 
     private ICommandFactory CommandFactory { get; set; }
 
-    private ICommandDispatcher CommandDispatcher { get; set; }
+    private ICommandDispatcher<ICommandResponse> CommandDispatcher { get; set; }
 
     private ILogger<IConnection> Logger { get; set; }
 
     private bool disposedValue;
 
-    internal FakeConnection(FakeServer server, ICommandFactory commandFactory, ICommandDispatcher commandDispatcher, ILogger<IConnection> logger)
+    internal FakeConnection(FakeServer server, ICommandFactory commandFactory, ICommandDispatcher<ICommandResponse> commandDispatcher, ILogger<IConnection> logger)
     {
         CommandFactory = commandFactory;
         CommandDispatcher = commandDispatcher;
@@ -51,8 +55,16 @@ internal class FakeConnection : IConnection
     {
         cancellationToken.ThrowIfCancellationRequested();
         Logger.LogDebug("--> {Command}", command.FullCommand);
-        var result = await CommandDispatcher.DispatchAsync(command, Server.State[this], cancellationToken);
-        result.Send();
+        try
+        {
+            var context = new ServerContext() { User = Server.State[this] };
+            var result = await CommandDispatcher.DispatchAsync(command, context, cancellationToken);
+            (result ?? new NumericResponse(Server.State[this], Numeric.ERR_UNKNOWNCOMMAND)).Send();
+        }
+        catch (CommandException ex)
+        {
+            ex.GetNumericResponse(Server.State[this]).Send();
+        }
     }
 
     public Task UnsafeSendRawAsync(string command, CancellationToken cancellationToken)

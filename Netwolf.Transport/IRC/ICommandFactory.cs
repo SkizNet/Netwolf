@@ -1,4 +1,6 @@
-﻿namespace Netwolf.Transport.IRC;
+﻿using Netwolf.PluginFramework.Commands;
+
+namespace Netwolf.Transport.IRC;
 
 /// <summary>
 /// DI factory for <see cref="ICommand"/>

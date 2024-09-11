@@ -1,4 +1,5 @@
-﻿using Netwolf.Transport.Exceptions;
+﻿using Netwolf.PluginFramework.Commands;
+using Netwolf.Transport.Exceptions;
 
 namespace Netwolf.Transport.IRC;
 

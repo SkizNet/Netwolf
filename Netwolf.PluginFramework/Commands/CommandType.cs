@@ -1,4 +1,4 @@
-﻿namespace Netwolf.Transport.IRC;
+﻿namespace Netwolf.PluginFramework.Commands;
 
 /// <summary>
 /// Type (direction) of an <see cref="ICommand"/>

@@ -1,4 +1,6 @@
-﻿using System.Security.Authentication.ExtendedProtection;
+﻿using Netwolf.PluginFramework.Commands;
+
+using System.Security.Authentication.ExtendedProtection;
 
 namespace Netwolf.Transport.IRC;
 
