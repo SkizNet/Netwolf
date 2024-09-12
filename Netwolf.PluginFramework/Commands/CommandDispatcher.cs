@@ -6,6 +6,7 @@ using Netwolf.PluginFramework.Context;
 using Netwolf.PluginFramework.Permissions;
 
 using System.Reflection;
+using System.Runtime.Loader;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
@@ -44,7 +45,7 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
 
         // Add builtin commands
         // FIXME: once we define the shape of the plugin framework a bit more, probably move this to assembly-level attributes to define plugins? dunno
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        foreach (var assembly in AssemblyLoadContext.Default.Assemblies)
         {
             AddCommandsFromAssembly(assembly);
         }

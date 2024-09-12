@@ -2,10 +2,9 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-using Netwolf.BotFramework.Attributes;
-using Netwolf.BotFramework.CommandParser;
 using Netwolf.BotFramework.Exceptions;
 using Netwolf.BotFramework.Internal;
+using Netwolf.PluginFramework.Commands;
 using Netwolf.Transport.IRC;
 
 using System.Collections.Concurrent;
@@ -31,7 +30,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// <summary>
     /// Name of the bot
     /// </summary>
-    protected string BotName { get; private init; }
+    public string BotName { get; private init; }
 
     /// <summary>
     /// Logger used to log events
@@ -65,13 +64,9 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// </summary>
     private CancellationTokenSource? CancellationSource { get; set; }
 
-    /// <summary>
-    /// All known bot commands, currently they must be defined on the bot class itself.
-    /// Not mutated after bot init (there is no runtime support to add new commands),
-    /// so all operations are read-only and thus it is safe to access the Dictionary across multiple threads.
-    /// This will need to be adjusted if command addition/removal is supported at runtime.
-    /// </summary>
-    private Dictionary<string, CommandDescriptor> RegisteredCommands { get; init; } = [];
+    protected ICommandDispatcher<BotCommandResult> CommandDispatcher { get; private init; }
+
+    protected ICommandFactory CommandFactory { get; private init; }
 
     /// <summary>
     /// Public constructor. If making your own constructor ensure it has a <c>string botName</c>
@@ -81,39 +76,28 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// <param name="logger">Logger</param>
     /// <param name="options">Bot options</param>
     /// <param name="networkFactory">Network factory</param>
+    /// <param name="commandDispatcher"></param>
+    /// <param name="commandFactory"></param>
     /// <param name="botName">Internal bot name passed to <see cref="BotFrameworkExtensions.AddBot"/></param>
     public Bot(
         ILogger<Bot> logger,
         IOptionsSnapshot<BotOptions> options,
         INetworkFactory networkFactory,
+        ICommandDispatcher<BotCommandResult> commandDispatcher,
+        ICommandFactory commandFactory,
         string botName)
     {
         BotName = botName;
         Logger = logger;
         Options = options.Get(botName);
         Network = networkFactory.Create(botName, Options);
+        CommandDispatcher = commandDispatcher;
+        CommandFactory = commandFactory;
         DisconnectionSource = new();
 
         Network.CapReceived += OnCapReceived;
         Network.CommandReceived += OnCommandReceived;
         Network.Disconnected += OnDisconnected;
-
-        // Add commands from CommandAttributes specified on the bot type
-        List<string> commands = [];
-        foreach (var method in GetType().GetMethods())
-        {
-            var command = method.GetCustomAttribute<CommandAttribute>();
-            if (command != null)
-            {
-                command.SetNameIfNull(method.Name);
-                var descriptor = new CommandDescriptor(method, command, this);
-                commands.Add(command.Name!);
-                if (!RegisteredCommands.TryAdd(command.Name!, descriptor))
-                {
-                    throw new InvalidOperationException($"The command {command.Name} is already defined for this bot.");
-                }
-            }
-        }
     }
 
     /// <summary>
@@ -238,28 +222,30 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             return;
         }
 
+        e.Token.ThrowIfCancellationRequested();
+        CancellationSource!.Token.ThrowIfCancellationRequested();
         
         bool toBot = e.Command!.Args[0] == Network.Nick;
-        bool haveCommand = TryParseCommandAndArgs(e.Command!.Args[1].AsSpan(), out var command, out var args);
+        bool haveCommand = TryParseCommandAndArgs(e.Command!.Args[1].AsSpan(), out var command, out var args, out var fullLine);
 
         if (haveCommand || toBot)
         {
-            if (RegisteredCommands.TryGetValue(command, out var descriptor))
+            using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(CancellationSource.Token, e.Token);
+            var commandObj = CommandFactory.CreateCommand(CommandType.Bot, e.Command.Source, command, args, e.Command.Tags);
+            var context = new BotCommandContext(this, fullLine);
+
+            try
             {
-                switch ((descriptor.Metadata.Targeting, toBot))
-                {
-                    case (CommandTargeting.AllowAll, _):
-                    case (CommandTargeting.ChannelOnly, false):
-                    case (CommandTargeting.PrivateOnly, true):
-                        // await this to ensure exceptions are raised
-                        await descriptor.InvokeAsync(args, e.Command.Tags, default);
-                        break;
-                }
+                _ = await CommandDispatcher.DispatchAsync(commandObj, context, linkedSource.Token);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "An error occurred while executing the command {Command}", command);
             }
         }
     }
 
-    private bool TryParseCommandAndArgs(ReadOnlySpan<char> line, out string command, out string[] args)
+    private bool TryParseCommandAndArgs(ReadOnlySpan<char> line, out string command, out string[] args, out string fullLine)
     {
         bool haveCommand = false;
         string nickPrefix = $"{Network.Nick}: ";
@@ -275,18 +261,32 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             line = line[nickPrefix.Length..].TrimStart(' ');
         }
 
+        command = string.Empty;
+        args = [];
+        fullLine = string.Empty;
+
         if (!haveCommand)
         {
-            command = string.Empty;
-            args = [];
             return false;
         }
 
         // some extra copying is performed here since the ReadOnlySpan<char>.Split() methods suck in .NET 8
-        // As of .NET 9 this API surface is far improved and we can avoid copies until the assignments to command/args
-        var split = line.ToString().Split(' ');
-        command = split[0];
-        args = split[1..];
+        // As of .NET 9 this API surface is far improved and we can avoid copies until the assignments to command/args/fullLine
+        var splitTrimmed = line.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var splitRaw = line.ToString().Split(' ', 2);
+
+        command = splitTrimmed[0];
+        
+        if (splitTrimmed.Length > 1)
+        {
+            args = splitTrimmed[1..];
+        }
+
+        if (splitRaw.Length == 2)
+        {
+            fullLine = splitRaw[1];
+        }
+        
         return true;
     }
 

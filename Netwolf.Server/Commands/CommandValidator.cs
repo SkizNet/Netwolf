@@ -32,6 +32,16 @@ public class CommandValidator : ICommandValidator<ICommandResponse>
         var handler = (IServerCommandHandler)commandHandler;
         var ctx = (ServerContext)context;
 
+        if (ctx.User == null)
+        {
+            throw new InvalidOperationException("Context is missing a user");
+        }
+
+        if (!ctx.User.Registered && !handler.AllowBeforeRegistration)
+        {
+            throw new NotRegisteredException();
+        }
+
         if (handler.HasChannel && ctx.Channel == null)
         {
             throw new NoSuchChannelException(command.Args[0]);

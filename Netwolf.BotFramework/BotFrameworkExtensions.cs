@@ -2,6 +2,8 @@
 
 using Netwolf.BotFramework.Internal;
 using Netwolf.BotFramework.Services;
+using Netwolf.PluginFramework.Extensions.DependencyInjection;
+using Netwolf.PluginFramework.Permissions;
 using Netwolf.Transport.Extensions.DependencyInjection;
 
 using System;
@@ -38,10 +40,12 @@ public static class BotFrameworkExtensions
             throw new ArgumentException($"Bot names must be unique; received duplicate bot name {botName}", nameof(botName));
         }
 
+        services.AddPluginFrameworkServices();
         // no-ops if transport services are already registered, so this is safe to call multiple times
         services.AddTransportServices();
         services.AddSingleton<BotRegistry>();
         services.AddHostedService<BotRunnerService>();
+        services.AddSingleton<IPermissionManager, BotPermissionManager>();
 
         RegisteredBots[botName] = typeof(TBot);
         return services;
