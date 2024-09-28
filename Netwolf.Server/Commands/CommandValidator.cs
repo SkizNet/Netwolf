@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Context;
@@ -17,9 +18,12 @@ public class CommandValidator : ICommandValidator<ICommandResponse>
 {
     private ILogger Logger { get; init; }
 
-    public CommandValidator(ILogger<CommandValidator> logger)
+    private ServerOptions Options { get; init; }
+
+    public CommandValidator(ILogger<CommandValidator> logger, IOptionsSnapshot<ServerOptions> options)
     {
         Logger = logger;
+        Options = options.Value;
     }
 
     public void ValidateCommand(ICommand command, ICommandHandler<ICommandResponse> commandHandler, IContext context)
@@ -88,6 +92,6 @@ public class CommandValidator : ICommandValidator<ICommandResponse>
 
     public bool ValidateCommandType(Type commandType)
     {
-        return commandType.IsAssignableTo(typeof(IServerCommandHandler));
+        return Options.EnabledCommands.Contains(commandType) && commandType.IsAssignableTo(typeof(IServerCommandHandler));
     }
 }

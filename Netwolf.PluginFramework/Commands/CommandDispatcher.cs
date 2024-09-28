@@ -3,8 +3,10 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Netwolf.PluginFramework.Context;
+using Netwolf.PluginFramework.Exceptions;
 using Netwolf.PluginFramework.Permissions;
 
+using System.Collections.Immutable;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.RegularExpressions;
@@ -29,6 +31,8 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
 
     private Dictionary<string, ICommandHandler<TResult>> Commands { get; init; } = [];
 
+    ImmutableArray<string> ICommandDispatcher<TResult>.Commands => [.. Commands.Keys];
+
     public CommandDispatcher(
         IServiceProvider provider,
         ILogger<ICommandDispatcher<TResult>> logger,
@@ -42,13 +46,6 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
         Validator = validator;
         PermissionManagers = permissionManagers;
         Augmenters = augmenters;
-
-        // Add builtin commands
-        // FIXME: once we define the shape of the plugin framework a bit more, probably move this to assembly-level attributes to define plugins? dunno
-        foreach (var assembly in AssemblyLoadContext.Default.Assemblies)
-        {
-            AddCommandsFromAssembly(assembly);
-        }
     }
 
     public void AddCommandsFromAssembly(Assembly assembly)
@@ -138,7 +135,7 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
                     handler.Privilege,
                     command.UnprefixedCommandPart);
 
-                throw new InvalidOperationException("No registered permission managers support the given context and permission");
+                throw new NoMatchingPermissionManagerException(command.Verb, sender.GetType(), handler.Privilege);
             }
 
             if (!hasPermission)

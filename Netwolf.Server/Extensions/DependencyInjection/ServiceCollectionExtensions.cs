@@ -38,8 +38,6 @@ public static class ServiceCollectionExtensions
 
     private static IServiceCollection AddServerServicesBase(IServiceCollection services)
     {
-        // register IContextAugmenter before calling AddPluginFrameworkServices so we don't register the dummy augmenter (slight perf gain)
-        services.AddSingleton<IContextAugmenter, ChannelContextAugmenter>();
         services.AddPluginFrameworkServices();
 
         // TODO: get rid of the Network class entirely.
@@ -48,6 +46,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IISupportResolver, ISupportResolver>();
         services.AddScoped<IUserFactory, UserFactory>();
         services.AddScoped<ICapabilityManager, CapabilityManager>();
+        services.AddSingleton<IContextAugmenter, ChannelContextAugmenter>();
         services.AddSingleton<ICommandValidator<ICommandResponse>, CommandValidator>();
         services.AddSingleton<IPermissionManager, ServerPermissionManager>();
 

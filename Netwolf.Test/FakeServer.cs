@@ -9,6 +9,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
 using System.Net;
 using System.Reflection;
+using System.Runtime.Loader;
 using System.Text.RegularExpressions;
 
 namespace Netwolf.Test;
@@ -21,6 +22,8 @@ internal class FakeServer : IServer
 {
     private IServiceProvider Services { get; init; }
 
+    internal ICommandDispatcher<ICommandResponse> CommandDispatcher { get; init; }
+
     internal ConcurrentDictionary<IConnection, User> State { get; init; } = new();
 
     public string HostName => "irc.netwolf.org";
@@ -29,9 +32,13 @@ internal class FakeServer : IServer
 
     public bool SecureConnection => true;
 
-    public FakeServer(IServiceProvider services)
+    public FakeServer(IServiceProvider services, ICommandDispatcher<ICommandResponse> commandDispatcher)
     {
         Services = services;
+        CommandDispatcher = commandDispatcher;
+
+        // Add builtin commands (keep the type below fully qualified so we can easily verify what assembly it's from)
+        CommandDispatcher.AddCommandsFromAssembly(typeof(Netwolf.Server.Network).Assembly);
     }
 
     internal void ConnectClient(IConnection connection)

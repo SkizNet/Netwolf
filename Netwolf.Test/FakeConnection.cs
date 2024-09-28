@@ -23,10 +23,10 @@ internal class FakeConnection : IConnection
 
     private bool disposedValue;
 
-    internal FakeConnection(FakeServer server, ICommandFactory commandFactory, ICommandDispatcher<ICommandResponse> commandDispatcher, ILogger<IConnection> logger)
+    internal FakeConnection(FakeServer server, ICommandFactory commandFactory, ILogger<IConnection> logger)
     {
         CommandFactory = commandFactory;
-        CommandDispatcher = commandDispatcher;
+        CommandDispatcher = server.CommandDispatcher;
         Server = server;
         Logger = logger;
     }

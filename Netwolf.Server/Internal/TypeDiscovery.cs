@@ -22,11 +22,7 @@ internal static class TypeDiscovery
     {
         List<Type> collection;
 
-        if (typeof(T) == typeof(ICommandHandler<ICommandResponse>))
-        {
-            collection = options.Value.EnabledCommands;
-        }
-        else if (typeof(T) == typeof(ICapability))
+        if (typeof(T) == typeof(ICapability))
         {
             collection = options.Value.EnabledCapabilities;
         }

@@ -45,7 +45,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// <summary>
     /// The network the bot is connected to.
     /// </summary>
-    protected INetwork Network { get; private init; }
+    private INetwork Network { get; init; }
 
     /// <summary>
     /// Internal marker for when bot initialization completes
@@ -64,9 +64,9 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// </summary>
     private CancellationTokenSource? CancellationSource { get; set; }
 
-    protected ICommandDispatcher<BotCommandResult> CommandDispatcher { get; private init; }
+    private ICommandDispatcher<BotCommandResult> CommandDispatcher { get; init; }
 
-    protected ICommandFactory CommandFactory { get; private init; }
+    private ICommandFactory CommandFactory { get; init; }
 
     /// <summary>
     /// Public constructor. If making your own constructor ensure it has a <c>string botName</c>

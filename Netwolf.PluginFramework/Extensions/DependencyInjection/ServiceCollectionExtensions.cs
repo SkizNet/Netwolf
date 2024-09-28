@@ -16,9 +16,8 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddPluginFrameworkServices(this IServiceCollection services)
     {
-        services.TryAddSingleton(typeof(ICommandDispatcher<>), typeof(CommandDispatcher<>));
+        services.TryAddScoped(typeof(ICommandDispatcher<>), typeof(CommandDispatcher<>));
         services.TryAddSingleton(typeof(ICommandValidator<>), typeof(CommandValidator<>));
-        services.TryAddSingleton<IContextAugmenter, DummyContextAugmenter>();
 
         return services;
     }
