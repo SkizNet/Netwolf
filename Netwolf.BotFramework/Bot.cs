@@ -232,11 +232,18 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         {
             using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(CancellationSource.Token, e.Token);
             var commandObj = CommandFactory.CreateCommand(CommandType.Bot, e.Command.Source, command, args, e.Command.Tags);
-            var context = new BotCommandContext(this, fullLine);
+            var context = new BotCommandContext(this, commandObj, fullLine);
 
             try
             {
                 _ = await CommandDispatcher.DispatchAsync(commandObj, context, linkedSource.Token);
+            }
+            catch (PermissionException ex)
+            {
+                // someone missing a permission isn't an error as far as our logging infra is concerned,
+                // so treat this differently from other exception types
+                Logger.LogInformation("The user {Nick} (account {Account}) does not have permission to execute {Command} (missing {Permission})",
+                    ex.Nick, ex.Account, ex.Command, ex.Permission);
             }
             catch (Exception ex)
             {
