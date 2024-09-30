@@ -82,7 +82,11 @@ public class Network : INetwork
     /// <summary>
     /// User-defined network name (not necessarily what the network actually calls itself)
     /// </summary>
-    public string Name { get; init; }
+    public string Name
+    {
+        get => State.Name;
+        init => State.Name = value;
+    }
 
     /// <summary>
     /// True if we are currently connected to this Network
@@ -999,4 +1003,8 @@ public class Network : INetwork
             _userRegistrationCompletionSource?.SetCanceled();
         }
     }
+
+    public bool TryGetEnabledCap(string cap, out string? value) => State.TryGetEnabledCap(cap, out value);
+
+    public bool TryGetISupport(ISupportToken token, out string? value) => State.TryGetISupport(token, out value);
 }

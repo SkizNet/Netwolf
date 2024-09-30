@@ -1,5 +1,6 @@
 ﻿using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Context;
+using Netwolf.Transport.IRC;
 
 using System;
 using System.Collections.Generic;
@@ -7,11 +8,13 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Netwolf.BotFramework;
+namespace Netwolf.BotFramework.Services;
 
 public class BotCommandContext : IContext
 {
     public Bot Bot { get; init; }
+
+    public INetworkInfo NetworkInfo { get; init; }
 
     public ICommand Command { get; init; }
 
@@ -40,13 +43,40 @@ public class BotCommandContext : IContext
     /// </summary>
     public List<Type> PermissionProviders { get; init; } = [];
 
-    public BotCommandContext(Bot bot, ICommand command, string fullLine)
+    /// <summary>
+    /// Internal constructor to make a new BotCommandContext;
+    /// called from BotCommandContextFactory
+    /// </summary>
+    /// <param name="bot"></param>
+    /// <param name="command"></param>
+    /// <param name="fullLine"></param>
+    internal BotCommandContext(Bot bot, INetworkInfo networkInfo, ICommand command, string fullLine)
     {
         Bot = bot;
         Command = command;
         FullLine = fullLine;
+        NetworkInfo = networkInfo;
 
         // TODO: split out just the nickname if this is a full nick!user@host hostmask
         SenderNickname = command.Source!;
+    }
+
+    /// <summary>
+    /// Copy constructor, for use in user-defined context augmenters.
+    /// These augmenters may subclass BotCommandContext to add additional contextual
+    /// data passed through to the command handlers.
+    /// </summary>
+    /// <param name="other"></param>
+    public BotCommandContext(BotCommandContext other)
+    {
+        Bot = other.Bot;
+        NetworkInfo = other.NetworkInfo;
+        Command = other.Command;
+        FullLine = other.FullLine;
+        SenderNickname = other.SenderNickname;
+        SenderAccount = other.SenderAccount;
+        AccountProvider = other.AccountProvider;
+        SenderPermissions = other.SenderPermissions;
+        PermissionProviders = other.PermissionProviders;
     }
 }

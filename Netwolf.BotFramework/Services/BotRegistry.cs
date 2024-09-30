@@ -13,6 +13,17 @@ public class BotRegistry
 {
     private Dictionary<string, Bot> KnownBots { get; init; } = [];
 
+    private readonly Dictionary<string, Type> _types = [];
+
+    internal IReadOnlyDictionary<string, Type> KnownTypes => _types;
+
+    internal BotRegistry() { }
+
+    internal void RegisterType(string name, Type type)
+    {
+        _types.Add(name, type);
+    }
+
     internal void RegisterBot(string name, Bot bot)
     {
         KnownBots.Add(name, bot);

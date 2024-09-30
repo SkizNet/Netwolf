@@ -71,39 +71,28 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
     private ICommandFactory CommandFactory { get; init; }
 
-    private IEnumerable<IAccountProvider> AccountProviders { get; init; }
+    private BotCommandContextFactory BotCommandContextFactory { get; init; }
 
-    private IEnumerable<IPermissionProvider> PermissionProviders { get; init; }
+    private IEnumerable<ICapProvider> CapProviders { get; init; }
 
     /// <summary>
-    /// Constructor. All parameters from <paramref name="botName"/> onwards are passed in explicitly
-    /// and must be present in all constructors for derived classes as the final parameters in the constructor.
+    /// Constructor; subclasses defining their own constructors must call this one. If the bot is activated
+    /// automatically on startup, the BotCreationData parameter will be injected automatically and must be present in
+    /// any subclass constructors. If the bot is created manually, the BotCreationData must be injected via FromKeyedServiceAttribute,
+    /// with the bot's name as the service key.
     /// </summary>
-    /// <param name="logger">Logger</param>
-    /// <param name="options">Bot options</param>
-    /// <param name="networkFactory">Network factory</param>
-    /// <param name="commandDispatcher"></param>
-    /// <param name="commandFactory"></param>
-    /// <param name="botName">Internal bot name passed to <see cref="BotFrameworkExtensions.AddBot"/></param>
-    public Bot(
-        ILogger<Bot> logger,
-        IOptionsMonitor<BotOptions> options,
-        INetworkFactory networkFactory,
-        ICommandDispatcher<BotCommandResult> commandDispatcher,
-        ICommandFactory commandFactory,
-        string botName,
-        IEnumerable<IAccountProvider> accountProviders,
-        IEnumerable<IPermissionProvider> permissionProviders)
+    /// <param name="data">PDO encapsulating bot services to improve future compatibility with subclass constructors</param>
+    public Bot(BotCreationData data)
     {
-        BotName = botName;
-        Logger = logger;
-        OptionsMonitor = options;
-        Network = networkFactory.Create(botName, Options);
-        CommandDispatcher = commandDispatcher;
-        CommandFactory = commandFactory;
+        BotName = data.BotName;
+        Logger = data.Logger;
+        OptionsMonitor = data.OptionsMonitor;
+        Network = data.NetworkFactory.Create(BotName, Options);
+        CommandDispatcher = data.CommandDispatcher;
+        CommandFactory = data.CommandFactory;
+        BotCommandContextFactory = data.BotCommandContextFactory;
+        CapProviders = data.CapProviders;
         DisconnectionSource = new();
-        AccountProviders = accountProviders;
-        PermissionProviders = permissionProviders;
 
         Network.CapReceived += OnCapReceived;
         Network.CommandReceived += OnCommandReceived;
@@ -242,32 +231,8 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         {
             using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(CancellationSource.Token, e.Token);
             var commandObj = CommandFactory.CreateCommand(CommandType.Bot, e.Command.Source, command, args, e.Command.Tags);
-            var context = new BotCommandContext(this, commandObj, fullLine);
-
-            // Populate account
-            foreach (var accountProvider in AccountProviders)
-            {
-                var resolvedAccount = await accountProvider.GetAccountAsync(context);
-                if (resolvedAccount != null)
-                {
-                    context.SenderAccount = resolvedAccount;
-                    context.AccountProvider = accountProvider.GetType();
-                    break;
-                }
-            }
-
-            // Populate permissions
-            foreach (var permissionProvider in PermissionProviders)
-            {
-                var curCount = context.SenderPermissions.Count;
-                context.SenderPermissions.UnionWith(await permissionProvider.GetPermissionsAsync(context));
-
-                // only track PermissionProvider types that positively contributed to the sender's permission set
-                if (context.SenderPermissions.Count > curCount)
-                {
-                    context.PermissionProviders.Add(permissionProvider.GetType());
-                }
-            }
+            // TODO: pass an immutable networkinfo snapshot (probably by making IrcState a record with immutable collections) rather than the full network
+            var context = await BotCommandContextFactory.CreateAsync(this, Network, commandObj, fullLine, linkedSource.Token);
 
             try
             {
@@ -334,7 +299,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
     private void OnCapReceived(object? sender, CapEventArgs e)
     {
-        throw new NotImplementedException();
+        e.EnableCap = e.EnableCap || CapProviders.Any(prov => prov.ShouldEnable(e.CapName, e.CapValue));
     }
 
     internal async Task ExecuteAsync(CancellationToken stoppingToken)

@@ -1,10 +1,17 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
+using Netwolf.BotFramework.Accounts;
 using Netwolf.BotFramework.Internal;
+using Netwolf.BotFramework.Permissions;
 using Netwolf.BotFramework.Services;
+using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Extensions.DependencyInjection;
 using Netwolf.PluginFramework.Permissions;
 using Netwolf.Transport.Extensions.DependencyInjection;
+using Netwolf.Transport.IRC;
 
 using System;
 using System.Collections.Generic;
@@ -20,9 +27,12 @@ namespace Netwolf.BotFramework;
 public static class BotFrameworkExtensions
 {
     /// <summary>
-    /// All service keys for registered bots
+    /// Singleton service instance for BotRegistry; created here instead of via DI activation
+    /// so that we can refer to it before the service provider is fully built
     /// </summary>
-    internal static Dictionary<string, Type> RegisteredBots = [];
+    private static readonly BotRegistry _registry = new();
+
+    private static bool _botServicesConfigured = false;
 
     /// <summary>
     /// Registers a new bot to be executed in the background immediately.
@@ -50,22 +60,81 @@ public static class BotFrameworkExtensions
     public static IServiceCollection AddBot<TBot>(this IServiceCollection services, string botName, Action<IBotBuilder>? configuration)
         where TBot : Bot
     {
-        if (RegisteredBots.ContainsKey(botName))
+        if (_registry.KnownTypes.ContainsKey(botName))
         {
             throw new ArgumentException($"Bot names must be unique; received duplicate bot name {botName}", nameof(botName));
         }
 
-        services.AddPluginFrameworkServices();
-        // no-ops if transport services are already registered, so this is safe to call multiple times
-        services.AddTransportServices();
-        services.AddSingleton<BotRegistry>();
-        services.AddHostedService<BotRunnerService>();
-        services.AddSingleton<IPermissionManager, BotPermissionManager>();
+        if (!_botServicesConfigured)
+        {
+            // no-ops if plugin or transport services are already registered, so this is safe to call multiple times
+            // (it may have been called already if other frameworks are in use alongside BotFramework)
+            services.AddPluginFrameworkServices();
+            services.AddTransportServices();
 
-        var builder = new BotBuilder(services);
+            // below is only called exactly once; TryAdd is not used for this reason
+            services.AddSingleton<BotRegistry>(_registry);
+            services.AddSingleton<IPermissionManager, BotPermissionManager>();
+            services.AddHostedService<BotRunnerService>();
+            _botServicesConfigured = true;
+        }
+
+        services.AddKeyedScoped<BotCommandContextFactory>(botName, static (provider, key) =>
+        {
+            return new BotCommandContextFactory(
+                provider.GetKeyedServices<IAccountProvider>(key),
+                provider.GetKeyedServices<IPermissionProvider>(key));
+        });
+
+        // BotRunnerService passes this explicitly via an extra parameter in ActivatorUtilities.CreateInstance,
+        // however we register it as a DI service here so that bots created outside of BotRunnerService can still
+        // receive the appropriate creation data injected into their constructors via FromKeyedServiceAttribute
+        services.AddKeyedScoped<BotCreationData>(botName, static (provider, key) =>
+        {
+            return new BotCreationData(
+                (string)key!,
+                provider.GetRequiredService<ILogger<Bot>>(),
+                provider.GetRequiredService<IOptionsMonitor<BotOptions>>(),
+                provider.GetRequiredService<INetworkFactory>(),
+                provider.GetRequiredService<ICommandDispatcher<BotCommandResult>>(),
+                provider.GetRequiredService<ICommandFactory>(),
+                provider.GetRequiredKeyedService<BotCommandContextFactory>(key),
+                provider.GetKeyedServices<ICapProvider>(key));
+        });
+
+        var builder = new BotBuilder(botName, services);
         configuration?.Invoke(builder);
 
-        RegisteredBots[botName] = typeof(TBot);
+        _registry.RegisterType(botName, typeof(TBot));
         return services;
+    }
+
+    /// <summary>
+    /// Determine the recognized account of the user for the bot from an account specified by the ircd.
+    /// </summary>
+    /// <param name="builder"></param>
+    /// <returns></returns>
+    public static IBotBuilder UseServicesAccountStrategy(this IBotBuilder builder)
+    {
+        // TODO: support more than just account-tag (e.g. extended-join, account-notify, WHOX, etc. to get services account info)
+        builder.Services
+            .AddKeyedSingleton<IAccountProvider, ServicesAccountProvider>(builder.BotName)
+            .AddKeyedSingleton<ICapProvider, ServicesAccountProvider>(builder.BotName);
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Define an "oper" permission based on the presence of the oper message tag.
+    /// </summary>
+    /// <param name="builder"></param>
+    /// <returns></returns>
+    public static IBotBuilder UseOperTagPermissionStrategy(this IBotBuilder builder)
+    {
+        builder.Services
+            .AddKeyedSingleton<IPermissionProvider, OperTagPermissionProvider>(builder.BotName)
+            .AddKeyedSingleton<ICapProvider, OperTagPermissionProvider>(builder.BotName);
+
+        return builder;
     }
 }

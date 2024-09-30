@@ -3,8 +3,10 @@
 /// <summary>
 /// Holds the state of the client's connection
 /// </summary>
-public class IrcState
+public class IrcState : INetworkInfo
 {
+    public string Name { get; internal set; } = default!;
+
     /// <summary>
     /// The current nickname for the connection
     /// </summary>
@@ -30,4 +32,15 @@ public class IrcState
     internal HashSet<string> EnabledCaps { get; init; } = [];
 
     internal Dictionary<ISupportToken, string?> ISupport { get; init; } = [];
+
+    public bool TryGetEnabledCap(string cap, out string? value)
+    {
+        value = SupportedCaps.GetValueOrDefault(cap);
+        return EnabledCaps.Contains(cap);
+    }
+
+    public bool TryGetISupport(ISupportToken token, out string? value)
+    {
+        return ISupport.TryGetValue(token, out value);
+    }
 }

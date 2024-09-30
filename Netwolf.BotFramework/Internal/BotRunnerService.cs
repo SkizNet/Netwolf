@@ -34,7 +34,7 @@ internal class BotRunnerService : BackgroundService
     {
         List<Task> botTasks = [];
 
-        foreach (var (botName, botType) in BotFrameworkExtensions.RegisteredBots)
+        foreach (var (botName, botType) in Registry.KnownTypes)
         {
             stoppingToken.ThrowIfCancellationRequested();
 
@@ -46,9 +46,8 @@ internal class BotRunnerService : BackgroundService
             var bot = (Bot)ActivatorUtilities.CreateInstance(
                 scope.ServiceProvider,
                 botType,
-                botName,
-                scope.ServiceProvider.GetKeyedServices<IAccountProvider>(botName),
-                scope.ServiceProvider.GetKeyedServices<IPermissionProvider>(botName));
+                scope.ServiceProvider.GetRequiredKeyedService<BotCreationData>(botName));
+
             Registry.RegisterBot(botName, bot);
             ManagedBots.Add(botName);
             botTasks.Add(bot.ExecuteAsync(stoppingToken));

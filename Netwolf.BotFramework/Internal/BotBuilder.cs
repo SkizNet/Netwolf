@@ -11,10 +11,13 @@ namespace Netwolf.BotFramework.Internal;
 
 internal sealed class BotBuilder : IBotBuilder
 {
+    public string BotName { get; init; }
+
     public IServiceCollection Services { get; init; }
 
-    public BotBuilder(IServiceCollection services)
+    public BotBuilder(string botName, IServiceCollection services)
     {
+        BotName = botName;
         Services = services;
     }
 }

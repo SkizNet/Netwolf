@@ -13,5 +13,5 @@ namespace Netwolf.BotFramework.Services;
 /// </summary>
 public interface IAccountProvider
 {
-    Task<string?> GetAccountAsync(BotCommandContext context);
+    Task<string?> GetAccountAsync(BotCommandContext context, CancellationToken cancellationToken);
 }

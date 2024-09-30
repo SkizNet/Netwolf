@@ -6,41 +6,12 @@ namespace Netwolf.Transport.IRC;
 /// <summary>
 /// Represents a Network
 /// </summary>
-public interface INetwork : IDisposable, IAsyncDisposable
+public interface INetwork : INetworkInfo, IDisposable, IAsyncDisposable
 {
-    /// <summary>
-    /// Network name
-    /// </summary>
-    string Name { get; }
-
     /// <summary>
     /// True if we are currently connected to this Network
     /// </summary>
     bool IsConnected { get; }
-
-    /// <summary>
-    /// Nickname for this connection.
-    /// Throws InvalidOperationException if not currently connected.
-    /// </summary>
-    string Nick { get; }
-
-    /// <summary>
-    /// Ident for this connection.
-    /// Throws InvalidOperationException if not currently connected.
-    /// </summary>
-    string Ident { get; }
-
-    /// <summary>
-    /// Hostname for this connection.
-    /// Throws InvalidOperationException if not currently connected.
-    /// </summary>
-    string Host { get; }
-
-    /// <summary>
-    /// Account name for this connection, or null if not logged in.
-    /// Throws InvalidOperationException if not currently connected.
-    /// </summary>
-    string? Account { get; }
 
     /// <summary>
     /// Event raised whenever we receive a command from the network

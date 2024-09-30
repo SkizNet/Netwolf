@@ -13,5 +13,5 @@ namespace Netwolf.BotFramework.Services;
 /// </summary>
 public interface IPermissionProvider
 {
-    Task<IEnumerable<string>> GetPermissionsAsync(BotCommandContext context);
+    Task<IEnumerable<string>> GetPermissionsAsync(BotCommandContext context, CancellationToken cancellationToken);
 }
