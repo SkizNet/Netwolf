@@ -20,25 +20,25 @@ public class BotCommandContext : IContext
     public string SenderNickname { get; init; }
 
     /// <summary>
-    /// Recognized account of the sender; populated via context augmenter
+    /// Recognized account of the sender
     /// </summary>
     public string? SenderAccount { get; set; }
 
     /// <summary>
-    /// Augmenter used to populate the <see cref="SenderAccount"/> property
+    /// Type used to determine the <see cref="SenderAccount"/> property
     /// </summary>
-    public Type? AccountAugmenter { get; set; }
+    public Type? AccountProvider { get; set; }
 
     /// <summary>
-    /// Permissions belonging to the <see cref="SenderAccount"/>;
-    /// populated via context augmenter
+    /// Permissions belonging to the <see cref="SenderAccount"/>
     /// </summary>
     public HashSet<string> SenderPermissions { get; init; } = [];
 
     /// <summary>
-    /// Augmenters used to populate <see cref="SenderPermissions"/>
+    /// Types used to populate <see cref="SenderPermissions"/>;
+    /// this will only contain types that actually added new elements to the permissions set.
     /// </summary>
-    public List<Type> PermissionAugmenters { get; init; } = [];
+    public List<Type> PermissionProviders { get; init; } = [];
 
     public BotCommandContext(Bot bot, ICommand command, string fullLine)
     {

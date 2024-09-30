@@ -31,8 +31,23 @@ public static class BotFrameworkExtensions
     /// <typeparam name="TBot"></typeparam>
     /// <param name="services"></param>
     /// <param name="botName">Internal name for the bot, to allow for multiple bots of the same <typeparamref name="TBot"/> to be registered.</param>
-    /// <returns></returns>
+    /// <returns>Service collection for fluent call chaining</returns>
     public static IServiceCollection AddBot<TBot>(this IServiceCollection services, string botName)
+        where TBot : Bot
+    {
+        return AddBot<TBot>(services, botName, null);
+    }
+
+    /// <summary>
+    /// Registers a new bot to be executed in the background immediately.
+    /// The process will exit once all bots finish running.
+    /// </summary>
+    /// <typeparam name="TBot"></typeparam>
+    /// <param name="services"></param>
+    /// <param name="botName">Internal name for the bot, to allow for multiple bots of the same <typeparamref name="TBot"/> to be registered.</param>
+    /// <param name="configuration">Configuration callback to customize additional aspects of the bot.</param>
+    /// <returns>Service collection for fluent call chaining</returns>
+    public static IServiceCollection AddBot<TBot>(this IServiceCollection services, string botName, Action<IBotBuilder>? configuration)
         where TBot : Bot
     {
         if (RegisteredBots.ContainsKey(botName))
@@ -46,6 +61,9 @@ public static class BotFrameworkExtensions
         services.AddSingleton<BotRegistry>();
         services.AddHostedService<BotRunnerService>();
         services.AddSingleton<IPermissionManager, BotPermissionManager>();
+
+        var builder = new BotBuilder(services);
+        configuration?.Invoke(builder);
 
         RegisteredBots[botName] = typeof(TBot);
         return services;

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 
 using Netwolf.BotFramework.Exceptions;
 using Netwolf.BotFramework.Internal;
+using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.Transport.IRC;
 
@@ -37,10 +38,12 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// </summary>
     protected ILogger<Bot> Logger { get; private init; }
 
+    private IOptionsMonitor<BotOptions> OptionsMonitor { get; init; }
+
     /// <summary>
     /// A snapshot of the bot options as defined by configuration
     /// </summary>
-    protected BotOptions Options { get; private init; }
+    protected BotOptions Options => OptionsMonitor.Get(BotName);
 
     /// <summary>
     /// The network the bot is connected to.
@@ -68,10 +71,13 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
     private ICommandFactory CommandFactory { get; init; }
 
+    private IEnumerable<IAccountProvider> AccountProviders { get; init; }
+
+    private IEnumerable<IPermissionProvider> PermissionProviders { get; init; }
+
     /// <summary>
-    /// Public constructor. If making your own constructor ensure it has a <c>string botName</c>
-    /// parameter as its last element; otherwise <see cref="ActivatorUtilities.CreateInstance"/> will
-    /// not be able to find your constructor.
+    /// Constructor. All parameters from <paramref name="botName"/> onwards are passed in explicitly
+    /// and must be present in all constructors for derived classes as the final parameters in the constructor.
     /// </summary>
     /// <param name="logger">Logger</param>
     /// <param name="options">Bot options</param>
@@ -81,19 +87,23 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// <param name="botName">Internal bot name passed to <see cref="BotFrameworkExtensions.AddBot"/></param>
     public Bot(
         ILogger<Bot> logger,
-        IOptionsSnapshot<BotOptions> options,
+        IOptionsMonitor<BotOptions> options,
         INetworkFactory networkFactory,
         ICommandDispatcher<BotCommandResult> commandDispatcher,
         ICommandFactory commandFactory,
-        string botName)
+        string botName,
+        IEnumerable<IAccountProvider> accountProviders,
+        IEnumerable<IPermissionProvider> permissionProviders)
     {
         BotName = botName;
         Logger = logger;
-        Options = options.Get(botName);
+        OptionsMonitor = options;
         Network = networkFactory.Create(botName, Options);
         CommandDispatcher = commandDispatcher;
         CommandFactory = commandFactory;
         DisconnectionSource = new();
+        AccountProviders = accountProviders;
+        PermissionProviders = permissionProviders;
 
         Network.CapReceived += OnCapReceived;
         Network.CommandReceived += OnCommandReceived;
@@ -179,7 +189,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
                     // TODO: compare against Source by extracting our nick if it's a full nick!user@host
                     if (args.Command.Args[0] == name && args.Command.Source == Network.Nick)
                     {
-                        opSource.SetResult();
+                        opSource.TrySetResult();
                     }
 
                     break;
@@ -233,6 +243,31 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(CancellationSource.Token, e.Token);
             var commandObj = CommandFactory.CreateCommand(CommandType.Bot, e.Command.Source, command, args, e.Command.Tags);
             var context = new BotCommandContext(this, commandObj, fullLine);
+
+            // Populate account
+            foreach (var accountProvider in AccountProviders)
+            {
+                var resolvedAccount = await accountProvider.GetAccountAsync(context);
+                if (resolvedAccount != null)
+                {
+                    context.SenderAccount = resolvedAccount;
+                    context.AccountProvider = accountProvider.GetType();
+                    break;
+                }
+            }
+
+            // Populate permissions
+            foreach (var permissionProvider in PermissionProviders)
+            {
+                var curCount = context.SenderPermissions.Count;
+                context.SenderPermissions.UnionWith(await permissionProvider.GetPermissionsAsync(context));
+
+                // only track PermissionProvider types that positively contributed to the sender's permission set
+                if (context.SenderPermissions.Count > curCount)
+                {
+                    context.PermissionProviders.Add(permissionProvider.GetType());
+                }
+            }
 
             try
             {

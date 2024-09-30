@@ -43,7 +43,12 @@ internal class BotRunnerService : BackgroundService
             Scopes[botName] = scope;
 
             // fire off the bot task but don't await it here since we want to start all bots
-            var bot = (Bot)ActivatorUtilities.CreateInstance(scope.ServiceProvider, botType, botName);
+            var bot = (Bot)ActivatorUtilities.CreateInstance(
+                scope.ServiceProvider,
+                botType,
+                botName,
+                scope.ServiceProvider.GetKeyedServices<IAccountProvider>(botName),
+                scope.ServiceProvider.GetKeyedServices<IPermissionProvider>(botName));
             Registry.RegisterBot(botName, bot);
             ManagedBots.Add(botName);
             botTasks.Add(bot.ExecuteAsync(stoppingToken));
