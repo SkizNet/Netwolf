@@ -138,6 +138,7 @@ public class IrcConnection : IConnection
                 EncryptionPolicy = EncryptionPolicy.RequireEncryption,
                 TargetHost = HostName,
                 RemoteCertificateValidationCallback = VerifyServerCertificate,
+                ApplicationProtocols = [new("irc")],
                 CertificateRevocationCheckMode = CheckOnlineRevocation
                     ? X509RevocationMode.Online
                     : X509RevocationMode.NoCheck
