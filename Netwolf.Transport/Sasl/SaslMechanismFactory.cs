@@ -1,11 +1,7 @@
-﻿using Netwolf.Transport.IRC;
+﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
+// SPDX-License-Identifier: LGPL-3.0-or-later
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
-using System.Threading.Tasks;
+using Netwolf.Transport.IRC;
 
 namespace Netwolf.Transport.Sasl;
 
