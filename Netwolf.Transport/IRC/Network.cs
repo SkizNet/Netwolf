@@ -586,7 +586,7 @@ public class Network : INetwork
 
         // split text if it is longer than maxlen bytes
         // TODO: if multiline is supported by the network, add appropriate tags
-        var lines = UnicodeHelper.SplitText(text, maxlen);
+        var lines = UnicodeHelper.SplitText(text, maxlen, false);
         foreach (string line in lines)
         {
             args[lineIndex] = line;

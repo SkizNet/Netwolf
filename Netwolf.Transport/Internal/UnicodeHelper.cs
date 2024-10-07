@@ -208,8 +208,9 @@ internal static partial class UnicodeHelper
     /// </summary>
     /// <param name="text"></param>
     /// <param name="maxLength"></param>
+    /// <param name="allowOverflow">If true, lines can be longer than <paramref name="maxLength"/> and will instead only be split at break opportunities</param>
     /// <returns></returns>
-    internal static List<string> SplitText(string text, int maxLength)
+    internal static List<string> SplitText(string text, int maxLength, bool allowOverflow)
     {
         List<Grapheme> graphemes = new()
         {
@@ -225,7 +226,7 @@ internal static partial class UnicodeHelper
             Grapheme cur = new(grapheme);
 
             // look up the (prev, cur), (prev, Any), and (Any, cur) pairs
-            var (prevType, curType, prevRule, curRule) = _mapping[(prev.Class, cur.Class)];
+            var (prevType, curType, prevRule, curRule) = _mapping.GetValueOrDefault((prev.Class, cur.Class));
             if ((prevRule ?? 99999) < prev.Rule)
             {
                 prev.Type = prevType!.Value;
@@ -238,7 +239,7 @@ internal static partial class UnicodeHelper
                 cur.Rule = curRule!.Value;
             }
 
-            (prevType, curType, prevRule, curRule) = _mapping[(prev.Class, LineBreakClass.Any)];
+            (prevType, curType, prevRule, curRule) = _mapping.GetValueOrDefault((prev.Class, LineBreakClass.Any));
             if ((prevRule ?? 99999) < prev.Rule)
             {
                 prev.Type = prevType!.Value;
@@ -251,7 +252,7 @@ internal static partial class UnicodeHelper
                 cur.Rule = curRule!.Value;
             }
 
-            (prevType, curType, prevRule, curRule) = _mapping[(LineBreakClass.Any, cur.Class)];
+            (prevType, curType, prevRule, curRule) = _mapping.GetValueOrDefault((LineBreakClass.Any, cur.Class));
             if ((prevRule ?? 99999) < prev.Rule)
             {
                 prev.Type = prevType!.Value;
@@ -518,7 +519,7 @@ internal static partial class UnicodeHelper
         // grapheme that fits. Because we injected an end of text marker above, we are guaranteed that this
         // list ends with a mandatory line break and as such all lines are properly accounted for without
         // requiring logic outside of the main loop.
-        for (int i = 0; i < graphemes.Count; ++i)
+        for (int i = 1; i < graphemes.Count; ++i)
         {
             var cur = graphemes[i];
 
@@ -557,12 +558,15 @@ internal static partial class UnicodeHelper
                     i = thresholdIndex;
                 }
 
-                lines.Add(preThreshold.ToString());
-                preThreshold.Clear();
-                threshold = null;
-                postThreshold.Clear();
-                currentLength = 0;
-                continue;
+                if (preThreshold.Length > 0 && (!allowOverflow || threshold != null))
+                {
+                    lines.Add(preThreshold.ToString());
+                    preThreshold.Clear();
+                    threshold = null;
+                    postThreshold.Clear();
+                    currentLength = 0;
+                    continue;
+                }
             }
 
             currentLength += cur.Length;
