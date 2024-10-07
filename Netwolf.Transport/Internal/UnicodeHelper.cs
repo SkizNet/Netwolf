@@ -8,6 +8,10 @@ using System.Text;
 
 namespace Netwolf.Transport.Internal;
 
+/// <summary>
+/// Implementation of TR14, revision 53 for Unicode 16.0.0
+/// https://www.unicode.org/reports/tr14/tr14-53.html
+/// </summary>
 internal static partial class UnicodeHelper
 {
     private static readonly Dictionary<(LineBreakClass Prev, LineBreakClass Cur), (LineBreakType? PrevType, LineBreakType? CurType, int? PrevRule, int? CurRule)> _mapping = new()
@@ -44,35 +48,43 @@ internal static partial class UnicodeHelper
         { (LineBreakClass.Any, LineBreakClass.GL), (null, LineBreakType.Forbidden, null, 1200) },
         // LB12a Do not break before NBSP and related characters, except after spaces and hyphens.
         // handled in SplitText() to avoid bloating the table with an extra 40-something rules that encode all options except for the excluded set
-        // LB13 Do not break before ‘]’ or ‘!’ or ‘;’ or ‘/’, even after spaces.
+        // LB13 Do not break before ‘]’ or ‘!’ or ‘/’, even after spaces.
         { (LineBreakClass.Any, LineBreakClass.CL), (LineBreakType.Forbidden, null, 1300, null) },
         { (LineBreakClass.Any, LineBreakClass.CP), (LineBreakType.Forbidden, null, 1300, null) },
         { (LineBreakClass.Any, LineBreakClass.EX), (LineBreakType.Forbidden, null, 1300, null) },
-        { (LineBreakClass.Any, LineBreakClass.IS), (LineBreakType.Forbidden, null, 1300, null) },
         { (LineBreakClass.Any, LineBreakClass.SY), (LineBreakType.Forbidden, null, 1300, null) },
         // LB14 Do not break after ‘[’, even after spaces.
         // handled in SplitText() as this rule cannot be encoded in a pairwise lookup table
-        // LB15 Do not break within ‘”[’, even with intervening spaces.
+        // LB15a Do not break after an unresolved initial punctuation that lies at the start of the line, after a space, after opening punctuation, or after an unresolved quotation mark, even after spaces.
         // handled in SplitText() as this rule cannot be encoded in a pairwise lookup table
+        // LB15b Do not break before an unresolved final punctuation that lies at the end of the line, before a space, before a prohibited break, or before an unresolved quotation mark, even after spaces.
+        // handled in SplitText() as this rule cannot be encoded in a pairwise lookup table
+        // LB15c Break before a decimal mark that follows a space, for instance, in ‘subtract .5’.
+        // handled in SplitText() as this rule cannot be encoded in a pairwise lookup table
+        // LB15d Otherwise, do not break before ‘;’, ‘,’, or ‘.’, even after spaces.
+        { (LineBreakClass.Any, LineBreakClass.IS), (LineBreakType.Forbidden, null, 1540, null) },
         // LB16 Do not break between closing punctuation and a nonstarter (lb=NS), even with intervening spaces.
         // handled in SplitText() as this rule cannot be encoded in a pairwise lookup table
         // LB17 Do not break within ‘——’, even with intervening spaces.
         // handled in SplitText() as this rule cannot be encoded in a pairwise lookup table
         // LB18 Break after spaces.
         // handled above since (Any, SP) was in use for LB7
-        // LB19 Do not break before or after quotation marks, such as ‘ ” ’.
-        { (LineBreakClass.Any, LineBreakClass.QU), (LineBreakType.Forbidden, LineBreakType.Forbidden, 1900, 1900) },
+        // LB19 Do not break before non-initial unresolved quotation marks, such as ‘ ” ’ or ‘ " ’, nor after non-final unresolved quotation marks, such as ‘ “ ’ or ‘ " ’.
+        // handled in SplitText() as this rule cannot be encoded in a pairwise lookup table
+        // LB19a Unless surrounded by East Asian characters, do not break either side of any unresolved quotation marks.
+        // handled in SplitText() as this rule cannot be encoded in a pairwise lookup table
         // LB20 Break before and after unresolved CB.
         { (LineBreakClass.Any, LineBreakClass.CB), (LineBreakType.Optional, LineBreakType.Optional, 2000, 2000) },
+        // LB20a Do not break after a word-initial hyphen.
+        // handled in SplitText() as this rule cannot be encoded in a pairwise lookup table
         // LB21 Do not break before hyphen-minus, other hyphens, fixed-width spaces, small kana, and other non-starters, or after acute accents.
         { (LineBreakClass.Any, LineBreakClass.BA), (LineBreakType.Forbidden, null, 2100, null) },
         { (LineBreakClass.Any, LineBreakClass.HY), (LineBreakType.Forbidden, null, 2100, null) },
         { (LineBreakClass.Any, LineBreakClass.NS), (LineBreakType.Forbidden, null, 2100, null) },
         { (LineBreakClass.Any, LineBreakClass.BB), (null, LineBreakType.Forbidden, null, 2100) },
-        // LB21a Don't break after Hebrew + Hyphen.
-        { (LineBreakClass.HL, LineBreakClass.HY), (null, LineBreakType.Forbidden, null, 2110) },
-        { (LineBreakClass.HL, LineBreakClass.BA), (null, LineBreakType.Forbidden, null, 2110) },
-        // LB21b Don’t break between Solidus and Hebrew letters.
+        // LB21a Do not break after the hyphen in Hebrew + Hyphen + non-Hebrew.
+        // handled in SplitText() as this rule cannot be encoded in a pairwise lookup table
+        // LB21b Do not break between Solidus and Hebrew letters.
         { (LineBreakClass.SY, LineBreakClass.HL), (LineBreakType.Forbidden, null, 2120, null) },
         // LB22 Do not break before ellipses.
         { (LineBreakClass.Any, LineBreakClass.IN), (LineBreakType.Forbidden, null, 2200, null) },
@@ -109,21 +121,12 @@ internal static partial class UnicodeHelper
         { (LineBreakClass.ZWJ, LineBreakClass.PO), (LineBreakType.Forbidden, null, 2400, null) },
         { (LineBreakClass.HL, LineBreakClass.PR), (LineBreakType.Forbidden, null, 2400, null) },
         { (LineBreakClass.HL, LineBreakClass.PO), (LineBreakType.Forbidden, null, 2400, null) },
-        // LB25 Do not break between the following pairs of classes relevant to numbers
-        { (LineBreakClass.CL, LineBreakClass.PO), (LineBreakType.Forbidden, null, 2500, null) },
-        { (LineBreakClass.CP, LineBreakClass.PO), (LineBreakType.Forbidden, null, 2500, null) },
-        { (LineBreakClass.CL, LineBreakClass.PR), (LineBreakType.Forbidden, null, 2500, null) },
-        { (LineBreakClass.CP, LineBreakClass.PR), (LineBreakType.Forbidden, null, 2500, null) },
-        { (LineBreakClass.NU, LineBreakClass.PO), (LineBreakType.Forbidden, null, 2500, null) },
-        { (LineBreakClass.NU, LineBreakClass.PR), (LineBreakType.Forbidden, null, 2500, null) },
-        { (LineBreakClass.PO, LineBreakClass.OP), (LineBreakType.Forbidden, null, 2500, null) },
+        // LB25 Do not break numbers
+        // Additional rules handled in SplitText() as they cannot be encoded in a pairwise lookup table
         { (LineBreakClass.PO, LineBreakClass.NU), (LineBreakType.Forbidden, null, 2500, null) },
-        { (LineBreakClass.PR, LineBreakClass.OP), (LineBreakType.Forbidden, null, 2500, null) },
         { (LineBreakClass.PR, LineBreakClass.NU), (LineBreakType.Forbidden, null, 2500, null) },
         { (LineBreakClass.HY, LineBreakClass.NU), (LineBreakType.Forbidden, null, 2500, null) },
         { (LineBreakClass.IS, LineBreakClass.NU), (LineBreakType.Forbidden, null, 2500, null) },
-        { (LineBreakClass.NU, LineBreakClass.NU), (LineBreakType.Forbidden, null, 2500, null) },
-        { (LineBreakClass.SY, LineBreakClass.NU), (LineBreakType.Forbidden, null, 2500, null) },
         // LB26 Do not break a Korean syllable.
         { (LineBreakClass.JL, LineBreakClass.JL), (LineBreakType.Forbidden, null, 2600, null) },
         { (LineBreakClass.JL, LineBreakClass.JV), (LineBreakType.Forbidden, null, 2600, null) },
@@ -164,6 +167,14 @@ internal static partial class UnicodeHelper
         { (LineBreakClass.HL, LineBreakClass.CM), (LineBreakType.Forbidden, null, 2800, null) },
         { (LineBreakClass.HL, LineBreakClass.ZWJ), (LineBreakType.Forbidden, null, 2800, null) },
         { (LineBreakClass.HL, LineBreakClass.HL), (LineBreakType.Forbidden, null, 2800, null) },
+        // LB28a Do not break inside the orthographic syllables of Brahmic scripts.
+        // Adjustments to accomodate U+25CC DOTTED CIRCLE as well as rules that cannot be encoded in a pairwise lookup table are handled in SplitText()
+        { (LineBreakClass.AP, LineBreakClass.AK), (LineBreakType.Forbidden, null, 2810, null) },
+        { (LineBreakClass.AP, LineBreakClass.AS), (LineBreakType.Forbidden, null, 2810, null) },
+        { (LineBreakClass.AK, LineBreakClass.VF), (LineBreakType.Forbidden, null, 2810, null) },
+        { (LineBreakClass.AS, LineBreakClass.VF), (LineBreakType.Forbidden, null, 2810, null) },
+        { (LineBreakClass.AK, LineBreakClass.VI), (LineBreakType.Forbidden, null, 2810, null) },
+        { (LineBreakClass.AS, LineBreakClass.VI), (LineBreakType.Forbidden, null, 2810, null) },
         // LB29 Do not break between numeric punctuation and alphabetics (“e.g.”).
         // (+ LB10 Treat any remaining combining mark or ZWJ as AL.)
         { (LineBreakClass.IS, LineBreakClass.AL), (LineBreakType.Forbidden, null, 2900, null) },
@@ -260,33 +271,52 @@ internal static partial class UnicodeHelper
         // handle rules that we couldn't handle above
         int state = 0;
         var lb12classes = new LineBreakClass[] { LineBreakClass.SP, LineBreakClass.BA, LineBreakClass.HY };
+        var lb15aclasses = new LineBreakClass[] { LineBreakClass.Sot, LineBreakClass.BK, LineBreakClass.CR, LineBreakClass.LF, LineBreakClass.NL, LineBreakClass.OP, LineBreakClass.QU, LineBreakClass.GL, LineBreakClass.SP, LineBreakClass.ZW };
+        var lb15bclasses = new LineBreakClass[] { LineBreakClass.SP, LineBreakClass.GL, LineBreakClass.WJ, LineBreakClass.CL, LineBreakClass.QU, LineBreakClass.CP, LineBreakClass.EX, LineBreakClass.IS, LineBreakClass.SY, LineBreakClass.BK, LineBreakClass.CR, LineBreakClass.LF, LineBreakClass.NL, LineBreakClass.ZW };
+        var lb20aclasses = new LineBreakClass[] { LineBreakClass.Sot, LineBreakClass.BK, LineBreakClass.CR, LineBreakClass.LF, LineBreakClass.NL, LineBreakClass.SP, LineBreakClass.ZW, LineBreakClass.CB, LineBreakClass.GL };
         var eaWidths = new EastAsianWidth[] { EastAsianWidth.F, EastAsianWidth.W, EastAsianWidth.H };
         prev = graphemes[0];
-        foreach (var cur in graphemes)
+        for (var i = 1; i < graphemes.Count; ++i)
         {
+            var cur = graphemes[i];
+            var next = (i < graphemes.Count - 1) ? graphemes[i + 1] : null;
+            var next2 = (i < graphemes.Count - 2) ? graphemes[i + 2] : null;
             state = (state, cur.Class) switch
             {
                 (0x08, LineBreakClass.SP) => 0x08,
                 (0x14, LineBreakClass.SP) => 0x14,
-                (0x1500, LineBreakClass.SP) => 0x1500,
-                (0x1500, LineBreakClass.OP) => 0x1514,
-                (0x1514, LineBreakClass.SP) => 0x14,
+                (0x15, LineBreakClass.SP) => 0x15,
                 (0x16, LineBreakClass.SP) => 0x16,
                 (0x16, LineBreakClass.NS) => 0x1600,
                 (0x17, LineBreakClass.SP) => 0x17,
                 (0x1700, LineBreakClass.SP) => 0x17,
                 (0x17, LineBreakClass.B2) => 0x1700,
                 (0x1700, LineBreakClass.B2) => 0x1700,
+                (0x25, LineBreakClass.SY) => 0x25,
+                (0x25, LineBreakClass.IS) => 0x25,
+                (0x2525, LineBreakClass.SY) => 0x25,
+                (0x2525, LineBreakClass.IS) => 0x25,
+                (0x25, LineBreakClass.NU) => 0x2525,
+                (0x25, LineBreakClass.CL) => 0x2500,
+                (0x25, LineBreakClass.CP) => 0x2500,
+                (0x25, LineBreakClass.PO) => 0x2500,
+                (0x25, LineBreakClass.PR) => 0x2500,
                 (0x30, LineBreakClass.RI) => 0x3000,
                 (_, LineBreakClass.ZW) => 0x08,
                 (_, LineBreakClass.OP) => 0x14,
-                (_, LineBreakClass.QU) => 0x1500,
                 (_, LineBreakClass.CL) => 0x16,
                 (_, LineBreakClass.CP) => 0x16,
                 (_, LineBreakClass.B2) => 0x17,
+                (_, LineBreakClass.NU) => 0x25,
                 (_, LineBreakClass.RI) => 0x30,
                 (_, _) => 0
             };
+
+            // handle state modifications that require more logic
+            if (lb15aclasses.Contains(prev.Class) && cur.Class == LineBreakClass.QU && Rune.GetUnicodeCategory(cur.Rune) == UnicodeCategory.InitialQuotePunctuation)
+            {
+                state = 0x15;
+            }
 
             byte low = unchecked((byte)(state & 0xff));
             byte high = unchecked((byte)(state >> 8));
@@ -312,11 +342,25 @@ internal static partial class UnicodeHelper
                 cur.Rule = 1400;
             }
 
-            // LB15 Do not break within ‘”[’, even with intervening spaces.
-            if (high == 0x15 && prev.Rule > 1500)
+            // LB15a Do not break after an unresolved initial punctuation that lies at the start of the line, after a space, after opening punctuation, or after an unresolved quotation mark, even after spaces.
+            if (low == 0x15 && cur.Rule > 1510)
+            {
+                cur.Type = LineBreakType.Forbidden;
+                cur.Rule = 1510;
+            }
+
+            // LB15b Do not break before an unresolved final punctuation that lies at the end of the line, before a space, before a prohibited break, or before an unresolved quotation mark, even after spaces.
+            if (prev.Rule > 1520 && cur.Class == LineBreakClass.QU && Rune.GetUnicodeCategory(cur.Rune) == UnicodeCategory.FinalQuotePunctuation && (next == null || lb15bclasses.Contains(next.Class)))
             {
                 prev.Type = LineBreakType.Forbidden;
-                prev.Rule = 1500;
+                prev.Rule = 1520;
+            }
+
+            // LB15c Break before a decimal mark that follows a space, for instance, in ‘subtract .5’.
+            if (prev.Rule > 1530 && prev.Class == LineBreakClass.SP && cur.Class == LineBreakClass.IS && next?.Class == LineBreakClass.NU)
+            {
+                prev.Type = LineBreakType.Optional;
+                prev.Rule = 1530;
             }
 
             // LB16 Do not break between closing punctuation and a nonstarter (lb=NS), even with intervening spaces.
@@ -331,6 +375,98 @@ internal static partial class UnicodeHelper
             {
                 prev.Type = LineBreakType.Forbidden;
                 prev.Rule = 1700;
+            }
+
+            // LB19 Do not break before non-initial unresolved quotation marks, such as ‘ ” ’ or ‘ " ’, nor after non-final unresolved quotation marks, such as ‘ “ ’ or ‘ " ’.
+            if (prev.Rule > 1900 && cur.Class == LineBreakClass.QU && Rune.GetUnicodeCategory(cur.Rune) != UnicodeCategory.InitialQuotePunctuation)
+            {
+                prev.Type = LineBreakType.Forbidden;
+                prev.Rule = 1900;
+            }
+
+            if (cur.Rule > 1900 && cur.Class == LineBreakClass.QU && Rune.GetUnicodeCategory(cur.Rune) != UnicodeCategory.FinalQuotePunctuation)
+            {
+                cur.Type = LineBreakType.Forbidden;
+                cur.Rule = 1900;
+            }
+
+            // LB19a Unless surrounded by East Asian characters, do not break either side of any unresolved quotation marks.
+            bool isEastAsian(Grapheme g) => eaWidths.Contains(GetEastAsianWidth(g.Rune));
+            if (prev.Rule > 1910 && cur.Class == LineBreakClass.QU)
+            {
+                if (!isEastAsian(prev) || next == null || !isEastAsian(next))
+                {
+                    prev.Type = LineBreakType.Forbidden;
+                    prev.Rule = 1910;
+                }
+            }
+
+            if (cur.Rule > 1910 && cur.Class == LineBreakClass.QU)
+            {
+                if ((next != null && !isEastAsian(next)) || prev.Class == LineBreakClass.Sot || !isEastAsian(prev))
+                {
+                    cur.Type = LineBreakType.Forbidden;
+                    cur.Rule = 1910;
+                }
+            }
+
+            // LB20a Do not break after a word-initial hyphen.
+            if (cur.Rule > 2010 && lb20aclasses.Contains(prev.Class) && (cur.Class == LineBreakClass.HY || cur.Rune.Value == 0x2010) && next?.Class == LineBreakClass.AL)
+            {
+                cur.Type = LineBreakType.Forbidden;
+                cur.Rule = 2010;
+            }
+
+            // LB21a Do not break after the hyphen in Hebrew + Hyphen + non-Hebrew.
+            if (cur.Rule > 2110 && prev.Class == LineBreakClass.HL && next != null && next.Class != LineBreakClass.HL && (cur.Class == LineBreakClass.HY || (cur.Class == LineBreakClass.BA && !isEastAsian(cur))))
+            {
+                cur.Type = LineBreakType.Forbidden;
+                cur.Rule = 2110;
+            }
+
+            // LB25 Do not break numbers
+            if (high == 0x25)
+            {
+                var lb25prev = new LineBreakClass[] { LineBreakClass.PO, LineBreakClass.PR, LineBreakClass.NU };
+                if (prev.Rule > 2500 && lb25prev.Contains(cur.Class))
+                {
+                    prev.Type = LineBreakType.Forbidden;
+                    prev.Rule = 2500;
+                }
+
+                if (cur.Rule > 2500 && (cur.Class == LineBreakClass.CL || cur.Class == LineBreakClass.CP) && next != null && (next.Class == LineBreakClass.PO || next.Class == LineBreakClass.PR))
+                {
+                    cur.Type = LineBreakType.Forbidden;
+                    cur.Rule = 2500;
+                }
+            }
+
+            if (prev.Rule > 2500 && cur.Class == LineBreakClass.OP && (prev.Class == LineBreakClass.PO || prev.Class == LineBreakClass.PR))
+            {
+                if (next?.Class == LineBreakClass.NU || (next?.Class == LineBreakClass.IS && next2?.Class == LineBreakClass.NU))
+                {
+                    prev.Type = LineBreakType.Forbidden;
+                    prev.Rule = 2500;
+                }
+            }
+
+            // LB28a Do not break inside the orthographic syllables of Brahmic scripts.
+            static bool isAkAsCirc(Grapheme g) => g.Class == LineBreakClass.AK || g.Class == LineBreakClass.AS || g.Rune.Value == 0x25cc;
+            if (prev.Rule > 2810)
+            {
+                if ((prev.Class == LineBreakClass.AP && isAkAsCirc(cur))
+                    || (isAkAsCirc(prev) && (cur.Class == LineBreakClass.VF || cur.Class == LineBreakClass.VI))
+                    || (isAkAsCirc(prev) && isAkAsCirc(cur) && next?.Class == LineBreakClass.VF))
+                {
+                    prev.Type = LineBreakType.Forbidden;
+                    prev.Rule = 2810;
+                }
+            }
+
+            if (cur.Rule > 2810 && isAkAsCirc(prev) && cur.Class == LineBreakClass.VI && (next?.Class == LineBreakClass.AK || next?.Rune.Value == 0x25cc))
+            {
+                cur.Type = LineBreakType.Forbidden;
+                cur.Rule = 2810;
             }
 
             // LB30 Do not break between letters, numbers, or ordinary symbols and opening or closing parentheses.
@@ -479,7 +615,7 @@ internal static partial class UnicodeHelper
                     UnicodeCategory.SpacingCombiningMark => LineBreakClass.CM,
                     _ => LineBreakClass.AL
                 },
-                LineBreakClass.CJ => LineBreakClass.AL,
+                LineBreakClass.CJ => LineBreakClass.NS,
                 _ => lineBreakClass.Value
             };
 
@@ -537,7 +673,10 @@ internal static partial class UnicodeHelper
         PR,
         SY,
         AI,
+        AK,
         AL,
+        AP,
+        AS,
         CJ,
         EB,
         EM,
@@ -550,6 +689,8 @@ internal static partial class UnicodeHelper
         JT,
         RI,
         SA,
+        VF,
+        VI,
         // start of text marker
         Sot,
         // end of text marker

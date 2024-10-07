@@ -10,14 +10,8 @@ namespace Netwolf.Generator.Transport;
 [Generator]
 public class UnicodeHelperGenerator : IIncrementalGenerator
 {
-    public void Execute(SourceProductionContext context, string? assemblyName)
+    public static StringBuilder GetSourceText()
     {
-        // only execute in Netwolf.Transport
-        if (assemblyName != "Netwolf.Transport")
-        {
-            return;
-        }
-
         var sb = new StringBuilder();
         string line;
 
@@ -44,18 +38,18 @@ public class UnicodeHelperGenerator : IIncrementalGenerator
                     continue;
                 }
 
-                // take data up to first space, in the format range;class
-                string[] data = line.Substring(0, line.IndexOf(' ')).Split(';');
+                // take data up to first #, in the format range;class
+                string[] data = line.Substring(0, line.IndexOf('#')).Split(';');
                 if (data[0].IndexOf('.') != -1)
                 {
                     // have a range
                     string[] range = data[0].Split(new char[] { '.' }, StringSplitOptions.RemoveEmptyEntries);
-                    list.Add(new DatabaseRecord(range[0], range[1], data[1]));
+                    list.Add(new DatabaseRecord(range[0].Trim(), range[1].Trim(), data[1].Trim()));
                 }
                 else
                 {
                     // no range
-                    list.Add(new DatabaseRecord(data[0], data[0], data[1]));
+                    list.Add(new DatabaseRecord(data[0].Trim(), data[0].Trim(), data[1].Trim()));
                 }
             }
         }
@@ -134,7 +128,18 @@ namespace Netwolf.Transport.Internal
     }
 }");
 
-        context.AddSource("UnicodeHelper.g.cs", sb.ToString());
+        return sb;
+    }
+
+    public void Execute(SourceProductionContext context, string? assemblyName)
+    {
+        // only execute in Netwolf.Transport
+        if (assemblyName != "Netwolf.Transport")
+        {
+            return;
+        }
+
+        context.AddSource("UnicodeHelper.g.cs", GetSourceText().ToString());
     }
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
