@@ -87,11 +87,11 @@ namespace Netwolf.Transport.Internal
             {
                 if (value < database[cur].Item1)
                 {
-                    end = cur;
+                    end = cur - 1;
                 }
                 else if (value > database[cur].Item2)
                 {
-                    start = cur;
+                    start = cur + 1;
                 }
                 else
                 {

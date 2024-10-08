@@ -1,6 +1,5 @@
 ﻿using Netwolf.Transport.Internal;
 
-using System.Collections.Generic;
 using System.Globalization;
 using System.Reflection;
 using System.Text;
@@ -18,8 +17,8 @@ public class UnicodeTests
     [DataTestMethod]
     public void Test_split_algorithm(string test, string comment)
     {
-        List<bool> expected = new();
-        List<bool> actual = new();
+        List<bool> expected = [];
+        List<bool> actual = [false];
         StringBuilder sb = new();
 
         foreach (var part in test.Split(' '))
@@ -37,7 +36,6 @@ public class UnicodeTests
         // this should split on every break opportunity (both optional and mandatory)
         var lines = UnicodeHelper.SplitText(sb.ToString(), 1, true);
 
-        actual.Add(false);
         foreach (var line in lines)
         {
             for (var i = 0; i < line.Length - 1; ++i)
