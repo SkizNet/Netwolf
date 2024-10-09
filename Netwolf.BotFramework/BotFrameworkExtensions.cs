@@ -137,4 +137,19 @@ public static class BotFrameworkExtensions
 
         return builder;
     }
+
+    /// <summary>
+    /// Retrieves the target of a message (PRIVMSG, NOTICE, or TAGMSG).
+    /// </summary>
+    /// <param name="command">Command to retrieve the target from</param>
+    /// <returns>The message target, or <c>null</c> if <paramref name="command"/> is not a PRIVMSG, NOTICE, or TAGMSG command.</returns>
+    public static string? GetMessageTarget(this ICommand command)
+    {
+        if (command.Verb == "PRIVMSG" || command.Verb == "NOTICE" || command.Verb == "TAGMSG")
+        {
+            return command.Args[0];
+        }
+
+        return null;
+    }
 }

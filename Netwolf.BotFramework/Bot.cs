@@ -1,20 +1,16 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Netwolf.BotFramework.Exceptions;
-using Netwolf.BotFramework.Internal;
 using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.Transport.IRC;
 
-using System.Collections.Concurrent;
 using System.Collections.Immutable;
-using System.Data.Common;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.RateLimiting;
 
 namespace Netwolf.BotFramework;
 
@@ -75,6 +71,10 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
     private IEnumerable<ICapProvider> CapProviders { get; init; }
 
+    private PartitionedRateLimiter<ICommand> CommandRateLimiter { get; init; }
+
+    private PartitionedRateLimiter<ICommand> ByteRateLimiter { get; init; }
+
     /// <summary>
     /// Constructor; subclasses defining their own constructors must call this one. If the bot is activated
     /// automatically on startup, the BotCreationData parameter will be injected automatically and must be present in
@@ -94,9 +94,223 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         CapProviders = data.CapProviders;
         DisconnectionSource = new();
 
+        // Initialize rate limiters with a cached options so it can't change on us
+        var cachedOptions = Options;
+        List<PartitionedRateLimiter<ICommand>> limiters = [];
+
+        // Per-target limiters (PRIVMSG/NOTICE/TAGMSG)
+        if (cachedOptions.DefaultPerTargetLimiter.Enabled || cachedOptions.PerTargetLimiter.Any(o => o.Value.Enabled))
+        {
+            limiters.Add(PartitionedRateLimiter.Create<ICommand, string>(cmd =>
+            {
+                var target = cmd.GetMessageTarget();
+                if (target == null)
+                {
+                    return RateLimitPartition.GetNoLimiter(string.Empty);
+                }
+
+                var config = cachedOptions.PerTargetLimiter.GetValueOrDefault(target, cachedOptions.DefaultPerTargetLimiter);
+                if (!config.Enabled)
+                {
+                    return RateLimitPartition.GetNoLimiter(string.Empty);
+                }
+
+                return RateLimitPartition.GetTokenBucketLimiter(target, _ => new()
+                {
+                    AutoReplenishment = false,
+                    QueueLimit = cachedOptions.RateLimiterMaxCommands,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    ReplenishmentPeriod = TimeSpan.FromMilliseconds(config.ReplenishmentRate),
+                    TokensPerPeriod = config.ReplenismentAmount,
+                    TokenLimit = config.MaxTokens,
+                });
+            }));
+        }
+
+        // Per-command limiters
+        if (cachedOptions.PerCommandLimiter.Any(o => o.Value.Enabled))
+        {
+            limiters.Add(PartitionedRateLimiter.Create<ICommand, string>(cmd =>
+            {
+                string? key = null;
+                string withArity = $"{cmd.Verb}`{cmd.Args.Count}";
+
+                if (cachedOptions.PerCommandLimiter.TryGetValue(withArity, out var config))
+                {
+                    key = withArity;
+                }
+                else if (cachedOptions.PerCommandLimiter.TryGetValue(cmd.Verb, out config))
+                {
+                    key = cmd.Verb;
+                }
+
+
+                if (key == null || !(config?.Enabled ?? false))
+                {
+                    return RateLimitPartition.GetNoLimiter(string.Empty);
+                }
+
+                return RateLimitPartition.GetSlidingWindowLimiter(key, _ => new()
+                {
+                    AutoReplenishment = false,
+                    QueueLimit = cachedOptions.RateLimiterMaxCommands,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    Window = TimeSpan.FromMilliseconds(config.Duration),
+                    PermitLimit = config.Limit,
+                    SegmentsPerWindow = config.Segments,
+                });
+            }));
+        }
+
+        // Global command limiter
+        if (cachedOptions.GlobalCommandLimiter.Enabled)
+        {
+            limiters.Add(PartitionedRateLimiter.Create<ICommand, string>(_ =>
+            {
+                return RateLimitPartition.GetTokenBucketLimiter(string.Empty, _ => new()
+                {
+                    AutoReplenishment = false,
+                    QueueLimit = cachedOptions.RateLimiterMaxCommands,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    ReplenishmentPeriod = TimeSpan.FromMilliseconds(cachedOptions.GlobalCommandLimiter.ReplenishmentRate),
+                    TokensPerPeriod = cachedOptions.GlobalCommandLimiter.ReplenismentAmount,
+                    TokenLimit = cachedOptions.GlobalCommandLimiter.MaxTokens,
+                });
+            }));
+        }
+
+        // If no limiters are enabled, present a dummy one as CreateChained() requires the collection to have at least 1 element
+        if (limiters.Count == 0)
+        {
+            limiters.Add(PartitionedRateLimiter.Create<ICommand, string>(_ =>
+            {
+                return RateLimitPartition.GetNoLimiter(string.Empty);
+            }));
+        }
+
+        CommandRateLimiter = PartitionedRateLimiter.CreateChained([.. limiters]);
+
+        // Global bytes limiter
+        if (cachedOptions.GlobalByteLimiter.Enabled)
+        {
+            ByteRateLimiter = PartitionedRateLimiter.Create<ICommand, string>(_ =>
+            {
+                return RateLimitPartition.GetSlidingWindowLimiter(string.Empty, _ => new()
+                {
+                    AutoReplenishment = false,
+                    QueueLimit = cachedOptions.RateLimiterMaxBytes,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    Window = TimeSpan.FromMilliseconds(cachedOptions.GlobalByteLimiter.Duration),
+                    PermitLimit = cachedOptions.GlobalByteLimiter.Limit,
+                    SegmentsPerWindow = cachedOptions.GlobalByteLimiter.Segments,
+                });
+            });
+        }
+        else
+        {
+            ByteRateLimiter = PartitionedRateLimiter.Create<ICommand, string>(_ =>
+            {
+                return RateLimitPartition.GetNoLimiter(string.Empty);
+            });
+        }
+
+        // Register our network events
         Network.CapReceived += OnCapReceived;
         Network.CommandReceived += OnCommandReceived;
         Network.Disconnected += OnDisconnected;
+    }
+
+    /// <summary>
+    /// Send a raw line to the network, with no validation and bypassing all rate limiters.
+    /// This is NOT SAFE to use on user input and misuse may lead to security vulnerabilities.
+    /// A CRLF is automatically appended to the end of the line, however lines with embedded CRLF
+    /// are allowed and will be interpreted by the remote ircd as multiple commands.
+    /// </summary>
+    /// <param name="rawLine">A line that conforms to the IRC protocol. No validation or processing is performed.</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns></returns>
+    public Task UnsafeSendRawAsync(string rawLine, CancellationToken cancellationToken)
+    {
+        return Network.UnsafeSendRawAsync(rawLine, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends a raw line to the network. The line will be parsed and validated and does not need to have a source defined.
+    /// The verb, arguments, and tags from the raw line will be sent.
+    /// Rate limiters will apply to the sent command.
+    /// A CRLF will be automatically appended to the line and must not be present in the passed-in line.
+    /// In general, prefer to use the SendAsync overloads as they are more performant due to not requiring command parsing.
+    /// </summary>
+    /// <param name="rawLine">A line containing the verb, arguments, and message tags to send.</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns></returns>
+    public Task SendRawAsync(string rawLine, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var parsed = CommandFactory.Parse(CommandType.Client, rawLine);
+        var command = Network.PrepareCommand(parsed.Verb, parsed.Args, parsed.Tags);
+        return InternalSendAsync(command, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends a command to the IRC network with the specified verb and arguments.
+    /// Rate limiters will apply to the sent command.
+    /// </summary>
+    /// <param name="verb"></param>
+    /// <param name="args"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public Task SendAsync(string verb, IEnumerable<object?> args, CancellationToken cancellationToken)
+    {
+        var command = Network.PrepareCommand(verb, args);
+        return InternalSendAsync(command, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends a command to the IRC network with the specified verb, arguments, and tags.
+    /// Rate limiters will apply to the sent command.
+    /// </summary>
+    /// <param name="verb"></param>
+    /// <param name="args"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public Task SendAsync(string verb, IEnumerable<object?> args, IReadOnlyDictionary<string, string?> tags, CancellationToken cancellationToken)
+    {
+        var command = Network.PrepareCommand(verb, args, tags);
+        return InternalSendAsync(command, cancellationToken);
+    }
+
+    /// <summary>
+    /// Send a rate-limited command to the network
+    /// </summary>
+    /// <param name="command">Command to send</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns></returns>
+    /// <exception cref="RateLimitLeaseAcquisitionException">If we're unable to acquire a rate limit lease (e.g. queue is full)</exception>
+    private async Task InternalSendAsync(ICommand command, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var commandLease = await CommandRateLimiter.AcquireAsync(command, 1, cancellationToken).ConfigureAwait(false);
+        if (!commandLease.IsAcquired)
+        {
+            commandLease.TryGetMetadata(MetadataName.ReasonPhrase, out var reason);
+            Logger.LogError("Unable to send {Command}: {Reason}", command.Verb, reason ?? "Unknown error.");
+            throw new RateLimitLeaseAcquisitionException(command, commandLease.GetAllMetadata().ToDictionary());
+        }
+
+        // command.FullCommand omits the trailing CRLF, so add another 2 bytes to account for it
+        var byteCount = Encoding.UTF8.GetByteCount(command.FullCommand) + 2;
+        using var byteLease = await ByteRateLimiter.AcquireAsync(command, byteCount, cancellationToken).ConfigureAwait(false);
+        if (!byteLease.IsAcquired)
+        {
+            byteLease.TryGetMetadata(MetadataName.ReasonPhrase, out var reason);
+            Logger.LogError("Unable to send {Command}: {Reason}", command.Verb, reason ?? "Unknown error.");
+            throw new RateLimitLeaseAcquisitionException(command, byteLease.GetAllMetadata().ToDictionary());
+        }
+
+        await Network.SendAsync(command, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -186,8 +400,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         }
         
         Network.CommandReceived += handler;
-        var command = Network.PrepareCommand("JOIN", [name, key]);
-        await Network.SendAsync(command, linkedToken).ConfigureAwait(false);
+        await SendAsync("JOIN", [name, key], linkedToken).ConfigureAwait(false);
 
         try
         {
@@ -399,8 +612,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
         try
         {
-            var command = Network.PrepareCommand("OPER", [username, password]);
-            await Network.SendAsync(command, cancellationToken).ConfigureAwait(false);
+            await SendAsync("OPER", [username, password], cancellationToken).ConfigureAwait(false);
 
             // time out after a few seconds so that we don't hang forever in case we get some non-standard error response (e.g. via NOTICE)
             // TODO: assume oper fails after this timeout and give the bot an opportunity to fail fast if it requires oper
@@ -454,8 +666,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
                     var plainChallenge = rsa.Decrypt(encryptedChallenge, RSAEncryptionPadding.OaepSHA1);
                     var hashedChallenge = SHA1.HashData(plainChallenge);
                     var response = Convert.ToBase64String(hashedChallenge);
-                    var command = Network.PrepareCommand("CHALLENGE", [$"+{response}"]);
-                    await Network.SendAsync(command, cancellationToken).ConfigureAwait(false);
+                    await SendAsync("CHALLENGE", [$"+{response}"], cancellationToken).ConfigureAwait(false);
                     break;
             }
         }
@@ -465,7 +676,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         try
         {
             var command = Network.PrepareCommand("CHALLENGE", [username]);
-            await Network.SendAsync(command, cancellationToken).ConfigureAwait(false);
+            await SendAsync("CHALLENGE", [username], cancellationToken).ConfigureAwait(false);
 
             // time out after a few seconds so that we don't hang forever in case we get some non-standard error response (e.g. via NOTICE)
             // TODO: assume oper fails after this timeout and give the bot an opportunity to fail fast if it requires oper

@@ -63,7 +63,7 @@ public interface INetwork : INetworkInfo, IDisposable, IAsyncDisposable
     /// </param>
     Task ConnectAsync(CancellationToken cancellationToken = default);
 
-    ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, object?>? tags = null);
+    ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, string?>? tags = null);
 
     /// <summary>
     /// Prepare a command to be sent to the network.
@@ -74,8 +74,7 @@ public interface INetwork : INetworkInfo, IDisposable, IAsyncDisposable
     /// <c>null</c> values (whether before or after string conversion) will be omitted.
     /// </param>
     /// <param name="tags">
-    /// Command tags. <c>null</c> values will be sent without tag values, whereas all other values
-    /// will be turned into strings. If the resultant value is an empty string, it will be sent without a tag value.
+    /// Command tags. <c>null</c> values and empty strings will be sent without a tag value.
     /// </param>
     /// <returns>The prepared command, which can be sent to the network via <see cref="SendAsync(ICommand)"/>.</returns>
     /// <exception cref="ArgumentNullException">If <paramref name="verb"/> is <c>null</c>.</exception>
@@ -84,7 +83,7 @@ public interface INetwork : INetworkInfo, IDisposable, IAsyncDisposable
     /// <exception cref="CommandTooLongException">
     /// If the expanded command (without tags) cannot fit within 512 bytes or the tags cannot fit within 4096 bytes.
     /// </exception>
-    ICommand PrepareCommand(string verb, IEnumerable<object?>? args = null, IReadOnlyDictionary<string, object?>? tags = null);
+    ICommand PrepareCommand(string verb, IEnumerable<object?>? args = null, IReadOnlyDictionary<string, string?>? tags = null);
 
     /// <summary>
     /// Send a command to the network

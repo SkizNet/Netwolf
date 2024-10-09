@@ -538,21 +538,21 @@ public class Network : INetwork
     }
 
     /// <inheritdoc />
-    public ICommand PrepareCommand(string verb, IEnumerable<object?>? args = null, IReadOnlyDictionary<string, object?>? tags = null)
+    public ICommand PrepareCommand(string verb, IEnumerable<object?>? args = null, IReadOnlyDictionary<string, string?>? tags = null)
     {
         return CommandFactory.CreateCommand(
             CommandType.Client,
             $"{State.Nick}!{State.Ident}@{State.Host}",
             verb,
             (args ?? []).Select(o => o?.ToString()).Where(o => o != null).ToList(),
-            (tags ?? new Dictionary<string, object?>()).ToDictionary(o => o.Key, o => o.Value?.ToString()));
+            (tags ?? new Dictionary<string, string?>()).ToDictionary());
     }
 
     /// <inheritdoc />
-    public ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, object?>? tags = null)
+    public ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, string?>? tags = null)
     {
         var commands = new List<ICommand>();
-        var messageTags = (tags ?? new Dictionary<string, object?>()).ToDictionary(o => o.Key, o => o.Value?.ToString());
+        var messageTags = tags ?? new Dictionary<string, string?>();
 
         // TODO: pick the CPRIVMSG/CNOTICE variants if enabled in network options, supported by server, and we're opped on a channel shared with target;
         // this will also need to pick the relevant channel as well. CPRIVMSG target #channel :message or CNOTICE target #channel :message
