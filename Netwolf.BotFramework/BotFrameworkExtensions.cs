@@ -138,6 +138,8 @@ public static class BotFrameworkExtensions
         return builder;
     }
 
+    private static readonly HashSet<string> MESSAGE_TYPES = ["PRIVMSG", "NOTICE", "TAGMSG", "CPRIVMSG", "CNOTICE"];
+
     /// <summary>
     /// Retrieves the target of a message (PRIVMSG, NOTICE, or TAGMSG).
     /// </summary>
@@ -145,7 +147,7 @@ public static class BotFrameworkExtensions
     /// <returns>The message target, or <c>null</c> if <paramref name="command"/> is not a PRIVMSG, NOTICE, or TAGMSG command.</returns>
     public static string? GetMessageTarget(this ICommand command)
     {
-        if (command.Verb == "PRIVMSG" || command.Verb == "NOTICE" || command.Verb == "TAGMSG")
+        if (MESSAGE_TYPES.Contains(command.Verb))
         {
             return command.Args[0];
         }

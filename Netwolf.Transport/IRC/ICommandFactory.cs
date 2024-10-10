@@ -12,7 +12,17 @@ public interface ICommandFactory
 {
     Type ObjectType { get; }
 
-    ICommand CreateCommand(CommandType commandType, string? source, string verb, IReadOnlyList<string?> args, IReadOnlyDictionary<string, string?> tags);
+    /// <summary>
+    /// Prepare a command in the IRC protocol line format
+    /// </summary>
+    /// <param name="commandType">Type of command</param>
+    /// <param name="source">Command source</param>
+    /// <param name="verb">Command verb, normalized to all-uppercase</param>
+    /// <param name="args">Command arguments, may be empty</param>
+    /// <param name="tags">Command tags, may be empty</param>
+    /// <param name="options">Options defining various protocol-level limits in commands</param>
+    /// <returns>The processed command</returns>
+    ICommand CreateCommand(CommandType commandType, string? source, string verb, IReadOnlyList<string?> args, IReadOnlyDictionary<string, string?> tags, CommandCreationOptions? options = null);
 
     /// <summary>
     /// Parse a raw IRC protocol message

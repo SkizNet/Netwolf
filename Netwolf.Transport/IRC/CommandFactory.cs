@@ -34,15 +34,21 @@ public partial class CommandFactory : ICommandFactory
         Provider = provider;
     }
 
-    public ICommand CreateCommand(CommandType commandType, string? source, string verb, IReadOnlyList<string?> args, IReadOnlyDictionary<string, string?> tags)
+    public ICommand CreateCommand(CommandType commandType, string? source, string verb, IReadOnlyList<string?> args, IReadOnlyDictionary<string, string?> tags, CommandCreationOptions? options = null)
     {
         // Verify parameters
         ArgumentNullException.ThrowIfNull(verb);
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(tags);
 
-        List<string> commandArgs = new();
-        Dictionary<string, string?> commandTags = new();
+        List<string> commandArgs = [];
+        Dictionary<string, string?> commandTags = [];
+
+        options ??= new();
+        if (options.LineLen < 512 || options.ClientTagLen < 4096 || options.ServerTagLen < 8191)
+        {
+            throw new ArgumentException("Options contains invalid length limits; limits can only be increased above RFC limits, not reduced", nameof(options));
+        }
 
         // source could be a hostmask or DNS name, and sometimes cute things happen such as embedded color codes.
         // Simply forbid known-invalid characters rather than attempting to write strict validation
@@ -58,8 +64,9 @@ public partial class CommandFactory : ICommandFactory
 
         int allowedTagLength = commandType switch
         {
-            CommandType.Server => 8191,
-            CommandType.Client => 4096,
+            CommandType.Server => options.ServerTagLen,
+            CommandType.Client => options.ClientTagLen,
+            CommandType.Bot => options.ClientTagLen,
             _ => throw new ArgumentException("Invalid command type", nameof(commandType))
         };
 
@@ -80,7 +87,7 @@ public partial class CommandFactory : ICommandFactory
                 throw new ArgumentException($"Invalid characters in argument at position {i}", nameof(args));
             }
 
-            if (arg == String.Empty || arg[0] == ':' || arg.Contains(' '))
+            if (arg == string.Empty || arg[0] == ':' || arg.Contains(' '))
             {
                 hasTrailingArg = i == args.Count - 1 ? true : throw new ArgumentException($"Invalid trailing argument at position {i}", nameof(args));
             }
@@ -100,17 +107,25 @@ public partial class CommandFactory : ICommandFactory
             // tag values are valid UTF-8 (which was also validated already since the bytes were decoded to a string by now).
 
             // normalize empty string values to null for consistency (allowed by spec)
-            commandTags[key] = value == String.Empty ? null : value;
+            commandTags[key] = value == string.Empty ? null : value;
         }
 
         var commandOptions = new CommandOptions(commandType, source, verb, commandArgs, commandTags, hasTrailingArg);
         var command = (ICommand)ActivatorUtilities.CreateInstance(Provider, ObjectType, commandOptions);
-        // PrefixedCommandPart doesn't include trailing CRLF, so check against 510 instead of 512 to account for that protocol overhead
-        return command.PrefixedCommandPart.EncodeUtf8().Length > 510
-            ? throw new CommandTooLongException($"Command is too long, {command.PrefixedCommandPart.Length} bytes found but 510 bytes allowed.")
-            : command.TagPart.EncodeUtf8().Length > allowedTagLength
-            ? throw new CommandTooLongException($"Tags are too long, {command.TagPart.Length} bytes found but {allowedTagLength} bytes allowed.")
-            : command;
+
+        // PrefixedCommandPart doesn't include trailing CRLF, so subtract 2 from our maximal length to account for that protocol overhead
+        int allowedLineLength = options.LineLen - 2;
+        if (command.PrefixedCommandPart.EncodeUtf8().Length > allowedLineLength)
+        {
+            throw new CommandTooLongException($"Command is too long, {command.PrefixedCommandPart.Length} bytes found but {allowedLineLength} bytes allowed.");
+        }
+
+        if (command.TagPart.EncodeUtf8().Length > allowedTagLength)
+        {
+            throw new CommandTooLongException($"Tags are too long, {command.TagPart.Length} bytes found but {allowedTagLength} bytes allowed.");
+        }
+
+        return command;
     }
 
     public ICommand Parse(CommandType commandType, string message)
@@ -123,8 +138,8 @@ public partial class CommandFactory : ICommandFactory
 
         string verb = matches.Groups["verb"].Value;
         string? source = null;
-        Dictionary<string, string?> tags = new();
-        List<string> args = new();
+        Dictionary<string, string?> tags = [];
+        List<string> args = [];
 
         if (matches.Groups["source"].Success)
         {
@@ -135,8 +150,8 @@ public partial class CommandFactory : ICommandFactory
         {
             foreach (var tag in matches.Groups["tag"].Captures.Cast<Capture>())
             {
-                string[] parts = tag.Value.Split(new char[] { '=' }, 2);
-                if (parts.Length == 1 || parts[1] == String.Empty)
+                string[] parts = tag.Value.Split(['='], 2);
+                if (parts.Length == 1 || parts[1] == string.Empty)
                 {
                     tags[parts[0]] = null;
                 }

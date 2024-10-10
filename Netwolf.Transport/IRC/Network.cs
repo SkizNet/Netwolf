@@ -135,6 +135,11 @@ public class Network : INetwork
         protected set => State.Account = value;
     }
 
+    /// <summary>
+    /// Maxmium length of an IRC line (excluding tags, including final CRLF).
+    /// </summary>
+    private int MaxLength { get; set; } = 512;
+
     /// <inheritdoc />
     public event EventHandler<NetworkEventArgs>? CommandReceived;
 
@@ -545,7 +550,8 @@ public class Network : INetwork
             $"{State.Nick}!{State.Ident}@{State.Host}",
             verb,
             (args ?? []).Select(o => o?.ToString()).Where(o => o != null).ToList(),
-            (tags ?? new Dictionary<string, string?>()).ToDictionary());
+            (tags ?? new Dictionary<string, string?>()).ToDictionary(),
+            new(MaxLength));
     }
 
     /// <inheritdoc />
@@ -575,7 +581,7 @@ public class Network : INetwork
         // :<hostmask> <verb> <target> :<text>\r\n -- 2 colons + 3 spaces + CRLF = 7 syntax characters. If CPRIVMSG/CNOTICE, one extra space is needed.
         // we build in an additional safety buffer of 14 bytes to account for cases where our hostmask is out of sync or the server adds additional context
         // to relayed messages (for 7 + 14 = 21 total bytes, leaving 491 for the rest normally or 490 when using CPRIVMSG/CNOTICE)
-        int maxlen = 512 - 21 - hostmask.Length - verb.Length - target.Length;
+        int maxlen = MaxLength - 21 - hostmask.Length - verb.Length - target.Length;
         if (verb[0] == 'C')
         {
             maxlen -= 1 + oppedChannel.Length;
@@ -587,16 +593,11 @@ public class Network : INetwork
         // split text if it is longer than maxlen bytes
         // TODO: if multiline is supported by the network, add appropriate tags
         var lines = UnicodeHelper.SplitText(text, maxlen, false);
+        CommandCreationOptions options = new(MaxLength);
         foreach (string line in lines)
         {
             args[lineIndex] = line;
-            commands.Add(CommandFactory.CreateCommand(
-                CommandType.Client,
-                hostmask,
-                verb,
-                args,
-                messageTags
-                ));
+            commands.Add(CommandFactory.CreateCommand(CommandType.Client, hostmask, verb, args, messageTags, options));
         }
 
         return [.. commands];
@@ -619,7 +620,7 @@ public class Network : INetwork
                     string secondary = Options.SecondaryNick ?? $"{Options.PrimaryNick}_";
                     if (attempted == Options.PrimaryNick)
                     {
-                        _ = SendAsync(PrepareCommand("NICK", new string[] { secondary }, null), cancellationToken);
+                        _ = SendAsync(PrepareCommand("NICK", [secondary], null), cancellationToken);
                     }
                     else if (attempted == secondary)
                     {
@@ -632,7 +633,7 @@ public class Network : INetwork
                 case "422":
                     // got MOTD, we've been registered. But we might still not know our own ident/host,
                     // so send out a WHO for ourselves before handing control back to client
-                    _ = SendAsync(PrepareCommand("WHO", new string[] { State.Nick }), cancellationToken);
+                    _ = SendAsync(PrepareCommand("WHO", [State.Nick]), cancellationToken);
                     break;
                 case "352":
                     State.Ident = command.Args[2];
@@ -663,14 +664,25 @@ public class Network : INetwork
                 for (int i = 1; i < command.Args.Count - 1; i++)
                 {
                     var token = command.Args[i];
+                    string? value = null;
                     if (token.Contains('='))
                     {
                         var splitToken = token.Split('=', 2);
-                        State.ISupport[new(splitToken[0])] = splitToken[1];
+                        token = splitToken[0];
+                        value = splitToken[1];
                     }
-                    else
+
+                    State.ISupport[new(token)] = value;
+
+                    // we process some tokens here too because we need the info
+                    switch (token)
                     {
-                        State.ISupport[new(token)] = null;
+                        case "LINELEN":
+                            if (int.TryParse(value, out int lineLen))
+                            {
+                                MaxLength = Math.Max(lineLen, MaxLength);
+                            }
+                            break;
                     }
                 }
                 break;
@@ -790,6 +802,7 @@ public class Network : INetwork
                         // :server CAP nick ACK :data\r\n -- 14 bytes of overhead (leaving 498), plus nicklen, plus serverlen
                         // we reserve another 64 bytes just in case there is other unexpected overhead. better to send an extra
                         // CAP REQ than to be rejected because the server reply is longer than we anticipated it'd be
+                        // Note: don't use MaxLength here since we're still pre-registration and haven't received ISUPPORT
                         int maxBytes = 434 - (State.Nick?.Length ?? 1) - (command.Source?.Length ?? 0);
                         int consumedBytes = 0;
                         List<string> param = [];
@@ -798,7 +811,7 @@ public class Network : INetwork
                         {
                             if (consumedBytes + token.Length > maxBytes)
                             {
-                                _ = SendAsync(PrepareCommand("CAP", new string[] { "REQ", String.Join(" ", param) }), cancellationToken);
+                                _ = SendAsync(PrepareCommand("CAP", ["REQ", String.Join(" ", param)]), cancellationToken);
                                 consumedBytes = 0;
                                 param.Clear();
                             }
@@ -809,7 +822,7 @@ public class Network : INetwork
 
                         if (param.Count > 0)
                         {
-                            _ = SendAsync(PrepareCommand("CAP", new string[] { "REQ", String.Join(" ", param) }), cancellationToken);
+                            _ = SendAsync(PrepareCommand("CAP", ["REQ", String.Join(" ", param)]), cancellationToken);
                         }
                         else if (!IsConnected)
                         {
@@ -980,7 +993,7 @@ public class Network : INetwork
                     do
                     {
                         int end = Math.Min(start + 400, response.Length);
-                        _ = SendAsync(PrepareCommand("AUTHENTICATE", new string[] { response[start..end] }), cancellationToken);
+                        _ = SendAsync(PrepareCommand("AUTHENTICATE", [response[start..end]]), cancellationToken);
                         start = end;
                     } while (start < response.Length);
 

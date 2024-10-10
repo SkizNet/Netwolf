@@ -282,6 +282,70 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
+    /// Sends a message to the given target (user or channel).
+    /// Long messages or messages with embedded newlines will be automatically split into multiple lines.
+    /// </summary>
+    /// <param name="target">Message target</param>
+    /// <param name="message">Message to send</param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public async Task SendMessageAsync(string target, string message, CancellationToken cancellationToken)
+    {
+        foreach (var command in Network.PrepareMessage(MessageType.Message, target, message))
+        {
+            await InternalSendAsync(command, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Sends a message to the given target (user or channel) with the specified tags.
+    /// Long messages or messages with embedded newlines will be automatically split into multiple lines.
+    /// </summary>
+    /// <param name="target">Message target</param>
+    /// <param name="message">Message to send</param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public async Task SendMessageAsync(string target, string message, IReadOnlyDictionary<string, string?> tags, CancellationToken cancellationToken)
+    {
+        foreach (var command in Network.PrepareMessage(MessageType.Message, target, message, tags))
+        {
+            await InternalSendAsync(command, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Sends a notice to the given target (user or channel).
+    /// Long messages or messages with embedded newlines will be automatically split into multiple lines.
+    /// </summary>
+    /// <param name="target">Message target</param>
+    /// <param name="message">Message to send</param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public async Task SendNoticeAsync(string target, string message, CancellationToken cancellationToken)
+    {
+        foreach (var command in Network.PrepareMessage(MessageType.Notice, target, message))
+        {
+            await InternalSendAsync(command, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Sends a notice to the given target (user or channel) with the specified tags.
+    /// Long messages or messages with embedded newlines will be automatically split into multiple lines.
+    /// </summary>
+    /// <param name="target">Message target</param>
+    /// <param name="message">Message to send</param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public async Task SendNoticeAsync(string target, string message, IReadOnlyDictionary<string, string?> tags, CancellationToken cancellationToken)
+    {
+        foreach (var command in Network.PrepareMessage(MessageType.Notice, target, message, tags))
+        {
+            await InternalSendAsync(command, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// Send a rate-limited command to the network
     /// </summary>
     /// <param name="command">Command to send</param>
