@@ -17,11 +17,18 @@ public class BotRegistry
 
     internal IReadOnlyDictionary<string, Type> KnownTypes => _types;
 
+    internal List<(string Name, Type Type)> HostedTypes { get; init; } = [];
+
     internal BotRegistry() { }
 
-    internal void RegisterType(string name, Type type)
+    internal void RegisterType(string name, Type type, bool runImmediately)
     {
         _types.Add(name, type);
+
+        if (runImmediately)
+        {
+            HostedTypes.Add((name, type));
+        }
     }
 
     internal void RegisterBot(string name, Bot bot)

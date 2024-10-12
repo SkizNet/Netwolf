@@ -10,6 +10,19 @@ namespace Netwolf.Server.ISupport;
 
 public interface IISupportTokenProvider
 {
+    /// <summary>
+    /// All ISUPPORT tokens this provider is capable of providing, used for startup logging.
+    /// A call to <see cref="GetTokens(User)"/> will not necessarily populate all of the tokens
+    /// listed here, as some tokens may be dependent on e.g. the connection class of the client
+    /// or network configuration.
+    /// </summary>
+    IEnumerable<ISupportToken> ProvidedTokens { get; }
+
+    /// <summary>
+    /// Retrieve all ISUPPORT tokens valid for the given client.
+    /// </summary>
+    /// <param name="client"></param>
+    /// <returns></returns>
     IReadOnlyDictionary<ISupportToken, object?> GetTokens(User client);
 
     /// <summary>

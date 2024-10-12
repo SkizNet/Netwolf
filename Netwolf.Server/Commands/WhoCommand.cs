@@ -329,6 +329,8 @@ public class WhoCommand : IServerCommandHandler, IISupportTokenProvider
         return Task.FromResult<ICommandResponse>(response);
     }
 
+    IEnumerable<ISupportToken> IISupportTokenProvider.ProvidedTokens => [ISupportToken.WHOX];
+
     IReadOnlyDictionary<ISupportToken, object?> IISupportTokenProvider.GetTokens(User client)
     {
         Dictionary<ISupportToken, object?> dict = [];

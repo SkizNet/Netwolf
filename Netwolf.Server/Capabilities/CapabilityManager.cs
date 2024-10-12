@@ -18,7 +18,7 @@ public class CapabilityManager : ICapabilityManager
     public CapabilityManager(IServiceProvider provider, ILogger<ICapabilityManager> logger, IOptionsSnapshot<ServerOptions> options)
     {
         logger.LogTrace("Scanning for capabilities");
-        foreach (var cap in TypeDiscovery.GetTypes<ICapability>(provider, options))
+        foreach (var cap in TypeDiscovery.GetTypes<ICapability>(provider, logger, options))
         {
             if (Capabilities.TryGetValue(cap.Name, out var value))
             {
@@ -30,7 +30,7 @@ public class CapabilityManager : ICapabilityManager
                 continue;
             }
 
-            logger.LogTrace("Found {Type} providing {Name}", cap.GetType().FullName, cap.Name);
+            logger.LogInformation("Found {Type} providing {Name}", cap.GetType().FullName, cap.Name);
             Capabilities[cap.Name] = cap;
         }
     }

@@ -33,6 +33,9 @@ public sealed class BotCreationData
     internal BotCommandContextFactory BotCommandContextFactory { get; init; }
     internal IEnumerable<ICapProvider> CapProviders { get; init; }
 
+    // for unit testing
+    internal bool EnableCommandOptimization { get; set; } = true;
+
     internal BotCreationData(
         string botName,
         ILogger<Bot> logger,

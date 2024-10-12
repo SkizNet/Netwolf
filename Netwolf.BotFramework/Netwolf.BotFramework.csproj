@@ -12,6 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Netwolf.Generator\Netwolf.Generator.csproj" />
     <ProjectReference Include="..\Netwolf.PluginFramework\Netwolf.PluginFramework.csproj" />
     <ProjectReference Include="..\Netwolf.Transport\Netwolf.Transport.csproj" />
   </ItemGroup>

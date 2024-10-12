@@ -25,14 +25,22 @@ public class ISupportResolver : IISupportResolver
         Logger = logger;
 
         // DefaultTokenProvider should always be first; it's an internal class so the loop below won't construct a 2nd one
-        TokenProviders = [(IISupportTokenProvider)ActivatorUtilities.CreateInstance(serviceProvider, typeof(DefaultTokenProvider))];
+        var defaultProvider = (IISupportTokenProvider)ActivatorUtilities.CreateInstance(serviceProvider, typeof(DefaultTokenProvider));
+        TokenProviders = [defaultProvider];
+        foreach (var token in defaultProvider.ProvidedTokens)
+        {
+            logger.LogInformation("Found {Type} providing {Token}", defaultProvider.GetType().FullName, token.Name);
+        }
 
         // populate TokenProviders from all concrete classes across all assemblies that implement IISupportTokenProvider
         Logger.LogTrace("Scanning for ISUPPORT token providers");
-        foreach (var provider in TypeDiscovery.GetTypes<IISupportTokenProvider>(serviceProvider, options))
+        foreach (var provider in TypeDiscovery.GetTypes<IISupportTokenProvider>(serviceProvider, logger, options))
         {
             TokenProviders.Add(provider);
-            logger.LogTrace("Found {Type}", provider.GetType().FullName);
+            foreach (var token in provider.ProvidedTokens)
+            {
+                logger.LogInformation("Found {Type} providing {Token}", provider.GetType().FullName, token.Name);
+            }
         }
     }
 

@@ -34,7 +34,7 @@ internal class BotRunnerService : BackgroundService
     {
         List<Task> botTasks = [];
 
-        foreach (var (botName, botType) in Registry.KnownTypes)
+        foreach (var (botName, botType) in Registry.HostedTypes)
         {
             stoppingToken.ThrowIfCancellationRequested();
 

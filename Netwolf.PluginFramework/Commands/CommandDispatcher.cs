@@ -50,47 +50,83 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
 
     public void AddCommandsFromAssembly(Assembly assembly)
     {
-        // populate Commands from all concrete classes across all assemblies in the current AssemblyLoadContext that implement ICommandHandler
+        // populate Commands from all concrete public classes across the assembly that implement ICommandHandler
         Logger.LogTrace("Scanning for commands in {Name}", assembly.FullName);
         foreach (var type in assembly.ExportedTypes)
         {
-            if (!type.IsAssignableTo(typeof(ICommandHandler<TResult>)) || type.IsAbstract || type.IsInterface)
-            {
-                Logger.LogTrace(@"Skipping {Type}: is abstract, interface, or not assignable to command handler type", type.FullName);
-                continue;
-            }
-
-            if (type.IsGenericType)
-            {
-                // warn on non-abstract generics since this indicates a likely programmer mistake
-                Logger.LogWarning(@"Skipping {Type}: generic types are not currently supported", type.FullName);
-                continue;
-            }
-
-            if (!Validator.ValidateCommandType(type))
-            {
-                Logger.LogDebug(@"Skipping {Type}: type validator returned false", type.FullName);
-                continue;
-            }
-
-            // now that we've gotten this far, instantiate it
-            ICommandHandler<TResult> handler = (ICommandHandler<TResult>)ActivatorUtilities.CreateInstance(ServiceProvider, type);
-
-            if (!CommandNameRegex().IsMatch(handler.Command))
-            {
-                Logger.LogWarning(@"Skipping {Type}: bad command name {Command}", type.FullName, handler.Command);
-                continue;
-            }
-
-            if (!Validator.ValidateCommandHandler(handler))
-            {
-                Logger.LogDebug(@"Skipping {Type}: handler validator returned false", type.FullName);
-                continue;
-            }
-
-            Commands.Add(handler.Command, handler);
-            Logger.LogInformation("Found {Type} providing {Command}", type.FullName, handler.Command);
+            AddCommand(type);
         }
+    }
+
+    public void AddCommand<TCommand>()
+        where TCommand : ICommandHandler<TResult>
+    {
+        AddCommand(typeof(TCommand));
+    }
+
+    public void AddCommand(Type commandType)
+    {
+        if (!commandType.IsAssignableTo(typeof(ICommandHandler<TResult>)) || commandType.IsAbstract || commandType.IsInterface)
+        {
+            Logger.LogTrace(@"Skipping {Type}: is abstract, interface, or not assignable to command handler type", commandType.FullName);
+            return;
+        }
+
+        if (commandType.ContainsGenericParameters)
+        {
+            // warn on non-abstract open generics since this indicates a likely programmer mistake
+            Logger.LogWarning(@"Skipping {Type}: open generic types are not supported", commandType.FullName);
+            return;
+        }
+
+        if (!Validator.ValidateCommandType(commandType))
+        {
+            Logger.LogDebug(@"Skipping {Type}: type validator returned false", commandType.FullName);
+            return;
+        }
+
+        // now that we've gotten this far, instantiate it
+        ICommandHandler<TResult> handler = (ICommandHandler<TResult>)ActivatorUtilities.CreateInstance(ServiceProvider, commandType);
+
+        if (!CommandNameRegex().IsMatch(handler.Command))
+        {
+            Logger.LogWarning(@"Skipping {Underlying}: bad command name {Command}", handler.UnderlyingFullName, handler.Command);
+            return;
+        }
+
+        if (!Validator.ValidateCommandHandler(handler))
+        {
+            Logger.LogDebug(@"Skipping {Underlying}: handler validator returned false", handler.UnderlyingFullName);
+            return;
+        }
+
+        Commands.Add(handler.Command, handler);
+        Logger.LogInformation("Found {Underlying} providing {Command}", handler.UnderlyingFullName, handler.Command);
+    }
+
+    public void AddCommand(ICommandHandler<TResult> handler)
+    {
+        var commandType = handler.GetType();
+        if (!Validator.ValidateCommandType(commandType))
+        {
+            Logger.LogDebug(@"Skipping {Type}: type validator returned false", commandType.FullName);
+            return;
+        }
+
+        if (!CommandNameRegex().IsMatch(handler.Command))
+        {
+            Logger.LogWarning(@"Skipping {Underlying}: bad command name {Command}", handler.UnderlyingFullName, handler.Command);
+            return;
+        }
+
+        if (!Validator.ValidateCommandHandler(handler))
+        {
+            Logger.LogDebug(@"Skipping {Underlying}: handler validator returned false", handler.UnderlyingFullName);
+            return;
+        }
+
+        Commands.Add(handler.Command, handler);
+        Logger.LogInformation("Found {Underlying} providing {Command}", handler.UnderlyingFullName, handler.Command);
     }
 
     public Task<TResult?> DispatchAsync(ICommand command, IContext sender, CancellationToken cancellationToken)

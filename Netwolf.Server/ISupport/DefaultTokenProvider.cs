@@ -12,6 +12,36 @@ internal class DefaultTokenProvider : IISupportTokenProvider
 {
     private IServiceProvider Provider { get; init; }
 
+    // Keep this in sync with GetTokens
+    IEnumerable<ISupportToken> IISupportTokenProvider.ProvidedTokens => [
+        ISupportToken.AWAYLEN,
+        ISupportToken.CASEMAPPING,
+        ISupportToken.CHANLIMIT,
+        ISupportToken.CHANMODES,
+        ISupportToken.CHANNELLEN,
+        ISupportToken.CHANTYPES,
+        ISupportToken.ELIST,
+        ISupportToken.EXCEPTS,
+        ISupportToken.EXTBAN,
+        ISupportToken.HOSTLEN,
+        ISupportToken.INVEX,
+        ISupportToken.KICKLEN,
+        ISupportToken.MAXLIST,
+        ISupportToken.MODES,
+        ISupportToken.MONITOR,
+        ISupportToken.NAMELEN,
+        ISupportToken.NETWORK,
+        ISupportToken.NICKLEN,
+        ISupportToken.PREFIX,
+        ISupportToken.SAFELIST,
+        ISupportToken.SILENCE,
+        ISupportToken.STATUSMSG,
+        ISupportToken.TARGMAX,
+        ISupportToken.TOPICLEN,
+        ISupportToken.UTF8ONLY,
+        ISupportToken.USERLEN,
+        ];
+
     public DefaultTokenProvider(IServiceProvider provider)
     {
         // FIXME: this is temporary until we get rid of the Network service
@@ -25,6 +55,7 @@ internal class DefaultTokenProvider : IISupportTokenProvider
     {
         var network = Provider.GetRequiredService<Network>();
 
+        // Keep this in sync with ProvidedTokens
         return new Dictionary<ISupportToken, object?>()
         {
             { ISupportToken.AWAYLEN, 350 },

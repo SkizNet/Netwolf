@@ -30,9 +30,7 @@ public static class BotFrameworkExtensions
     /// Singleton service instance for BotRegistry; created here instead of via DI activation
     /// so that we can refer to it before the service provider is fully built
     /// </summary>
-    private static readonly BotRegistry _registry = new();
-
-    private static bool _botServicesConfigured = false;
+    private static readonly Dictionary<IServiceCollection, BotRegistry> _registry = [];
 
     /// <summary>
     /// Registers a new bot to be executed in the background immediately.
@@ -42,10 +40,10 @@ public static class BotFrameworkExtensions
     /// <param name="services"></param>
     /// <param name="botName">Internal name for the bot, to allow for multiple bots of the same <typeparamref name="TBot"/> to be registered.</param>
     /// <returns>Service collection for fluent call chaining</returns>
-    public static IServiceCollection AddBot<TBot>(this IServiceCollection services, string botName)
+    public static IServiceCollection AddHostedBot<TBot>(this IServiceCollection services, string botName)
         where TBot : Bot
     {
-        return AddBot<TBot>(services, botName, null);
+        return AddBot<TBot>(services, botName, null, true);
     }
 
     /// <summary>
@@ -57,15 +55,62 @@ public static class BotFrameworkExtensions
     /// <param name="botName">Internal name for the bot, to allow for multiple bots of the same <typeparamref name="TBot"/> to be registered.</param>
     /// <param name="configuration">Configuration callback to customize additional aspects of the bot.</param>
     /// <returns>Service collection for fluent call chaining</returns>
+    public static IServiceCollection AddHostedBot<TBot>(this IServiceCollection services, string botName, Action<IBotBuilder>? configuration)
+        where TBot : Bot
+    {
+        return AddBot<TBot>(services, botName, configuration, true);
+    }
+
+    /// <summary>
+    /// Registers a new bot. It will not be run automatically; it is up to the caller to manage the bot's lifecycle.
+    /// </summary>
+    /// <typeparam name="TBot"></typeparam>
+    /// <param name="services"></param>
+    /// <param name="botName">Internal name for the bot, to allow for multiple bots of the same <typeparamref name="TBot"/> to be registered.</param>
+    /// <returns>Service collection for fluent call chaining</returns>
+    public static IServiceCollection AddBot<TBot>(this IServiceCollection services, string botName)
+        where TBot : Bot
+    {
+        return AddBot<TBot>(services, botName, null, false);
+    }
+
+    /// <summary>
+    /// Registers a new bot. It will not be run automatically; it is up to the caller to manage the bot's lifecycle.
+    /// </summary>
+    /// <typeparam name="TBot"></typeparam>
+    /// <param name="services"></param>
+    /// <param name="botName">Internal name for the bot, to allow for multiple bots of the same <typeparamref name="TBot"/> to be registered.</param>
+    /// <param name="configuration">Configuration callback to customize additional aspects of the bot.</param>
+    /// <returns>Service collection for fluent call chaining</returns>
     public static IServiceCollection AddBot<TBot>(this IServiceCollection services, string botName, Action<IBotBuilder>? configuration)
         where TBot : Bot
     {
-        if (_registry.KnownTypes.ContainsKey(botName))
+        return AddBot<TBot>(services, botName, configuration, false);
+    }
+
+    /// <summary>
+    /// Registers a new bot.
+    /// </summary>
+    /// <typeparam name="TBot"></typeparam>
+    /// <param name="services"></param>
+    /// <param name="botName">Internal name for the bot, to allow for multiple bots of the same <typeparamref name="TBot"/> to be registered.</param>
+    /// <param name="configuration">Configuration callback to customize additional aspects of the bot.</param>
+    /// <param name="runImmediately">Whether the bot should run immediately (be hosted in BotRunnerService).</param>
+    /// <returns>Service collection for fluent call chaining</returns>
+    private static IServiceCollection AddBot<TBot>(this IServiceCollection services, string botName, Action<IBotBuilder>? configuration, bool runImmediately)
+        where TBot : Bot
+    {
+        if (!_registry.ContainsKey(services))
+        {
+            _registry[services] = new BotRegistry();
+        }
+
+        if (_registry[services].KnownTypes.ContainsKey(botName))
         {
             throw new ArgumentException($"Bot names must be unique; received duplicate bot name {botName}", nameof(botName));
         }
 
-        if (!_botServicesConfigured)
+        if (!services.Any(s => s.ServiceType == typeof(BotRegistry)))
         {
             // no-ops if plugin or transport services are already registered, so this is safe to call multiple times
             // (it may have been called already if other frameworks are in use alongside BotFramework)
@@ -73,10 +118,13 @@ public static class BotFrameworkExtensions
             services.AddTransportServices();
 
             // below is only called exactly once; TryAdd is not used for this reason
-            services.AddSingleton<BotRegistry>(_registry);
+            services.AddSingleton<BotRegistry>(_registry[services]);
             services.AddSingleton<IPermissionManager, BotPermissionManager>();
+        }
+
+        if (runImmediately && !services.Any(s => s.ImplementationType == typeof(BotRunnerService)))
+        {
             services.AddHostedService<BotRunnerService>();
-            _botServicesConfigured = true;
         }
 
         services.AddKeyedScoped<BotCommandContextFactory>(botName, static (provider, key) =>
@@ -105,7 +153,7 @@ public static class BotFrameworkExtensions
         var builder = new BotBuilder(botName, services);
         configuration?.Invoke(builder);
 
-        _registry.RegisterType(botName, typeof(TBot));
+        _registry[services].RegisterType(botName, typeof(TBot), runImmediately);
         return services;
     }
 

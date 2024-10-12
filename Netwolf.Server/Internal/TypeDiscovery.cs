@@ -18,7 +18,7 @@ namespace Netwolf.Server.Internal;
 
 internal static class TypeDiscovery
 {
-    internal static IEnumerable<T> GetTypes<T>(IServiceProvider provider, IOptionsSnapshot<ServerOptions> options)
+    internal static IEnumerable<T> GetTypes<T>(IServiceProvider provider, ILogger logger, IOptionsSnapshot<ServerOptions> options)
     {
         List<Type> collection;
 
@@ -47,6 +47,14 @@ internal static class TypeDiscovery
 
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
+            // skip over assemblies that we know won't contain things we care about
+            if (assembly.FullName?.StartsWith("System.") == true || assembly.FullName?.StartsWith("Microsoft.") == true)
+            {
+                continue;
+            }
+
+            logger.LogTrace("Examining {Assembly}", assembly.FullName);
+
             foreach (var type in assembly.ExportedTypes)
             {
                 if (type.IsAbstract || !type.IsAssignableTo(typeof(T)) || !collection.Contains(type))

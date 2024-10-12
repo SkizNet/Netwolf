@@ -1,12 +1,15 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using Netwolf.Attributes;
 using Netwolf.BotFramework.Exceptions;
+using Netwolf.BotFramework.Internal;
 using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.Transport.IRC;
 
 using System.Collections.Immutable;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -218,6 +221,34 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         Network.CapReceived += OnCapReceived;
         Network.CommandReceived += OnCommandReceived;
         Network.Disconnected += OnDisconnected;
+
+        // Wire up bot commands
+        // There is a reflection-based slow path and a source generator fast path; detect which was used
+        var generatedTypes = GetType()
+            .Assembly
+            .GetCustomAttributes<SourceGeneratedCommandAttribute>()
+            .Where(attr => attr.TargetType == GetType())
+            .ToList();
+
+        if (generatedTypes.Count > 0 && data.EnableCommandOptimization)
+        {
+            // fast path
+            generatedTypes.ForEach(attr => CommandDispatcher.AddCommand(attr.GeneratedType));
+        }
+        else
+        {
+            // slow path
+            var commands = GetType()
+                .GetMethods()
+                .Select(method => (method, attr: method.GetCustomAttribute<CommandAttribute>()))
+                .Where(o => o.attr != null)
+                .Select(o => new BotCommandThunk(this, o.method, o.attr!));
+
+            foreach (var command in commands)
+            {
+                CommandDispatcher.AddCommand(command);
+            }
+        }
     }
 
     /// <summary>
@@ -231,6 +262,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// <returns></returns>
     public Task UnsafeSendRawAsync(string rawLine, CancellationToken cancellationToken)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         return Network.UnsafeSendRawAsync(rawLine, cancellationToken);
     }
 
@@ -246,6 +278,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// <returns></returns>
     public Task SendRawAsync(string rawLine, CancellationToken cancellationToken)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
 
         var parsed = CommandFactory.Parse(CommandType.Client, rawLine);
@@ -289,12 +322,9 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// <param name="message">Message to send</param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    public async Task SendMessageAsync(string target, string message, CancellationToken cancellationToken)
+    public Task SendMessageAsync(string target, string message, CancellationToken cancellationToken)
     {
-        foreach (var command in Network.PrepareMessage(MessageType.Message, target, message))
-        {
-            await InternalSendAsync(command, cancellationToken).ConfigureAwait(false);
-        }
+        return SendMessageAsync(target, message, new Dictionary<string, string?>(), cancellationToken);
     }
 
     /// <summary>
@@ -321,12 +351,9 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// <param name="message">Message to send</param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    public async Task SendNoticeAsync(string target, string message, CancellationToken cancellationToken)
+    public Task SendNoticeAsync(string target, string message, CancellationToken cancellationToken)
     {
-        foreach (var command in Network.PrepareMessage(MessageType.Notice, target, message))
-        {
-            await InternalSendAsync(command, cancellationToken).ConfigureAwait(false);
-        }
+        return SendNoticeAsync(target, message, new Dictionary<string, string?>(), cancellationToken);
     }
 
     /// <summary>
@@ -354,6 +381,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// <exception cref="RateLimitLeaseAcquisitionException">If we're unable to acquire a rate limit lease (e.g. queue is full)</exception>
     private async Task InternalSendAsync(ICommand command, CancellationToken cancellationToken)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
 
         using var commandLease = await CommandRateLimiter.AcquireAsync(command, 1, cancellationToken).ConfigureAwait(false);
@@ -398,7 +426,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         return JoinChannelAsync(name, null, cancellationToken);
     }
 
-    public async Task JoinChannelAsync(string name, string? key = null, CancellationToken cancellationToken = default)
+    public async Task JoinChannelAsync(string name, string? key, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -465,6 +493,72 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         
         Network.CommandReceived += handler;
         await SendAsync("JOIN", [name, key], linkedToken).ConfigureAwait(false);
+
+        try
+        {
+            await opSource.Task.WaitAsync(linkedToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            Network.CommandReceived -= handler;
+        }
+    }
+
+    public Task PartChannelAsync(string name, CancellationToken cancellationToken)
+    {
+        return PartChannelAsync(name, null, cancellationToken);
+    }
+
+    public async Task PartChannelAsync(string name, string? reason, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (!Network.IsConnected)
+        {
+            throw new InvalidOperationException("Bot is not connected to the network.");
+        }
+
+        TaskCompletionSource opSource = new();
+
+        using var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, CancellationSource!.Token);
+        var linkedToken = linkedTokenSource.Token;
+
+        linkedToken.ThrowIfCancellationRequested();
+
+        void handler(object? sender, NetworkEventArgs args)
+        {
+            if (linkedToken.IsCancellationRequested)
+            {
+                opSource.SetCanceled(linkedToken);
+                return;
+            }
+
+            switch (args.Command?.Verb)
+            {
+                case "403":
+                case "442":
+                    // channel is 2nd argument
+                    // TODO: compare strings using server-specified charset case insensitively
+                    if (args.Command.Args[1] == name)
+                    {
+                        throw new NumericException(args.Command.Numeric!.Value, args.Command.Args[2]);
+                    }
+
+                    break;
+                case "PART":
+                    // channel is 1st argument (might be a channel list) but verify source as well
+                    // TODO: compare against Source by extracting our nick if it's a full nick!user@host
+                    if (args.Command.Args[0].Split(',').Contains(name) && args.Command.Source == Network.Nick)
+                    {
+                        opSource.TrySetResult();
+                    }
+
+                    break;
+            }
+        }
+
+        Network.CommandReceived += handler;
+        await SendAsync("PART", [name, reason], linkedToken).ConfigureAwait(false);
 
         try
         {

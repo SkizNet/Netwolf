@@ -19,6 +19,10 @@ public partial class CommandFactory : ICommandFactory
     // In general, simple regexes that potentially allow more strings than necessary
     // are preferred to strict regexes that perfectly validate things like hostnames
     private static readonly Regex _commandRegex = new("^(?:[a-zA-Z]+|[0-9]{3})$", RegexOptions.NonBacktracking);
+    // this is probably *too* strict on the other hand, because it doesn't provide support for bot commands in languages that do not use the English alphabet
+    // however it's easier to expand on allowed commands later versus restricting them so for now we go with this
+    // bot commands are meant to be case-sensitive so expanding this to allow more symbols will require culture-sensitive comparisons
+    private static readonly Regex _botCommandRegex = new("^(?:[a-zA-Z0-9_]+)$", RegexOptions.NonBacktracking);
     private static readonly Regex _tagKeyRegex = new(@"^\+?(?:[a-zA-Z0-9-.]+/)?[a-zA-Z0-9-]+$", RegexOptions.NonBacktracking);
     private static readonly Regex _spaceNullCrLfRegex = new(@"[ \r\n\0]", RegexOptions.NonBacktracking);
     private static readonly Regex _nullCrLfRegex = new(@"[\r\n\0]", RegexOptions.NonBacktracking);
@@ -54,12 +58,16 @@ public partial class CommandFactory : ICommandFactory
         // Simply forbid known-invalid characters rather than attempting to write strict validation
         if (source != null && _spaceNullCrLfRegex.IsMatch(source))
         {
-            throw new ArgumentException("Invalid source", nameof(source));
+            throw new ArgumentException($"Invalid source {source}", nameof(source));
         }
 
-        if (!_commandRegex.IsMatch(verb))
+        if (commandType != CommandType.Bot && !_commandRegex.IsMatch(verb))
         {
-            throw new ArgumentException("Invalid command verb", nameof(verb));
+            throw new ArgumentException($"Invalid command verb {verb}", nameof(verb));
+        }
+        else if (commandType == CommandType.Bot && !_botCommandRegex.IsMatch(verb))
+        {
+            throw new ArgumentException($"Invalid command verb {verb}", nameof(verb));
         }
 
         int allowedTagLength = commandType switch
@@ -67,7 +75,7 @@ public partial class CommandFactory : ICommandFactory
             CommandType.Server => options.ServerTagLen,
             CommandType.Client => options.ClientTagLen,
             CommandType.Bot => options.ClientTagLen,
-            _ => throw new ArgumentException("Invalid command type", nameof(commandType))
+            _ => throw new ArgumentException($"Invalid command type {commandType}", nameof(commandType))
         };
 
         // normalize verb to all-uppercase

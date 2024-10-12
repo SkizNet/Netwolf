@@ -10,6 +10,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{E63B0D8F-6E71-4A29-BF41-4A1C5C658549}"
 	ProjectSection(SolutionItems) = preProject
 		.editorconfig = .editorconfig
+		LICENSE.md = LICENSE.md
 		README.md = README.md
 	EndProjectSection
 EndProject
@@ -21,7 +22,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Netwolf.BotFramework", "Net
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Netwolf.PluginFramework", "Netwolf.PluginFramework\Netwolf.PluginFramework.csproj", "{6DD0F6D3-C3F3-4399-859A-71893768C22A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Netwolf.Generator.Test", "Netwolf.Generator.Test\Netwolf.Generator.Test.csproj", "{E19198D0-6329-42EB-9737-4FAB6D960376}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Netwolf.Generator.Test", "Netwolf.Generator.Test\Netwolf.Generator.Test.csproj", "{E19198D0-6329-42EB-9737-4FAB6D960376}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

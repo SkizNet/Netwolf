@@ -16,4 +16,11 @@ public interface ICommandDispatcher<TResult>
     Task<TResult?> DispatchAsync(ICommand command, IContext sender, CancellationToken cancellationToken);
 
     void AddCommandsFromAssembly(Assembly assembly);
+
+    void AddCommand<TCommand>()
+        where TCommand : ICommandHandler<TResult>;
+
+    void AddCommand(Type commandType);
+
+    void AddCommand(ICommandHandler<TResult> handler);
 }
