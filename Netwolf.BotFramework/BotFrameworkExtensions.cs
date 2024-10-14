@@ -120,6 +120,7 @@ public static class BotFrameworkExtensions
             // below is only called exactly once; TryAdd is not used for this reason
             services.AddSingleton<BotRegistry>(_registry[services]);
             services.AddSingleton<IPermissionManager, BotPermissionManager>();
+            services.AddScoped<ValidationContextFactory>();
         }
 
         if (runImmediately && !services.Any(s => s.ImplementationType == typeof(BotRunnerService)))
@@ -147,7 +148,8 @@ public static class BotFrameworkExtensions
                 provider.GetRequiredService<ICommandDispatcher<BotCommandResult>>(),
                 provider.GetRequiredService<ICommandFactory>(),
                 provider.GetRequiredKeyedService<BotCommandContextFactory>(key),
-                provider.GetKeyedServices<ICapProvider>(key));
+                provider.GetKeyedServices<ICapProvider>(key),
+                provider.GetRequiredService<ValidationContextFactory>());
         });
 
         var builder = new BotBuilder(botName, services);

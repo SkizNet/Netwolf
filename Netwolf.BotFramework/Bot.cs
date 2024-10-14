@@ -74,6 +74,8 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
     private IEnumerable<ICapProvider> CapProviders { get; init; }
 
+    private ValidationContextFactory ValidationContextFactory { get; init; }
+
     private PartitionedRateLimiter<ICommand> CommandRateLimiter { get; init; }
 
     private PartitionedRateLimiter<ICommand> ByteRateLimiter { get; init; }
@@ -94,6 +96,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         CommandDispatcher = data.CommandDispatcher;
         CommandFactory = data.CommandFactory;
         BotCommandContextFactory = data.BotCommandContextFactory;
+        ValidationContextFactory = data.ValidationContextFactory;
         CapProviders = data.CapProviders;
         DisconnectionSource = new();
 
@@ -242,7 +245,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
                 .GetMethods()
                 .Select(method => (method, attr: method.GetCustomAttribute<CommandAttribute>()))
                 .Where(o => o.attr != null)
-                .Select(o => new BotCommandThunk(this, o.method, o.attr!));
+                .Select(o => new BotCommandThunk(this, o.method, o.attr!, ValidationContextFactory));
 
             foreach (var command in commands)
             {

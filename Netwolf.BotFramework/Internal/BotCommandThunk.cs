@@ -6,6 +6,7 @@ using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Context;
 
+using System.ComponentModel.DataAnnotations;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -23,17 +24,20 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
 
     private List<ParameterConverter> ParameterConverters { get; init; } = [];
 
+    private ValidationContextFactory ValidationContextFactory { get; init; }
+
     private delegate bool Converter(string input, out object? output);
 
     private record ParameterConverter(ParameterInfo Parameter, Converter Converter);
 
     string ICommandHandler<BotCommandResult>.UnderlyingFullName => $"{Executor.MethodInfo.DeclaringType!.FullName}.{Executor.MethodInfo.Name}";
 
-    internal BotCommandThunk(Bot bot, MethodInfo method, CommandAttribute attr)
+    internal BotCommandThunk(Bot bot, MethodInfo method, CommandAttribute attr, ValidationContextFactory validationContextFactory)
     {
         Bot = bot;
         Command = attr.Name;
         Privilege = attr.Privilege;
+        ValidationContextFactory = validationContextFactory;
         Executor = ObjectMethodExecutor.Create(method, bot.GetType().GetTypeInfo(), TypeHelper.GetParameterDefaultValues(method));
 
         var convertMethod = typeof(TypeHelper).GetMethod(nameof(TypeHelper.TryChangeType))
@@ -68,16 +72,52 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
         List<object?> args = [];
         object? value;
 
+        string[] splitLine = context.FullLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        int splitIndex = 0;
+
         foreach (var (param, conv) in ParameterConverters)
         {
-            // TODO: split up FullLine in some fashion, ideally without tons of extra allocations
-            // Need to change delegate type to take in a Span<char> as well
-            args.Add(param.ParameterType switch
+            // Handle special types
+            if (param.ParameterType == typeof(BotCommandContext))
             {
-                _ when param.ParameterType == typeof(BotCommandContext) => context,
-                _ when param.ParameterType == typeof(CancellationToken) => cancellationToken,
-                _ => conv(context.FullLine, out value) ? value : Executor.GetDefaultValueForParameter(args.Count)
-            });
+                args.Add(context);
+                continue;
+            }
+            else if (param.ParameterType == typeof(CancellationToken))
+            {
+                args.Add(cancellationToken);
+                continue;
+            }
+            // TODO: Add a RestAttribute to obtain the remainder of params as a string
+            // TODO: Handle enumerables somehow by taking 0+ of a thing?
+
+            // Handle regular types
+            if (splitIndex < splitLine.Length && conv(splitLine[splitIndex], out value))
+            {
+                splitIndex++;
+            }
+            else if (param.GetCustomAttribute<RequiredAttribute>() is RequiredAttribute req)
+            {
+                // always throws ValidationException
+                req.Validate(null, param.Name ?? $"_{args.Count + 1}");
+                // never called, but needed to make the compiler happy that value is always initialized below
+                continue;
+            }
+            else
+            {
+                value = Executor.GetDefaultValueForParameter(args.Count);
+            }
+
+            // TODO: figure out what asp.net passes here when validating params on actions to see if that's something we want to replicate or not
+            var validationContext = ValidationContextFactory.Create(param);
+            validationContext.MemberName = param.Name;
+            validationContext.DisplayName = param.GetCustomAttribute<DisplayAttribute>()?.GetName() ?? param.Name ?? $"_{args.Count + 1}";
+
+            // throws ValidationException on validation failure
+            Validator.ValidateValue(value, validationContext, param.GetCustomAttributes<ValidationAttribute>());
+
+            // if we got here, the param is good
+            args.Add(value);
         }
 
         if (Executor.IsMethodAsync)
