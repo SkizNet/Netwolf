@@ -53,7 +53,9 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
             var outParam = Expression.Parameter(typeof(object).MakeByRefType(), "output");
             var lambda = Expression.Lambda<Converter>(
                 Expression.Block(
+                    // internal variables used
                     [converted, success],
+                    // function code; the value of the final expression is used as the return value
                     Expression.Assign(outParam, Expression.Constant(null)),
                     Expression.Assign(success, Expression.Call(convertMethod.MakeGenericMethod(param.ParameterType), inParam, converted)),
                     Expression.IfThen(Expression.IsTrue(success), Expression.Assign(outParam, Expression.Convert(converted, typeof(object)))),

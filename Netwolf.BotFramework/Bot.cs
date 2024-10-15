@@ -9,6 +9,7 @@ using Netwolf.PluginFramework.Commands;
 using Netwolf.Transport.IRC;
 
 using System.Collections.Immutable;
+using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -589,40 +590,78 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     {
         // Only handle user commands if we're fully initialized;
         // this ensures all necessary state is in place before command processing
-        // Also only handle commands sent as PRIVMSG, not NOTICE
-        if (!Initialized || e.Command!.Verb != "PRIVMSG")
+        // Also only handle commands sent as PRIVMSG, not NOTICE as well as reject invalid/corrupted commands
+        if (!Initialized || CancellationSource == null || e.Command?.Verb != "PRIVMSG" || e.Command.Source == null || e.Command.Args.Count < 2)
         {
             return;
         }
 
-        e.Token.ThrowIfCancellationRequested();
-        CancellationSource!.Token.ThrowIfCancellationRequested();
-        
-        bool toBot = e.Command!.Args[0] == Network.Nick;
-        bool haveCommand = TryParseCommandAndArgs(e.Command!.Args[1].AsSpan(), out var command, out var args, out var fullLine);
-
-        if (haveCommand || toBot)
+        if (e.Token.IsCancellationRequested || CancellationSource.Token.IsCancellationRequested == true)
         {
-            using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(CancellationSource.Token, e.Token);
-            var commandObj = CommandFactory.CreateCommand(CommandType.Bot, e.Command.Source, command, args, e.Command.Tags);
-            // TODO: pass an immutable networkinfo snapshot (probably by making IrcState a record with immutable collections) rather than the full network
-            var context = await BotCommandContextFactory.CreateAsync(this, Network, commandObj, fullLine, linkedSource.Token);
+            // don't want to throw here since exceptions in async void bubble up to the top and aren't catchable
+            // instead just no-op
+            return;
+        }
 
-            try
+        // exceptions thrown here after the first await will terminate the process, so ensure we do not throw
+        try
+        {
+            bool toBot = e.Command.Args[0] == Network.Nick;
+            bool haveCommand = TryParseCommandAndArgs(e.Command.Args[1].AsSpan(), out var command, out var args, out var fullLine);
+
+            if (haveCommand || toBot)
             {
-                _ = await CommandDispatcher.DispatchAsync(commandObj, context, linkedSource.Token);
+                using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(CancellationSource.Token, e.Token);
+                var commandObj = CommandFactory.CreateCommand(CommandType.Bot, e.Command.Source, command, args, e.Command.Tags);
+                // TODO: pass an immutable networkinfo snapshot (probably by making IrcState a record with immutable collections) rather than the full network
+                var context = await BotCommandContextFactory.CreateAsync(this, Network, commandObj, fullLine, linkedSource.Token);
+
+                try
+                {
+                    // Bot commands *can* return data but right now there's nothing we do with return values, so discard them
+                    _ = await CommandDispatcher.DispatchAsync(commandObj, context, linkedSource.Token);
+                }
+                catch (PermissionException ex)
+                {
+                    // someone missing a permission isn't an error as far as our logging infra is concerned,
+                    // so treat this differently from other exception types
+                    Logger.LogDebug("The user {Nick} (account {Account}) does not have permission to execute {Command} (missing {Permission})",
+                        ex.Nick, ex.Account, ex.Command, ex.Permission);
+                    // TODO: make configurable (both in terms of if we present the message, as well as message contents)
+                    await SendNoticeAsync(e.Command.Source, "You do not have permission to execute this command.", linkedSource.Token);
+                }
+                catch (ValidationException ex)
+                {
+                    if (ex.ValidationAttribute != null && ex.ValidationResult.MemberNames.Any())
+                    {
+                        Logger.LogDebug("Validation failed for {Command}: {Attribute} did not succeed on parameter {Parameter}",
+                            commandObj.Verb, ex.ValidationAttribute.GetType().Name, ex.ValidationResult.MemberNames.First());
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(ex.ValidationResult.ErrorMessage))
+                    {
+                        await SendNoticeAsync(e.Command.Source, ex.ValidationResult.ErrorMessage, linkedSource.Token);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    Logger.LogDebug("Prematurely terminating {Command} handler due to cancellation request", command);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "An error occurred while executing the command {Command}", command);
+                }
             }
-            catch (PermissionException ex)
-            {
-                // someone missing a permission isn't an error as far as our logging infra is concerned,
-                // so treat this differently from other exception types
-                Logger.LogInformation("The user {Nick} (account {Account}) does not have permission to execute {Command} (missing {Permission})",
-                    ex.Nick, ex.Account, ex.Command, ex.Permission);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "An error occurred while executing the command {Command}", command);
-            }
+        }
+        // Exceptions caught here will be due to one of two reasons:
+        // 1. An exception was thrown in one of the inner exception handlers (e.g. linkedSource.Token got cancelled)
+        // 2. Initialization code had an exception
+        // Of these, the task cancelled case is not exceptional as that is just bad timing; do not log that case
+        catch (OperationCanceledException) { /* no-op */ }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "A top-level error occurred in the bot command handler. This likely indicates a bug in the Netwolf.BotFramework library.");
         }
     }
 
@@ -686,35 +725,28 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         await Network.ConnectAsync(linkedToken).ConfigureAwait(false);
 
         // Oper up if necessary; regular oper comes first since soper might require us to be an oper
-        var operCompletionSource = new TaskCompletionSource();
         if (Options.OperName != null)
         {
             // RSA.Create() isn't supported on browsers, so skip challenge support on them
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Create("browser")) && Options.ChallengeKeyFile != null)
             {
-                await DoChallengeAsync(Options.OperName, Options.ChallengeKeyFile, Options.ChallengeKeyPassword, operCompletionSource, linkedToken).ConfigureAwait(false);
+                await DoChallengeAsync(Options.OperName, Options.ChallengeKeyFile, Options.ChallengeKeyPassword, linkedToken).ConfigureAwait(false);
             }
             else if (Options.OperPassword != null)
             {
-                await DoOperAsync(Options.OperName, Options.OperPassword, operCompletionSource, linkedToken).ConfigureAwait(false);
+                await DoOperAsync(Options.OperName, Options.OperPassword, linkedToken).ConfigureAwait(false);
             }
             else
             {
                 Logger.LogWarning("Unable to oper as no password or challenge key were provided");
-                operCompletionSource.SetResult();
             }
         }
 
-        await operCompletionSource.Task.WaitAsync(linkedToken).ConfigureAwait(false);
-
         // attempt soper
-        operCompletionSource = new();
         if (Options.ServiceOperPassword != null)
         {
-            await DoServicesOperAsync(Options.ServiceOperCommand, Options.ServiceOperPassword, operCompletionSource, linkedToken).ConfigureAwait(false);
+            await DoServicesOperAsync(Options.ServiceOperCommand, Options.ServiceOperPassword, linkedToken).ConfigureAwait(false);
         }
-
-        await operCompletionSource.Task.WaitAsync(linkedToken).ConfigureAwait(false);
 
         // Join configured channels
         List<Task> joinTasks = [];
@@ -744,8 +776,20 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         await DisconnectionSource.Task.WaitAsync(stoppingToken).ConfigureAwait(false);
     }
 
-    private async Task DoOperAsync(string username, string password, TaskCompletionSource completionSource, CancellationToken cancellationToken)
+    private async Task DoOperAsync(string username, string password, CancellationToken cancellationToken)
     {
+        TaskCompletionSource completionSource = new();
+        using var cancellationSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        // UnsafeRegister just means it runs on an arbitrary thread in the pool a la ConfigureAwait(false)
+        // All methods of TaskCompletionSource are thread safe so there are no issues with this
+        using var registration = cancellationSource.Token.UnsafeRegister(
+            static (source, token) => (source as TaskCompletionSource)?.TrySetCanceled(token),
+            completionSource);
+
+        // time out after a few seconds so that we don't hang forever in case we get some non-standard error response (e.g. via NOTICE)
+        cancellationSource.CancelAfter(TimeSpan.FromSeconds(5));
+
         // Set up command handler
         void handler(object? sender, NetworkEventArgs args)
         {
@@ -773,21 +817,29 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
         try
         {
-            await SendAsync("OPER", [username, password], cancellationToken).ConfigureAwait(false);
-
-            // time out after a few seconds so that we don't hang forever in case we get some non-standard error response (e.g. via NOTICE)
-            // TODO: assume oper fails after this timeout and give the bot an opportunity to fail fast if it requires oper
-            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+            await SendAsync("OPER", [username, password], cancellationSource.Token).ConfigureAwait(false);
+            await completionSource.Task.ConfigureAwait(false);
         }
         finally
         {
             Network.CommandReceived -= handler;
-            completionSource.TrySetResult();
         }
     }
 
-    private async Task DoChallengeAsync(string username, string filePath, string? filePassword, TaskCompletionSource completionSource, CancellationToken cancellationToken)
+    private async Task DoChallengeAsync(string username, string filePath, string? filePassword, CancellationToken cancellationToken)
     {
+        TaskCompletionSource completionSource = new();
+        using var cancellationSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        // UnsafeRegister just means it runs on an arbitrary thread in the pool a la ConfigureAwait(false)
+        // All methods of TaskCompletionSource are thread safe so there are no issues with this
+        using var registration = cancellationSource.Token.UnsafeRegister(
+            static (source, token) => (source as TaskCompletionSource)?.TrySetCanceled(token),
+            completionSource);
+
+        // time out after a few seconds so that we don't hang forever in case we get some non-standard error response (e.g. via NOTICE)
+        cancellationSource.CancelAfter(TimeSpan.FromSeconds(5));
+
         StringBuilder challengeText = new();
         using var rsa = RSA.Create();
         var key = await File.ReadAllTextAsync(filePath, cancellationToken);
@@ -803,32 +855,39 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
         async void handler(object? sender, NetworkEventArgs args)
         {
-            switch (args.Command?.Numeric)
+            try
             {
-                // TODO: Get a general-purpose Numeric enum perhaps? There's one in Netwolf.Server but that's only the numerics the server component sends
-                // whereas from a client perspective we'd want wide support across all ircds
-                case 461:
-                case 464:
-                case 491:
-                    Logger.LogWarning("Unable to challenge as {name}: {message}", username, args.Command.UnprefixedCommandPart);
-                    Network.CommandReceived -= handler;
-                    completionSource.TrySetResult();
-                    break;
-                case 381:
-                    Logger.LogTrace("Successfully opered as {name}", username);
-                    Network.CommandReceived -= handler;
-                    completionSource.TrySetResult();
-                    break;
-                case 740:
-                    challengeText.Append(args.Command.Args[1]);
-                    break;
-                case 741:
-                    var encryptedChallenge = Convert.FromBase64String(challengeText.ToString());
-                    var plainChallenge = rsa.Decrypt(encryptedChallenge, RSAEncryptionPadding.OaepSHA1);
-                    var hashedChallenge = SHA1.HashData(plainChallenge);
-                    var response = Convert.ToBase64String(hashedChallenge);
-                    await SendAsync("CHALLENGE", [$"+{response}"], cancellationToken).ConfigureAwait(false);
-                    break;
+                switch (args.Command?.Numeric)
+                {
+                    // TODO: Get a general-purpose Numeric enum perhaps? There's one in Netwolf.Server but that's only the numerics the server component sends
+                    // whereas from a client perspective we'd want wide support across all ircds
+                    case 461:
+                    case 464:
+                    case 491:
+                        Logger.LogWarning("Unable to challenge as {name}: {message}", username, args.Command.UnprefixedCommandPart);
+                        Network.CommandReceived -= handler;
+                        completionSource.TrySetResult();
+                        break;
+                    case 381:
+                        Logger.LogTrace("Successfully opered as {name}", username);
+                        Network.CommandReceived -= handler;
+                        completionSource.TrySetResult();
+                        break;
+                    case 740:
+                        challengeText.Append(args.Command.Args[1]);
+                        break;
+                    case 741:
+                        var encryptedChallenge = Convert.FromBase64String(challengeText.ToString());
+                        var plainChallenge = rsa.Decrypt(encryptedChallenge, RSAEncryptionPadding.OaepSHA1);
+                        var hashedChallenge = SHA1.HashData(plainChallenge);
+                        var response = Convert.ToBase64String(hashedChallenge);
+                        await SendAsync("CHALLENGE", [$"+{response}"], cancellationToken).ConfigureAwait(false);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                completionSource.TrySetException(ex);
             }
         }
 
@@ -838,26 +897,21 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         {
             var command = Network.PrepareCommand("CHALLENGE", [username]);
             await SendAsync("CHALLENGE", [username], cancellationToken).ConfigureAwait(false);
-
-            // time out after a few seconds so that we don't hang forever in case we get some non-standard error response (e.g. via NOTICE)
-            // TODO: assume oper fails after this timeout and give the bot an opportunity to fail fast if it requires oper
-            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+            await completionSource.Task.ConfigureAwait(false);
         }
         finally
         {
             Network.CommandReceived -= handler;
-            completionSource.TrySetResult();
         }
     }
 
-    private async Task DoServicesOperAsync(string command, string password, TaskCompletionSource completionSource, CancellationToken cancellationToken)
+    private async Task DoServicesOperAsync(string command, string password, CancellationToken cancellationToken)
     {
         await Network.UnsafeSendRawAsync(string.Format(command, password), cancellationToken).ConfigureAwait(false);
 
         // there is no standard way to determine if this command was successful so just wait a few seconds and move on
         // TODO: introduce an option of a string to look for in the event of a successful soper, and assume we failed if we don't get that by the timeout
         await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
-        completionSource.SetResult();
     }
 
     protected virtual async ValueTask DisposeAsyncCore()
