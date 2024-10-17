@@ -6,10 +6,12 @@ using Netwolf.BotFramework.Exceptions;
 using Netwolf.BotFramework.Internal;
 using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
+using Netwolf.Transport.Events;
 using Netwolf.Transport.IRC;
 
 using System.Collections.Immutable;
 using System.ComponentModel.DataAnnotations;
+using System.Reactive.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -61,6 +63,11 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// TCS used to keep the main execution Task suspended until the bot disconnects
     /// </summary>
     private TaskCompletionSource DisconnectionSource { get; init; }
+
+    /// <summary>
+    /// Subscription to the underlying <see cref="Network"/>'s command event stream
+    /// </summary>
+    private IDisposable CommandSubscription { get; set; }
 
     /// <summary>
     /// Allows for cancelling all outstanding Tasks when <see cref="DisconnectAsync(string)"/> is called.
@@ -222,8 +229,8 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         }
 
         // Register our network events
-        Network.CapReceived += OnCapReceived;
-        Network.CommandReceived += OnCommandReceived;
+        Network.ShouldEnableCap += ShouldEnableCap;
+        CommandSubscription = Network.CommandReceived.Subscribe(e => OnCommandReceived(e));
         Network.Disconnected += OnDisconnected;
 
         // Wire up bot commands
@@ -300,8 +307,47 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// <returns></returns>
     public Task SendAsync(string verb, IEnumerable<object?> args, CancellationToken cancellationToken)
     {
-        var command = Network.PrepareCommand(verb, args);
-        return InternalSendAsync(command, cancellationToken);
+        return SendAsync(verb, args, ImmutableDictionary<string, string?>.Empty, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends a command to the IRC network with the specified verb and arguments,
+    /// then waits for a response according to the supplied filter.
+    /// Rate limiters will apply to the sent command.
+    /// </summary>
+    /// <param name="verb"></param>
+    /// <param name="args"></param>
+    /// <param name="waitFilter">Filter to determine when to stop waiting for incoming server commands.</param>
+    /// <param name="cancellationToken"></param>
+    /// <returns>The command that <paramref name="waitFilter"/> returned true for</returns>
+    public Task<ICommand> SendAsync(
+        string verb,
+        IEnumerable<object?> args,
+        Func<ICommand, bool> waitFilter,
+        CancellationToken cancellationToken)
+    {
+        return SendAsync(verb, args, ImmutableDictionary<string, string?>.Empty, waitFilter, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends a command to the IRC network with the specified verb and arguments,
+    /// then waits for a response according to the supplied filter.
+    /// Rate limiters will apply to the sent command.
+    /// </summary>
+    /// <param name="verb"></param>
+    /// <param name="args"></param>
+    /// <param name="includeFilter">Filter to determine if the command should be in the return value.</param>
+    /// <param name="endFilter">Filter to determine when to stop waiting for incoming server commands.</param>
+    /// <param name="cancellationToken"></param>
+    /// <returns>Received commands (IRC commands from the server, not bot commands) according to includeFilter, in the order they were received</returns>
+    public Task<IEnumerable<ICommand>> SendAsync(
+        string verb,
+        IEnumerable<object?> args,
+        Func<ICommand, bool> includeFilter,
+        Func<ICommand, bool> endFilter,
+        CancellationToken cancellationToken)
+    {
+        return SendAsync(verb, args, ImmutableDictionary<string, string?>.Empty, includeFilter, endFilter, cancellationToken);
     }
 
     /// <summary>
@@ -312,10 +358,94 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// <param name="args"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    public Task SendAsync(string verb, IEnumerable<object?> args, IReadOnlyDictionary<string, string?> tags, CancellationToken cancellationToken)
+    public Task SendAsync(
+        string verb,
+        IEnumerable<object?> args,
+        IReadOnlyDictionary<string, string?> tags,
+        CancellationToken cancellationToken)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
         var command = Network.PrepareCommand(verb, args, tags);
         return InternalSendAsync(command, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends a command to the IRC network with the specified verb, arguments, and tags,
+    /// then waits for a response according to the supplied filter.
+    /// Rate limiters will apply to the sent command.
+    /// </summary>
+    /// <param name="verb"></param>
+    /// <param name="args"></param>
+    /// <param name="tags"></param>
+    /// <param name="waitFilter">Filter to determine when to stop waiting for incoming server commands.</param>
+    /// <param name="cancellationToken"></param>
+    /// <returns>The command that <paramref name="waitFilter"/> returned true for</returns>
+    public async Task<ICommand> SendAsync(
+        string verb,
+        IEnumerable<object?> args,
+        IReadOnlyDictionary<string, string?> tags,
+        Func<ICommand, bool> waitFilter,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        TaskCompletionSource<ICommand> tcs = new();
+
+        Network.CommandReceived
+            .Select(e => e.Command)
+            .FirstAsync(c => waitFilter(c))
+            .Subscribe(
+                c => tcs.SetResult(c),
+                ex => tcs.SetException(ex),
+                cancellationToken
+            );
+
+        await SendAsync(verb, args, tags, cancellationToken).ConfigureAwait(false);
+        return await tcs.Task.ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Sends a command to the IRC network with the specified verb, arguments, and tags,
+    /// then waits for a response according to the supplied filter.
+    /// Rate limiters will apply to the sent command.
+    /// </summary>
+    /// <param name="verb"></param>
+    /// <param name="args"></param>
+    /// <param name="tags"></param>
+    /// <param name="includeFilter">Filter to determine if the command should be in the return value.</param>
+    /// <param name="endFilter">Filter to determine when to stop waiting for incoming server commands.</param>
+    /// <param name="cancellationToken"></param>
+    /// <returns>Received commands (IRC commands from the server, not bot commands) according to includeFilter, in the order they were received</returns>
+    public async Task<IEnumerable<ICommand>> SendAsync(
+        string verb,
+        IEnumerable<object?> args,
+        IReadOnlyDictionary<string, string?> tags,
+        Func<ICommand, bool> includeFilter,
+        Func<ICommand, bool> endFilter,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        List<ICommand> commands = [];
+        TaskCompletionSource<IEnumerable<ICommand>> tcs = new();
+
+        Network.CommandReceived
+            .Select(e => e.Command)
+            .TakeUntil(c => endFilter(c))
+            .Where(c => includeFilter(c))
+            .Subscribe(
+                commands.Add,
+                tcs.SetException,
+                () => tcs.SetResult(commands),
+                cancellationToken
+            );
+
+        await SendAsync(verb, args, tags, cancellationToken).ConfigureAwait(false);
+        return await tcs.Task.ConfigureAwait(false);
     }
 
     /// <summary>
@@ -328,7 +458,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// <returns></returns>
     public Task SendMessageAsync(string target, string message, CancellationToken cancellationToken)
     {
-        return SendMessageAsync(target, message, new Dictionary<string, string?>(), cancellationToken);
+        return SendMessageAsync(target, message, ImmutableDictionary<string, string?>.Empty, cancellationToken);
     }
 
     /// <summary>
@@ -357,7 +487,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// <returns></returns>
     public Task SendNoticeAsync(string target, string message, CancellationToken cancellationToken)
     {
-        return SendNoticeAsync(target, message, new Dictionary<string, string?>(), cancellationToken);
+        return SendNoticeAsync(target, message, ImmutableDictionary<string, string?>.Empty, cancellationToken);
     }
 
     /// <summary>
@@ -430,6 +560,9 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         return JoinChannelAsync(name, null, cancellationToken);
     }
 
+    static readonly string[] _joinErrors1 = ["403", "405", "471", "473", "474", "475"];
+    static readonly string[] _joinErrors0 = ["476"];
+
     public async Task JoinChannelAsync(string name, string? key, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -441,7 +574,6 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
         // TODO: validate that the channel name starts with a channel prefix character
         // (and have a different API for /join 0 -- aka part all channels)
-        TaskCompletionSource opSource = new();
 
         // it's (mostly) safe to continue to use linkedToken after linkedTokenSource is disposed
         // linkedToken.WaitHandle will throw an exception but simply checking cancellation state is safe
@@ -449,62 +581,17 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         using var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, CancellationSource!.Token);
         var linkedToken = linkedTokenSource.Token;
 
-        linkedToken.ThrowIfCancellationRequested();
-
-        void handler(object? sender, NetworkEventArgs args)
+        var result = await SendAsync("JOIN", [name, key], c => c.Verb switch
         {
-            if (linkedToken.IsCancellationRequested)
-            {
-                opSource.SetCanceled(linkedToken);
-                return;
-            }
+            var x when _joinErrors0.Contains(x) => c.Args[0] == name,
+            var x when _joinErrors1.Contains(x) => c.Args[1] == name,
+            "JOIN" => c.Args[0] == name && c.Source == Network.Nick,
+            _ => false
+        }, linkedToken).ConfigureAwait(false);
 
-            switch (args.Command?.Verb)
-            {
-                case "403":
-                case "405":
-                case "471":
-                case "473":
-                case "474":
-                case "475":
-                    // channel is 2nd argument
-                    // TODO: compare strings using server-specified charset case insensitively
-                    if (args.Command.Args[1] == name)
-                    {
-                        throw new NumericException(args.Command.Numeric!.Value, args.Command.Args[2]);
-                    }
-                    
-                    break;
-                case "476":
-                    // channel is 1st argument
-                    if (args.Command.Args[0] == name)
-                    {
-                        throw new NumericException(args.Command.Numeric!.Value, args.Command.Args[1]);
-                    }
-
-                    break;
-                case "JOIN":
-                    // channel is 1st argument but verify source as well
-                    // TODO: compare against Source by extracting our nick if it's a full nick!user@host
-                    if (args.Command.Args[0] == name && args.Command.Source == Network.Nick)
-                    {
-                        opSource.TrySetResult();
-                    }
-
-                    break;
-            }
-        }
-        
-        Network.CommandReceived += handler;
-        await SendAsync("JOIN", [name, key], linkedToken).ConfigureAwait(false);
-
-        try
+        if (result.Verb != "JOIN")
         {
-            await opSource.Task.WaitAsync(linkedToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            Network.CommandReceived -= handler;
+            throw new NumericException(result.Numeric!.Value, result.Args[_joinErrors0.Contains(result.Verb) ? 1 : 2]);
         }
     }
 
@@ -522,55 +609,23 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             throw new InvalidOperationException("Bot is not connected to the network.");
         }
 
-        TaskCompletionSource opSource = new();
-
         using var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, CancellationSource!.Token);
         var linkedToken = linkedTokenSource.Token;
 
-        linkedToken.ThrowIfCancellationRequested();
-
-        void handler(object? sender, NetworkEventArgs args)
+        var result = await SendAsync("PART", [name, reason], c => c.Verb switch
         {
-            if (linkedToken.IsCancellationRequested)
-            {
-                opSource.SetCanceled(linkedToken);
-                return;
-            }
+            // channel is 2nd argument
+            // TODO: compare strings using server-specified charset case insensitively
+            "403" or "442" => c.Args[1] == name,
+            // channel is 1st argument (might be a channel list) but verify source as well
+            // TODO: compare against Source by extracting our nick if it's a full nick!user@host
+            "PART" => c.Args[0].Split(',').Contains(name) && c.Source == Network.Nick,
+            _ => false
+        }, linkedToken).ConfigureAwait(false);
 
-            switch (args.Command?.Verb)
-            {
-                case "403":
-                case "442":
-                    // channel is 2nd argument
-                    // TODO: compare strings using server-specified charset case insensitively
-                    if (args.Command.Args[1] == name)
-                    {
-                        throw new NumericException(args.Command.Numeric!.Value, args.Command.Args[2]);
-                    }
-
-                    break;
-                case "PART":
-                    // channel is 1st argument (might be a channel list) but verify source as well
-                    // TODO: compare against Source by extracting our nick if it's a full nick!user@host
-                    if (args.Command.Args[0].Split(',').Contains(name) && args.Command.Source == Network.Nick)
-                    {
-                        opSource.TrySetResult();
-                    }
-
-                    break;
-            }
-        }
-
-        Network.CommandReceived += handler;
-        await SendAsync("PART", [name, reason], linkedToken).ConfigureAwait(false);
-
-        try
+        if (result.Verb != "PART")
         {
-            await opSource.Task.WaitAsync(linkedToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            Network.CommandReceived -= handler;
+            throw new NumericException(result.Numeric!.Value, result.Args[2]);
         }
     }
 
@@ -586,12 +641,12 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         }
     }
 
-    private async void OnCommandReceived(object? sender, NetworkEventArgs e)
+    private async void OnCommandReceived(CommandEventArgs e)
     {
         // Only handle user commands if we're fully initialized;
         // this ensures all necessary state is in place before command processing
         // Also only handle commands sent as PRIVMSG, not NOTICE as well as reject invalid/corrupted commands
-        if (!Initialized || CancellationSource == null || e.Command?.Verb != "PRIVMSG" || e.Command.Source == null || e.Command.Args.Count < 2)
+        if (!Initialized || CancellationSource == null || e.Command.Verb != "PRIVMSG" || e.Command.Source == null || e.Command.Args.Count < 2)
         {
             return;
         }
@@ -710,9 +765,9 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         return true;
     }
 
-    private void OnCapReceived(object? sender, CapEventArgs e)
+    private bool ShouldEnableCap(CapEventArgs e)
     {
-        e.EnableCap = e.EnableCap || CapProviders.Any(prov => prov.ShouldEnable(e.CapName, e.CapValue));
+        return CapProviders.Any(prov => prov.ShouldEnable(e.CapName, e.CapValue));
     }
 
     internal async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -776,71 +831,37 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         await DisconnectionSource.Task.WaitAsync(stoppingToken).ConfigureAwait(false);
     }
 
+    private static readonly HashSet<int> _operNumerics = [381, 461, 464, 491];
     private async Task DoOperAsync(string username, string password, CancellationToken cancellationToken)
     {
-        TaskCompletionSource completionSource = new();
         using var cancellationSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-        // UnsafeRegister just means it runs on an arbitrary thread in the pool a la ConfigureAwait(false)
-        // All methods of TaskCompletionSource are thread safe so there are no issues with this
-        using var registration = cancellationSource.Token.UnsafeRegister(
-            static (source, token) => (source as TaskCompletionSource)?.TrySetCanceled(token),
-            completionSource);
 
         // time out after a few seconds so that we don't hang forever in case we get some non-standard error response (e.g. via NOTICE)
         cancellationSource.CancelAfter(TimeSpan.FromSeconds(5));
 
-        // Set up command handler
-        void handler(object? sender, NetworkEventArgs args)
-        {
-            switch (args.Command?.Numeric)
-            {
-                // TODO: Get a general-purpose Numeric enum perhaps? There's one in Netwolf.Server but that's only the numerics the server component sends
-                // whereas from a client perspective we'd want wide support across all ircds
-                // Also maybe get rid of the Numeric property in Command and make the Numeric thing string-based
-                case 461:
-                case 464:
-                case 491:
-                    Logger.LogWarning("Unable to oper as {name}: {message}", username, args.Command.UnprefixedCommandPart);
-                    Network.CommandReceived -= handler;
-                    completionSource.TrySetResult();
-                    break;
-                case 381:
-                    Logger.LogTrace("Successfully opered as {name}", username);
-                    Network.CommandReceived -= handler;
-                    completionSource.TrySetResult();
-                    break;
-            }
-        }
+        var result = await SendAsync("OPER", [username, password],
+            c => _operNumerics.Contains(c.Numeric ?? -1),
+            cancellationSource.Token).ConfigureAwait(false);
 
-        Network.CommandReceived += handler;
-
-        try
+        if (result.Numeric == 381)
         {
-            await SendAsync("OPER", [username, password], cancellationSource.Token).ConfigureAwait(false);
-            await completionSource.Task.ConfigureAwait(false);
+            Logger.LogTrace("Successfully opered as {name}", username);
         }
-        finally
+        else
         {
-            Network.CommandReceived -= handler;
+            Logger.LogWarning("Unable to oper as {name}: {message}", username, result.UnprefixedCommandPart);
         }
     }
 
+    private static readonly HashSet<int> _challengeIncludeNumerics = [381, 461, 464, 491, 740, 741];
+    private static readonly HashSet<int> _challengeEndNumerics = [381, 461, 464, 491, 741];
     private async Task DoChallengeAsync(string username, string filePath, string? filePassword, CancellationToken cancellationToken)
     {
-        TaskCompletionSource completionSource = new();
         using var cancellationSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-        // UnsafeRegister just means it runs on an arbitrary thread in the pool a la ConfigureAwait(false)
-        // All methods of TaskCompletionSource are thread safe so there are no issues with this
-        using var registration = cancellationSource.Token.UnsafeRegister(
-            static (source, token) => (source as TaskCompletionSource)?.TrySetCanceled(token),
-            completionSource);
 
         // time out after a few seconds so that we don't hang forever in case we get some non-standard error response (e.g. via NOTICE)
         cancellationSource.CancelAfter(TimeSpan.FromSeconds(5));
 
-        StringBuilder challengeText = new();
         using var rsa = RSA.Create();
         var key = await File.ReadAllTextAsync(filePath, cancellationToken);
 
@@ -853,55 +874,36 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             rsa.ImportFromPem(key);
         }
 
-        async void handler(object? sender, NetworkEventArgs args)
+        var results = await SendAsync("CHALLENGE", [username],
+            c => _challengeIncludeNumerics.Contains(c.Numeric ?? -1),
+            c => _challengeEndNumerics.Contains(c.Numeric ?? -1),
+            cancellationToken).ConfigureAwait(false);
+
+        var result = results.Last();
+
+        if (result.Numeric == 741)
         {
-            try
-            {
-                switch (args.Command?.Numeric)
-                {
-                    // TODO: Get a general-purpose Numeric enum perhaps? There's one in Netwolf.Server but that's only the numerics the server component sends
-                    // whereas from a client perspective we'd want wide support across all ircds
-                    case 461:
-                    case 464:
-                    case 491:
-                        Logger.LogWarning("Unable to challenge as {name}: {message}", username, args.Command.UnprefixedCommandPart);
-                        Network.CommandReceived -= handler;
-                        completionSource.TrySetResult();
-                        break;
-                    case 381:
-                        Logger.LogTrace("Successfully opered as {name}", username);
-                        Network.CommandReceived -= handler;
-                        completionSource.TrySetResult();
-                        break;
-                    case 740:
-                        challengeText.Append(args.Command.Args[1]);
-                        break;
-                    case 741:
-                        var encryptedChallenge = Convert.FromBase64String(challengeText.ToString());
-                        var plainChallenge = rsa.Decrypt(encryptedChallenge, RSAEncryptionPadding.OaepSHA1);
-                        var hashedChallenge = SHA1.HashData(plainChallenge);
-                        var response = Convert.ToBase64String(hashedChallenge);
-                        await SendAsync("CHALLENGE", [$"+{response}"], cancellationToken).ConfigureAwait(false);
-                        break;
-                }
-            }
-            catch (Exception ex)
-            {
-                completionSource.TrySetException(ex);
-            }
+            var encryptedChallenge = Convert.FromBase64String(string.Join("", results.Where(c => c.Numeric == 740).Select(c => c.Args[1])));
+            var plainChallenge = rsa.Decrypt(encryptedChallenge, RSAEncryptionPadding.OaepSHA1);
+            var hashedChallenge = SHA1.HashData(plainChallenge);
+            var response = Convert.ToBase64String(hashedChallenge);
+            result = await SendAsync("CHALLENGE", [$"+{response}"],
+                c => _challengeEndNumerics.Contains(c.Numeric ?? -1),
+                cancellationToken).ConfigureAwait(false);
         }
 
-        Network.CommandReceived += handler;
-
-        try
+        switch (result.Numeric)
         {
-            var command = Network.PrepareCommand("CHALLENGE", [username]);
-            await SendAsync("CHALLENGE", [username], cancellationToken).ConfigureAwait(false);
-            await completionSource.Task.ConfigureAwait(false);
-        }
-        finally
-        {
-            Network.CommandReceived -= handler;
+            // TODO: Get a general-purpose Numeric enum perhaps? There's one in Netwolf.Server but that's only the numerics the server component sends
+            // whereas from a client perspective we'd want wide support across all ircds
+            case 461:
+            case 464:
+            case 491:
+                Logger.LogWarning("Unable to challenge as {name}: {message}", username, result.UnprefixedCommandPart);
+                break;
+            case 381:
+                Logger.LogTrace("Successfully opered as {name}", username);
+                break;
         }
     }
 
@@ -916,6 +918,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
     protected virtual async ValueTask DisposeAsyncCore()
     {
+        CommandSubscription.Dispose();
         CancellationSource?.Dispose();
         await Network.DisposeAsync().ConfigureAwait(false);
     }
@@ -933,6 +936,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         {
             if (disposing)
             {
+                CommandSubscription.Dispose();
                 // CancellationSource could be null if we dispose before calling ExecuteAsync, despite it being marked non-nullable
                 CancellationSource?.Dispose();
                 Network.Dispose();

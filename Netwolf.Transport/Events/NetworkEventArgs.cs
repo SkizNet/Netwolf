@@ -1,9 +1,9 @@
 ﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-using Netwolf.PluginFramework.Commands;
+using Netwolf.Transport.IRC;
 
-namespace Netwolf.Transport.IRC;
+namespace Netwolf.Transport.Events;
 
 /// <summary>
 /// Arguments to events raised by <see cref="INetwork"/>.
@@ -16,25 +16,13 @@ public class NetworkEventArgs : EventArgs
     public INetwork Network { get; init; }
 
     /// <summary>
-    /// Command being processed if event is related to a command.
-    /// </summary>
-    public ICommand? Command { get; init; }
-
-    /// <summary>
     /// Exception raised by the event, if any.
     /// </summary>
     public Exception? Exception { get; init; }
 
-    /// <summary>
-    /// Cancellation token to use for any asynchronous tasks awaited by the event.
-    /// </summary>
-    public CancellationToken Token { get; init; }
-
-    internal NetworkEventArgs(INetwork network, CancellationToken token, ICommand? command = null, Exception? ex = null)
+    internal NetworkEventArgs(INetwork network, Exception? ex = null)
     {
         Network = network;
-        Command = command;
-        Token = token;
         Exception = ex;
     }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 using Netwolf.PluginFramework.Commands;
+using Netwolf.Transport.Events;
 using Netwolf.Transport.Exceptions;
 
 namespace Netwolf.Transport.IRC;
@@ -19,7 +20,7 @@ public interface INetwork : INetworkInfo, IDisposable, IAsyncDisposable
     /// <summary>
     /// Event raised whenever we receive a command from the network
     /// </summary>
-    event EventHandler<NetworkEventArgs>? CommandReceived;
+    IObservable<CommandEventArgs> CommandReceived { get; }
 
     /// <summary>
     /// Event raised whenever we become disconnected for any reason. The
@@ -28,19 +29,26 @@ public interface INetwork : INetworkInfo, IDisposable, IAsyncDisposable
     event EventHandler<NetworkEventArgs>? Disconnected;
 
     /// <summary>
-    /// Event raised for each new CAP we receive from the network. This is fired
-    /// once per capability mentioned in a CAP LS or CAP NEW command. Listeners
-    /// can modify the <see cref="CapEventArgs.EnableCap"/> property to have
-    /// us automatically send a CAP REQ once all event handlers have finished.
+    /// Delegate type for <see cref="ShouldEnableCap"/>.
     /// </summary>
-    event EventHandler<CapEventArgs>? CapReceived;
+    /// <param name="args">Arguments for the filter</param>
+    /// <returns></returns>
+    delegate bool CapFilter(CapEventArgs args);
+
+    /// <summary>
+    /// Callback to determine if a non-default CAP should be enabled.
+    /// Default CAPs are unconditionally enabled and will not call this method.
+    /// This delegate can be chained, and the CAP will be enabled should any of its registered
+    /// callbacks returns true.
+    /// </summary>
+    CapFilter? ShouldEnableCap { get; set; }
 
     /// <summary>
     /// Event raised for each CAP that is enabled by the network. This is fired
     /// once per capability mentioned in the CAP ACK or CAP LIST commands. It is possible
     /// for this to fire multiple times for the same capability.
     /// </summary>
-    event EventHandler<CapEventArgs>? CapEnabled;
+    IObservable<CapEventArgs> CapEnabled { get; }
 
     /// <summary>
     /// Event raised for each CAP that is no longer supported by the network.
@@ -48,7 +56,7 @@ public interface INetwork : INetworkInfo, IDisposable, IAsyncDisposable
     /// It is possible for this to fire on a cap that was not previously listed in a
     /// CapEnabled event, so listeners should not assume that the cap was previously enabled.
     /// </summary>
-    event EventHandler<CapEventArgs>? CapDisabled;
+    IObservable<CapEventArgs> CapDisabled { get; }
 
     /// <summary>
     /// Connect to the network and perform user registration. If the passed-in

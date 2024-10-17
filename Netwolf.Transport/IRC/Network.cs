@@ -5,12 +5,17 @@
 using Microsoft.Extensions.Logging;
 
 using Netwolf.PluginFramework.Commands;
+using Netwolf.Transport.Events;
 using Netwolf.Transport.Exceptions;
 using Netwolf.Transport.Internal;
 using Netwolf.Transport.Sasl;
 
+using System.Reactive.Linq;
+using System.Reactive.Subjects;
 using System.Security.Authentication.ExtendedProtection;
 using System.Text;
+
+using static Netwolf.Transport.IRC.INetwork;
 
 namespace Netwolf.Transport.IRC;
 
@@ -140,20 +145,39 @@ public class Network : INetwork
     /// </summary>
     private int MaxLength { get; set; } = 512;
 
+    /// <summary>
+    /// Internal event stream for Command events
+    /// </summary>
+    private readonly Subject<CommandEventArgs> _commandEventStream = new();
+
     /// <inheritdoc />
-    public event EventHandler<NetworkEventArgs>? CommandReceived;
+    public IObservable<CommandEventArgs> CommandReceived => _commandEventStream.AsObservable();
 
     /// <inheritdoc />
     public event EventHandler<NetworkEventArgs>? Disconnected;
 
-    /// <inheritdoc />
-    public event EventHandler<CapEventArgs>? CapReceived;
+    /// <summary>
+    /// Internal event stream for CAP events
+    /// </summary>
+    private readonly Subject<CapEventArgs> _capEventStream = new();
+
+    /// <summary>
+    /// Values for all caps received via CAP LS or CAP NEW, including those we did not enable
+    /// </summary>
+    private readonly Dictionary<string, string?> _capValueCache = [];
 
     /// <inheritdoc />
-    public event EventHandler<CapEventArgs>? CapEnabled;
+    public CapFilter? ShouldEnableCap { get; set; }
 
     /// <inheritdoc />
-    public event EventHandler<CapEventArgs>? CapDisabled;
+    public IObservable<CapEventArgs> CapEnabled => from e in _capEventStream
+                                                   where e.Subcommand == "ACK"
+                                                   select e;
+
+    /// <inheritdoc />
+    public IObservable<CapEventArgs> CapDisabled => from e in _capEventStream
+                                                    where e.Subcommand == "DEL"
+                                                    select e;
 
     /// <summary>
     /// SASL mechanisms that are supported by both the server and us.
@@ -229,6 +253,7 @@ public class Network : INetwork
     /// <returns>Awaitable ValueTask for the async cleanup operation</returns>
     protected virtual async ValueTask DisposeAsyncCore()
     {
+        _capEventStream.Dispose();
         _messageLoopTokenSource.Cancel();
         await _messageLoop.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         _messageLoopTokenSource.Dispose();
@@ -248,6 +273,7 @@ public class Network : INetwork
         {
             if (disposing)
             {
+                _capEventStream.Dispose();
                 _messageLoopTokenSource.Cancel();
                 _messageLoop.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing).GetAwaiter().GetResult();
                 _messageLoopTokenSource.Dispose();
@@ -326,7 +352,7 @@ public class Network : INetwork
                     try
                     {
                         OnCommandReceived(command, token);
-                        CommandReceived?.Invoke(command, new(this, token, command));
+                        _commandEventStream.OnNext(new(this, command, token));
                     }
                     catch (Exception e)
                     {
@@ -355,7 +381,7 @@ public class Network : INetwork
                             await _connection.DisconnectAsync().ConfigureAwait(false);
                             _connection = null;
 
-                            Disconnected?.Invoke(this, new(this, token, null, tasks[index].Exception));
+                            Disconnected?.Invoke(this, new(this, tasks[index].Exception));
                         }
                     });
                     break;
@@ -445,6 +471,7 @@ public class Network : INetwork
 
                 try
                 {
+                    _capValueCache.Clear();
                     await UnsafeSendRawAsync("CAP LS 302", cancellationToken);
 
                     if (Options.ServerPassword != null)
@@ -771,8 +798,15 @@ public class Network : INetwork
 
                         foreach (var (key, value) in State.SupportedCaps)
                         {
-                            var args = new CapEventArgs(this, key, value, command.Args[1], cancellationToken);
-                            CapReceived?.Invoke(this, args);
+                            _capValueCache[key] = value;
+
+                            bool shouldEnable = defaultCaps.Contains(key);
+                            if (!shouldEnable && ShouldEnableCap != null)
+                            {
+                                var args = new CapEventArgs(this, key, value, command.Args[1]);
+                                shouldEnable = ShouldEnableCap.GetInvocationList().Cast<CapFilter>().Any(f => f(args));
+                            }
+
                             if (key == "sasl" && Options.UseSasl && State.Account == null)
                             {
                                 // negotiate SASL
@@ -791,7 +825,7 @@ public class Network : INetwork
                                     SaslMechs = supportedSaslTypes;
                                 }
                             }
-                            else if (args.EnableCap || defaultCaps.Contains(key))
+                            else if (shouldEnable)
                             {
                                 request.Add(key);
                             }
@@ -840,8 +874,8 @@ public class Network : INetwork
                     foreach (var cap in command.Args[2].Split(' ', StringSplitOptions.RemoveEmptyEntries))
                     {
                         State.EnabledCaps.Add(cap);
-                        var args = new CapEventArgs(this, cap, null, command.Args[1], cancellationToken);
-                        CapEnabled?.Invoke(this, args);
+                        var args = new CapEventArgs(this, cap, _capValueCache.GetValueOrDefault(cap), command.Args[1]);
+                        _capEventStream.OnNext(args);
 
                         if (command.Args[1] == "ACK" && cap == "sasl")
                         {
@@ -864,8 +898,8 @@ public class Network : INetwork
                     foreach (var cap in command.Args[2].Split(' ', StringSplitOptions.RemoveEmptyEntries))
                     {
                         State.EnabledCaps.Remove(cap);
-                        var args = new CapEventArgs(this, cap, null, command.Args[1], cancellationToken);
-                        CapDisabled?.Invoke(this, args);
+                        var args = new CapEventArgs(this, cap, _capValueCache.GetValueOrDefault(cap), command.Args[1]);
+                        _capEventStream.OnNext(args);
                     }
                 }
 
@@ -907,7 +941,7 @@ public class Network : INetwork
                 }
 
                 SaslMechs.Remove(mech);
-                _ = SendAsync(PrepareCommand("AUTHENTICATE", new string[] { mech }), cancellationToken);
+                _ = SendAsync(PrepareCommand("AUTHENTICATE", [mech]), cancellationToken);
                 return;
             }
         }
