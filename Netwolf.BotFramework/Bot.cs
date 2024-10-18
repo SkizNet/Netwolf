@@ -765,7 +765,8 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             .WithReplies(c => _challengeIncludeNumerics.Contains(c.Numeric ?? -1), c => _challengeEndNumerics.Contains(c.Numeric ?? -1))
             .ToObservable()
             .ToList()
-            .ToTask(cancellationToken);
+            .ToTask(cancellationToken)
+            .ConfigureAwait(false);
 
         var result = results.Last();
 
