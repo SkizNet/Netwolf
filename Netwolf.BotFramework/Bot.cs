@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Netwolf.Attributes;
@@ -12,6 +13,7 @@ using Netwolf.Transport.IRC;
 using System.Collections.Immutable;
 using System.ComponentModel.DataAnnotations;
 using System.Reactive.Linq;
+using System.Reactive.Threading.Tasks;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -87,6 +89,8 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     private PartitionedRateLimiter<ICommand> CommandRateLimiter { get; init; }
 
     private PartitionedRateLimiter<ICommand> ByteRateLimiter { get; init; }
+
+    internal IObservable<CommandEventArgs> CommandStream => Network.CommandReceived;
 
     /// <summary>
     /// Constructor; subclasses defining their own constructors must call this one. If the bot is activated
@@ -287,14 +291,14 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// <param name="rawLine">A line containing the verb, arguments, and message tags to send.</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns></returns>
-    public Task SendRawAsync(string rawLine, CancellationToken cancellationToken)
+    public DeferredCommand SendRawAsync(string rawLine, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
 
         var parsed = CommandFactory.Parse(CommandType.Client, rawLine);
         var command = Network.PrepareCommand(parsed.Verb, parsed.Args, parsed.Tags);
-        return InternalSendAsync(command, cancellationToken);
+        return new(this, command, cancellationToken);
     }
 
     /// <summary>
@@ -305,49 +309,9 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// <param name="args"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    public Task SendAsync(string verb, IEnumerable<object?> args, CancellationToken cancellationToken)
+    public DeferredCommand SendAsync(string verb, IEnumerable<object?> args, CancellationToken cancellationToken)
     {
         return SendAsync(verb, args, ImmutableDictionary<string, string?>.Empty, cancellationToken);
-    }
-
-    /// <summary>
-    /// Sends a command to the IRC network with the specified verb and arguments,
-    /// then waits for a response according to the supplied filter.
-    /// Rate limiters will apply to the sent command.
-    /// </summary>
-    /// <param name="verb"></param>
-    /// <param name="args"></param>
-    /// <param name="waitFilter">Filter to determine when to stop waiting for incoming server commands.</param>
-    /// <param name="cancellationToken"></param>
-    /// <returns>The command that <paramref name="waitFilter"/> returned true for</returns>
-    public Task<ICommand> SendAsync(
-        string verb,
-        IEnumerable<object?> args,
-        Func<ICommand, bool> waitFilter,
-        CancellationToken cancellationToken)
-    {
-        return SendAsync(verb, args, ImmutableDictionary<string, string?>.Empty, waitFilter, cancellationToken);
-    }
-
-    /// <summary>
-    /// Sends a command to the IRC network with the specified verb and arguments,
-    /// then waits for a response according to the supplied filter.
-    /// Rate limiters will apply to the sent command.
-    /// </summary>
-    /// <param name="verb"></param>
-    /// <param name="args"></param>
-    /// <param name="includeFilter">Filter to determine if the command should be in the return value.</param>
-    /// <param name="endFilter">Filter to determine when to stop waiting for incoming server commands.</param>
-    /// <param name="cancellationToken"></param>
-    /// <returns>Received commands (IRC commands from the server, not bot commands) according to includeFilter, in the order they were received</returns>
-    public Task<IEnumerable<ICommand>> SendAsync(
-        string verb,
-        IEnumerable<object?> args,
-        Func<ICommand, bool> includeFilter,
-        Func<ICommand, bool> endFilter,
-        CancellationToken cancellationToken)
-    {
-        return SendAsync(verb, args, ImmutableDictionary<string, string?>.Empty, includeFilter, endFilter, cancellationToken);
     }
 
     /// <summary>
@@ -358,7 +322,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// <param name="args"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    public Task SendAsync(
+    public DeferredCommand SendAsync(
         string verb,
         IEnumerable<object?> args,
         IReadOnlyDictionary<string, string?> tags,
@@ -368,84 +332,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
 
         var command = Network.PrepareCommand(verb, args, tags);
-        return InternalSendAsync(command, cancellationToken);
-    }
-
-    /// <summary>
-    /// Sends a command to the IRC network with the specified verb, arguments, and tags,
-    /// then waits for a response according to the supplied filter.
-    /// Rate limiters will apply to the sent command.
-    /// </summary>
-    /// <param name="verb"></param>
-    /// <param name="args"></param>
-    /// <param name="tags"></param>
-    /// <param name="waitFilter">Filter to determine when to stop waiting for incoming server commands.</param>
-    /// <param name="cancellationToken"></param>
-    /// <returns>The command that <paramref name="waitFilter"/> returned true for</returns>
-    public async Task<ICommand> SendAsync(
-        string verb,
-        IEnumerable<object?> args,
-        IReadOnlyDictionary<string, string?> tags,
-        Func<ICommand, bool> waitFilter,
-        CancellationToken cancellationToken)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        TaskCompletionSource<ICommand> tcs = new();
-
-        Network.CommandReceived
-            .Select(e => e.Command)
-            .FirstAsync(c => waitFilter(c))
-            .Subscribe(
-                c => tcs.SetResult(c),
-                ex => tcs.SetException(ex),
-                cancellationToken
-            );
-
-        await SendAsync(verb, args, tags, cancellationToken).ConfigureAwait(false);
-        return await tcs.Task.ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Sends a command to the IRC network with the specified verb, arguments, and tags,
-    /// then waits for a response according to the supplied filter.
-    /// Rate limiters will apply to the sent command.
-    /// </summary>
-    /// <param name="verb"></param>
-    /// <param name="args"></param>
-    /// <param name="tags"></param>
-    /// <param name="includeFilter">Filter to determine if the command should be in the return value.</param>
-    /// <param name="endFilter">Filter to determine when to stop waiting for incoming server commands.</param>
-    /// <param name="cancellationToken"></param>
-    /// <returns>Received commands (IRC commands from the server, not bot commands) according to includeFilter, in the order they were received</returns>
-    public async Task<IEnumerable<ICommand>> SendAsync(
-        string verb,
-        IEnumerable<object?> args,
-        IReadOnlyDictionary<string, string?> tags,
-        Func<ICommand, bool> includeFilter,
-        Func<ICommand, bool> endFilter,
-        CancellationToken cancellationToken)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        List<ICommand> commands = [];
-        TaskCompletionSource<IEnumerable<ICommand>> tcs = new();
-
-        Network.CommandReceived
-            .Select(e => e.Command)
-            .TakeUntil(c => endFilter(c))
-            .Where(c => includeFilter(c))
-            .Subscribe(
-                commands.Add,
-                tcs.SetException,
-                () => tcs.SetResult(commands),
-                cancellationToken
-            );
-
-        await SendAsync(verb, args, tags, cancellationToken).ConfigureAwait(false);
-        return await tcs.Task.ConfigureAwait(false);
+        return new(this, command, cancellationToken);
     }
 
     /// <summary>
@@ -513,7 +400,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns></returns>
     /// <exception cref="RateLimitLeaseAcquisitionException">If we're unable to acquire a rate limit lease (e.g. queue is full)</exception>
-    private async Task InternalSendAsync(ICommand command, CancellationToken cancellationToken)
+    internal async Task InternalSendAsync(ICommand command, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
@@ -581,13 +468,13 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         using var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, CancellationSource!.Token);
         var linkedToken = linkedTokenSource.Token;
 
-        var result = await SendAsync("JOIN", [name, key], c => c.Verb switch
+        var result = await SendAsync("JOIN", [name, key], linkedToken).WithReply(c => c.Verb switch
         {
             var x when _joinErrors0.Contains(x) => c.Args[0] == name,
             var x when _joinErrors1.Contains(x) => c.Args[1] == name,
             "JOIN" => c.Args[0] == name && c.Source == Network.Nick,
             _ => false
-        }, linkedToken).ConfigureAwait(false);
+        }).ConfigureAwait(false);
 
         if (result.Verb != "JOIN")
         {
@@ -612,7 +499,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         using var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, CancellationSource!.Token);
         var linkedToken = linkedTokenSource.Token;
 
-        var result = await SendAsync("PART", [name, reason], c => c.Verb switch
+        var result = await SendAsync("PART", [name, reason], linkedToken).WithReply(c => c.Verb switch
         {
             // channel is 2nd argument
             // TODO: compare strings using server-specified charset case insensitively
@@ -621,7 +508,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             // TODO: compare against Source by extracting our nick if it's a full nick!user@host
             "PART" => c.Args[0].Split(',').Contains(name) && c.Source == Network.Nick,
             _ => false
-        }, linkedToken).ConfigureAwait(false);
+        }).ConfigureAwait(false);
 
         if (result.Verb != "PART")
         {
@@ -839,9 +726,9 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         // time out after a few seconds so that we don't hang forever in case we get some non-standard error response (e.g. via NOTICE)
         cancellationSource.CancelAfter(TimeSpan.FromSeconds(5));
 
-        var result = await SendAsync("OPER", [username, password],
-            c => _operNumerics.Contains(c.Numeric ?? -1),
-            cancellationSource.Token).ConfigureAwait(false);
+        var result = await SendAsync("OPER", [username, password], cancellationSource.Token)
+            .WithReply(c => _operNumerics.Contains(c.Numeric ?? -1))
+            .ConfigureAwait(false);
 
         if (result.Numeric == 381)
         {
@@ -874,10 +761,11 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             rsa.ImportFromPem(key);
         }
 
-        var results = await SendAsync("CHALLENGE", [username],
-            c => _challengeIncludeNumerics.Contains(c.Numeric ?? -1),
-            c => _challengeEndNumerics.Contains(c.Numeric ?? -1),
-            cancellationToken).ConfigureAwait(false);
+        var results = await SendAsync("CHALLENGE", [username], cancellationToken)
+            .WithReplies(c => _challengeIncludeNumerics.Contains(c.Numeric ?? -1), c => _challengeEndNumerics.Contains(c.Numeric ?? -1))
+            .ToObservable()
+            .ToList()
+            .ToTask(cancellationToken);
 
         var result = results.Last();
 
@@ -887,9 +775,9 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             var plainChallenge = rsa.Decrypt(encryptedChallenge, RSAEncryptionPadding.OaepSHA1);
             var hashedChallenge = SHA1.HashData(plainChallenge);
             var response = Convert.ToBase64String(hashedChallenge);
-            result = await SendAsync("CHALLENGE", [$"+{response}"],
-                c => _challengeEndNumerics.Contains(c.Numeric ?? -1),
-                cancellationToken).ConfigureAwait(false);
+            result = await SendAsync("CHALLENGE", [$"+{response}"], cancellationToken)
+                .WithReply(c => _challengeEndNumerics.Contains(c.Numeric ?? -1))
+                .ConfigureAwait(false);
         }
 
         switch (result.Numeric)
