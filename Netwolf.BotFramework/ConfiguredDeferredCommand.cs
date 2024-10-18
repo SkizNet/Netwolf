@@ -63,5 +63,5 @@ public class ConfiguredDeferredCommand : IAsyncEnumerable<ICommand>
     }
 
     public IAsyncEnumerator<ICommand> GetAsyncEnumerator(CancellationToken cancellationToken = default)
-        => CommandStream.ToAsyncEnumerable().GetAsyncEnumerator(cancellationToken);
+        => CommandStream.ToAsyncEnumerable().GetAsyncEnumerator(CancellationTokenSource.CreateLinkedTokenSource(Token, cancellationToken).Token);
 }
