@@ -17,9 +17,12 @@ public sealed class SourceGeneratedCommandAttribute : Attribute
 
     public Type GeneratedType { get; init; }
 
-    public SourceGeneratedCommandAttribute(Type targetType, Type generatedType)
+    public Type HandlerType { get; init; }
+
+    public SourceGeneratedCommandAttribute(Type targetType, Type generatedType, Type handlerType)
     {
         TargetType = targetType;
         GeneratedType = generatedType;
+        HandlerType = handlerType;
     }
 }

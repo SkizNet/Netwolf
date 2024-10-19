@@ -1,41 +1,24 @@
 ﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+using System.Collections.Immutable;
+
 namespace Netwolf.Transport.IRC;
 
 /// <summary>
 /// Holds the state of the client's connection
 /// </summary>
-public class IrcState : INetworkInfo
+public sealed record IrcState(
+    string Name,
+    string Nick,
+    string Ident,
+    string Host,
+    string? Account,
+    ImmutableDictionary<string, string?> SupportedCaps,
+    ImmutableHashSet<string> EnabledCaps,
+    ImmutableDictionary<ISupportToken, string?> ISupport
+    ) : INetworkInfo
 {
-    public string Name { get; internal set; } = default!;
-
-    /// <summary>
-    /// The current nickname for the connection
-    /// </summary>
-    public string Nick { get; internal set; } = default!;
-
-    /// <summary>
-    /// Our ident for this connection
-    /// </summary>
-    public string Ident { get; internal set; } = default!;
-
-    /// <summary>
-    /// Our host / vhost for this connection
-    /// </summary>
-    public string Host { get; internal set; } = default!;
-
-    /// <summary>
-    /// Our account for this connection, or <c>null</c> if we don't have one
-    /// </summary>
-    public string? Account { get; internal set; }
-
-    internal Dictionary<string, string?> SupportedCaps { get; init; } = [];
-
-    internal HashSet<string> EnabledCaps { get; init; } = [];
-
-    internal Dictionary<ISupportToken, string?> ISupport { get; init; } = [];
-
     public bool TryGetEnabledCap(string cap, out string? value)
     {
         value = SupportedCaps.GetValueOrDefault(cap);
@@ -45,5 +28,10 @@ public class IrcState : INetworkInfo
     public bool TryGetISupport(ISupportToken token, out string? value)
     {
         return ISupport.TryGetValue(token, out value);
+    }
+
+    public string? GetISupportOrDefault(ISupportToken token, string? defaultValue = null)
+    {
+        return ISupport.GetValueOrDefault(token, defaultValue);
     }
 }

@@ -22,7 +22,7 @@ public class BotCommandContextFactory
         PermissionProviders = permissionProviders;
     }
 
-    public async Task<BotCommandContext> CreateAsync(Bot bot, INetworkInfo networkInfo, ICommand command, string fullLine, CancellationToken cancellationToken)
+    public async Task<BotCommandContext> CreateAsync(Bot bot, ICommand command, string fullLine, CancellationToken cancellationToken)
     {
         if (command.Source == null || command.CommandType != CommandType.Bot)
         {
@@ -31,7 +31,7 @@ public class BotCommandContextFactory
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var context = new BotCommandContext(bot, networkInfo, command, fullLine);
+        var context = new BotCommandContext(bot, command, fullLine);
 
         // Populate account
         foreach (var accountProvider in AccountProviders)

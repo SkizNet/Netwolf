@@ -42,8 +42,6 @@ public class DeferredCommand
         }
     }
 
-    private IObservable<ICommand> CommandStream { get; init; }
-
     private CancellationToken Token { get; init; }
 
     internal DeferredCommand(Bot bot, ICommand command, CancellationToken cancellationToken)
@@ -51,7 +49,6 @@ public class DeferredCommand
         Bot = bot;
         Command = command;
         Token = cancellationToken;
-        CommandStream = Bot.CommandStream.Select(e => e.Command);
     }
 
     public ConfiguredDeferredCommand WithReply(Func<ICommand, bool> predicate)
@@ -66,7 +63,7 @@ public class DeferredCommand
             throw new InvalidOperationException(ALREADY_CONFIGURED);
         }
 
-        var result = new ConfiguredDeferredCommand(Bot, Command, CommandStream.FirstAsync(predicate), Token);
+        var result = new ConfiguredDeferredCommand(Bot, Command, Bot.CommandStream.FirstAsync(predicate), Token);
         Bot = null;
         return result;
     }
@@ -83,7 +80,7 @@ public class DeferredCommand
             throw new InvalidOperationException(ALREADY_CONFIGURED);
         }
 
-        var result = new ConfiguredDeferredCommand(Bot, Command, CommandStream.TakeUntil(endPredicate).Where(includePredicate), Token);
+        var result = new ConfiguredDeferredCommand(Bot, Command, Bot.CommandStream.TakeUntil(endPredicate).Where(includePredicate), Token);
         Bot = null;
         return result;
     }

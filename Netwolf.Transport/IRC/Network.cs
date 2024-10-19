@@ -10,6 +10,7 @@ using Netwolf.Transport.Exceptions;
 using Netwolf.Transport.Internal;
 using Netwolf.Transport.Sasl;
 
+using System.Collections.Immutable;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Security.Authentication.ExtendedProtection;
@@ -84,16 +85,12 @@ public class Network : INetwork
     /// <summary>
     /// Network state
     /// </summary>
-    private IrcState State { get; init; } = new();
+    private IrcState State { get; set; }
 
     /// <summary>
     /// User-defined network name (not necessarily what the network actually calls itself)
     /// </summary>
-    public string Name
-    {
-        get => State.Name;
-        init => State.Name = value;
-    }
+    public string Name => State.Name;
 
     /// <summary>
     /// True if we are currently connected to this Network
@@ -107,7 +104,7 @@ public class Network : INetwork
     public string Nick
     {
         get => IsConnected ? State.Nick : throw new InvalidOperationException("Network is disconnected.");
-        protected set => State.Nick = value;
+        protected set => State = State with { Nick = value };
     }
 
     /// <summary>
@@ -117,7 +114,7 @@ public class Network : INetwork
     public string Ident
     {
         get => IsConnected ? State.Ident : throw new InvalidOperationException("Network is disconnected.");
-        protected set => State.Ident = value;
+        protected set => State = State with { Ident = value };
     }
 
     /// <summary>
@@ -127,7 +124,7 @@ public class Network : INetwork
     public string Host
     {
         get => IsConnected ? State.Host : throw new InvalidOperationException("Network is disconnected.");
-        protected set => State.Host = value;
+        protected set => State = State with { Host = value };
     }
 
     /// <summary>
@@ -137,7 +134,7 @@ public class Network : INetwork
     public string? Account
     {
         get => IsConnected ? State.Account : throw new InvalidOperationException("Network is disconnected.");
-        protected set => State.Account = value;
+        protected set => State = State with { Account = value };
     }
 
     /// <summary>
@@ -236,7 +233,7 @@ public class Network : INetwork
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(options);
 
-        Name = name;
+        State = new(name, options.PrimaryNick, options.Ident, string.Empty, null, ImmutableDictionary<string, string?>.Empty, ImmutableHashSet<string>.Empty, ImmutableDictionary<ISupportToken, string?>.Empty);
         Options = options;
         Logger = logger;
         CommandFactory = commandFactory;
@@ -638,7 +635,7 @@ public class Network : INetwork
             switch (command.Verb)
             {
                 case "001":
-                    State.Nick = command.Args[0];
+                    Nick = command.Args[0];
                     break;
                 case "432":
                 case "433":
@@ -663,8 +660,7 @@ public class Network : INetwork
                     _ = SendAsync(PrepareCommand("WHO", [State.Nick]), cancellationToken);
                     break;
                 case "352":
-                    State.Ident = command.Args[2];
-                    State.Host = command.Args[3];
+                    State = State with { Ident = command.Args[2], Host = command.Args[3] };
                     break;
                 case "315":
                     // end of WHO, so we've pulled our own client details and can hand back control
@@ -688,6 +684,7 @@ public class Network : INetwork
             case "005":
                 // process ISUPPORT tokens
                 // first arg is our nick and last arg is the trailing "is supported by this server" so omit both
+                Dictionary<ISupportToken, string?> newISupport = [];
                 for (int i = 1; i < command.Args.Count - 1; i++)
                 {
                     var token = command.Args[i];
@@ -699,7 +696,7 @@ public class Network : INetwork
                         value = splitToken[1];
                     }
 
-                    State.ISupport[new(token)] = value;
+                    newISupport[new(token)] = value;
 
                     // we process some tokens here too because we need the info
                     switch (token)
@@ -712,6 +709,8 @@ public class Network : INetwork
                             break;
                     }
                 }
+
+                State = State with { ISupport = State.ISupport.SetItems(newISupport) };
                 break;
             case "CAP":
                 // CAP negotation
@@ -723,7 +722,7 @@ public class Network : INetwork
                 break;
             case "900":
                 // successful SASL, record our account name
-                State.Account = command.Args[2];
+                Account = command.Args[2];
                 break;
             case "904":
             case "905":
@@ -764,6 +763,7 @@ public class Network : INetwork
                 {
                     string caps;
                     bool final = false;
+                    Dictionary<string, string?> newSupportedCaps = [];
                     // request supported CAPs; might be multi-line so don't act until we get everything
                     if (command.Args[1] == "LS" && command.Args[2] == "*")
                     {
@@ -789,8 +789,10 @@ public class Network : INetwork
                             value = bits[1];
                         }
 
-                        State.SupportedCaps[key] = value;
+                        newSupportedCaps[key] = value;
                     }
+
+                    State = State with { SupportedCaps = State.SupportedCaps.SetItems(newSupportedCaps) };
 
                     if (final)
                     {
@@ -871,18 +873,20 @@ public class Network : INetwork
             case "LIST":
                 {
                     // mark CAPs as enabled client-side, then finish cap negotiation if this was an ACK (not a LIST)
-                    foreach (var cap in command.Args[2].Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    string[] newCaps = command.Args[2].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    State = State with { EnabledCaps = State.EnabledCaps.Union(newCaps) };
+
+                    foreach (var cap in newCaps)
                     {
-                        State.EnabledCaps.Add(cap);
                         var args = new CapEventArgs(this, cap, _capValueCache.GetValueOrDefault(cap), command.Args[1]);
                         _capEventStream.OnNext(args);
+                    }
 
-                        if (command.Args[1] == "ACK" && cap == "sasl")
-                        {
-                            // if we're not registered yet, suspend registration until SASL finishes
-                            SuspendCapEndForSasl = !IsConnected;
-                            AttemptSasl(cancellationToken);
-                        }
+                    if (command.Args[1] == "ACK" && newCaps.Contains("sasl"))
+                    {
+                        // if we're not registered yet, suspend registration until SASL finishes
+                        SuspendCapEndForSasl = !IsConnected;
+                        AttemptSasl(cancellationToken);
                     }
 
                     if (command.Args[1] == "ACK" && !IsConnected && !SuspendCapEndForSasl)
@@ -895,9 +899,11 @@ public class Network : INetwork
             case "DEL":
                 {
                     // mark CAPs as disabled client-side if applicable; don't send CAP END in any event here
-                    foreach (var cap in command.Args[2].Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    string[] removedCaps = command.Args[2].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    State = State with { EnabledCaps = State.EnabledCaps.Except(removedCaps) };
+
+                    foreach (var cap in removedCaps)
                     {
-                        State.EnabledCaps.Remove(cap);
                         var args = new CapEventArgs(this, cap, _capValueCache.GetValueOrDefault(cap), command.Args[1]);
                         _capEventStream.OnNext(args);
                     }
@@ -1053,7 +1059,11 @@ public class Network : INetwork
         }
     }
 
+    public INetworkInfo AsNetworkInfo() => State;
+
     public bool TryGetEnabledCap(string cap, out string? value) => State.TryGetEnabledCap(cap, out value);
 
     public bool TryGetISupport(ISupportToken token, out string? value) => State.TryGetISupport(token, out value);
+
+    public string? GetISupportOrDefault(ISupportToken token, string? defaultValue = null) => State.GetISupportOrDefault(token, defaultValue);
 }

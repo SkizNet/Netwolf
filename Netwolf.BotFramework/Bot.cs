@@ -38,6 +38,11 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     public string BotName { get; private init; }
 
     /// <summary>
+    /// Information on the Bot's network.
+    /// </summary>
+    public INetworkInfo NetworkInfo => Network.AsNetworkInfo();
+
+    /// <summary>
     /// Logger used to log events
     /// </summary>
     protected ILogger<Bot> Logger { get; private init; }
@@ -86,11 +91,20 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
     private ValidationContextFactory ValidationContextFactory { get; init; }
 
+    /// <summary>
+    /// Rate limiter where each permit/token represents a single command being sent
+    /// </summary>
     private PartitionedRateLimiter<ICommand> CommandRateLimiter { get; init; }
 
+    /// <summary>
+    /// Rate limiter where each permit/token represents a single byte being sent
+    /// </summary>
     private PartitionedRateLimiter<ICommand> ByteRateLimiter { get; init; }
 
-    internal IObservable<CommandEventArgs> CommandStream => Network.CommandReceived;
+    /// <summary>
+    /// The network's underlying command stream
+    /// </summary>
+    protected internal IObservable<ICommand> CommandStream => Network.CommandReceived.Select(e => e.Command);
 
     /// <summary>
     /// Constructor; subclasses defining their own constructors must call this one. If the bot is activated
@@ -242,7 +256,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         var generatedTypes = GetType()
             .Assembly
             .GetCustomAttributes<SourceGeneratedCommandAttribute>()
-            .Where(attr => attr.TargetType == GetType())
+            .Where(attr => attr.TargetType == GetType() && attr.HandlerType == typeof(BotCommandResult))
             .ToList();
 
         if (generatedTypes.Count > 0 && data.EnableCommandOptimization)
@@ -459,8 +473,11 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             throw new InvalidOperationException("Bot is not connected to the network.");
         }
 
-        // TODO: validate that the channel name starts with a channel prefix character
-        // (and have a different API for /join 0 -- aka part all channels)
+        ArgumentException.ThrowIfNullOrEmpty(name);
+        if (!Network.ChannelTypes.Contains(name[0]))
+        {
+            throw new ArgumentException($"Channel name is not a valid for this network.", nameof(name));
+        }
 
         // it's (mostly) safe to continue to use linkedToken after linkedTokenSource is disposed
         // linkedToken.WaitHandle will throw an exception but simply checking cancellation state is safe
@@ -470,9 +487,9 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
         var result = await SendAsync("JOIN", [name, key], linkedToken).WithReply(c => c.Verb switch
         {
-            var x when _joinErrors0.Contains(x) => c.Args[0] == name,
-            var x when _joinErrors1.Contains(x) => c.Args[1] == name,
-            "JOIN" => c.Args[0] == name && c.Source == Network.Nick,
+            var x when _joinErrors0.Contains(x) => BotUtil.IrcEquals(c.Args[0], name, Network.CaseMapping),
+            var x when _joinErrors1.Contains(x) => BotUtil.IrcEquals(c.Args[1], name, Network.CaseMapping),
+            "JOIN" => BotUtil.IrcEquals(c.Args[0], name, Network.CaseMapping) && c.Source == Network.Nick,
             _ => false
         }).ConfigureAwait(false);
 
@@ -502,8 +519,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         var result = await SendAsync("PART", [name, reason], linkedToken).WithReply(c => c.Verb switch
         {
             // channel is 2nd argument
-            // TODO: compare strings using server-specified charset case insensitively
-            "403" or "442" => c.Args[1] == name,
+            "403" or "442" => BotUtil.IrcEquals(c.Args[1], name, Network.CaseMapping),
             // channel is 1st argument (might be a channel list) but verify source as well
             // TODO: compare against Source by extracting our nick if it's a full nick!user@host
             "PART" => c.Args[0].Split(',').Contains(name) && c.Source == Network.Nick,
@@ -555,8 +571,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             {
                 using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(CancellationSource.Token, e.Token);
                 var commandObj = CommandFactory.CreateCommand(CommandType.Bot, e.Command.Source, command, args, e.Command.Tags);
-                // TODO: pass an immutable networkinfo snapshot (probably by making IrcState a record with immutable collections) rather than the full network
-                var context = await BotCommandContextFactory.CreateAsync(this, Network, commandObj, fullLine, linkedSource.Token);
+                var context = await BotCommandContextFactory.CreateAsync(this, commandObj, fullLine, linkedSource.Token);
 
                 try
                 {
@@ -798,7 +813,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
     private async Task DoServicesOperAsync(string command, string password, CancellationToken cancellationToken)
     {
-        await Network.UnsafeSendRawAsync(string.Format(command, password), cancellationToken).ConfigureAwait(false);
+        await UnsafeSendRawAsync(string.Format(command, password), cancellationToken).ConfigureAwait(false);
 
         // there is no standard way to determine if this command was successful so just wait a few seconds and move on
         // TODO: introduce an option of a string to look for in the event of a successful soper, and assume we failed if we don't get that by the timeout

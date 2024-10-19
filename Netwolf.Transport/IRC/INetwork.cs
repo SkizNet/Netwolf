@@ -23,6 +23,12 @@ public interface INetwork : INetworkInfo, IDisposable, IAsyncDisposable
     IObservable<CommandEventArgs> CommandReceived { get; }
 
     /// <summary>
+    /// Retrieves an immutable point-in-time snapshot of the network info of this network
+    /// </summary>
+    /// <returns></returns>
+    INetworkInfo AsNetworkInfo();
+
+    /// <summary>
     /// Event raised whenever we become disconnected for any reason. The
     /// <c>sender</c> parameter will be the exception(s) thrown, if any.
     /// </summary>

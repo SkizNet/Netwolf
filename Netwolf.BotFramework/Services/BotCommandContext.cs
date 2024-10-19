@@ -14,8 +14,6 @@ public class BotCommandContext : IContext
 {
     public Bot Bot { get; init; }
 
-    public INetworkInfo NetworkInfo { get; init; }
-
     public ICommand Command { get; init; }
 
     public string FullLine { get; init; }
@@ -50,12 +48,11 @@ public class BotCommandContext : IContext
     /// <param name="bot"></param>
     /// <param name="command"></param>
     /// <param name="fullLine"></param>
-    internal BotCommandContext(Bot bot, INetworkInfo networkInfo, ICommand command, string fullLine)
+    internal BotCommandContext(Bot bot, ICommand command, string fullLine)
     {
         Bot = bot;
         Command = command;
         FullLine = fullLine;
-        NetworkInfo = networkInfo;
 
         // TODO: split out just the nickname if this is a full nick!user@host hostmask
         SenderNickname = command.Source!;
@@ -70,7 +67,6 @@ public class BotCommandContext : IContext
     public BotCommandContext(BotCommandContext other)
     {
         Bot = other.Bot;
-        NetworkInfo = other.NetworkInfo;
         Command = other.Command;
         FullLine = other.FullLine;
         SenderNickname = other.SenderNickname;

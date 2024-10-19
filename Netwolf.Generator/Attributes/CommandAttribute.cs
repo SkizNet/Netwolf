@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace Netwolf.Attributes;
 
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = true, Inherited = false)]
 public sealed class CommandAttribute : Attribute
 {
     public string Name { get; init; }

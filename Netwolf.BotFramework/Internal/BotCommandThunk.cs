@@ -3,6 +3,7 @@ using Microsoft.Extensions.Internal;
 
 using Netwolf.Attributes;
 using Netwolf.BotFramework.Services;
+using Netwolf.Generator.Attributes;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Context;
 
@@ -89,6 +90,18 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
             {
                 args.Add(cancellationToken);
                 continue;
+            }
+            else if (param.GetCustomAttribute<CommandNameAttribute>() != null)
+            {
+                if (conv(command.Verb, out value))
+                {
+                    args.Add(value);
+                    continue;
+                }
+                else
+                {
+                    throw new InvalidOperationException("The parameter with CommandNameAttribute needs to be a string or convertible from string");
+                }
             }
             // TODO: Add a RestAttribute to obtain the remainder of params as a string
             // TODO: Handle enumerables somehow by taking 0+ of a thing?

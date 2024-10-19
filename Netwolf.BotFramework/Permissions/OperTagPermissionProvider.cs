@@ -26,7 +26,7 @@ internal class OperTagPermissionProvider : IPermissionProvider, ICapProvider
     {
         foreach (var (cap, tag) in _tags)
         {
-            if (context.NetworkInfo.TryGetEnabledCap(cap, out _) && context.Command.Tags.TryGetValue(tag, out _))
+            if (context.Bot.NetworkInfo.TryGetEnabledCap(cap, out _) && context.Command.Tags.TryGetValue(tag, out _))
             {
                 return Task.FromResult((IEnumerable<string>)_operPermission);
             }
