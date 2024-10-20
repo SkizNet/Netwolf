@@ -209,13 +209,13 @@ internal static partial class UnicodeHelper
     /// <param name="text"></param>
     /// <param name="maxLength"></param>
     /// <param name="allowOverflow">If true, lines can be longer than <paramref name="maxLength"/> and will instead only be split at break opportunities</param>
-    /// <returns></returns>
-    internal static List<string> SplitText(string text, int maxLength, bool allowOverflow)
+    /// <returns>A list of tuples indicating the broken-up lines along with whether the line ends with a hard break or a soft break (wrapping)</returns>
+    internal static List<(string Line, bool IsHardBreak)> SplitText(string text, int maxLength, bool allowOverflow)
     {
-        List<Grapheme> graphemes = new()
-        {
+        List<Grapheme> graphemes =
+        [
             new(String.Empty, LineBreakClass.Sot)
-        };
+        ];
 
         // iterate over grapheme clusters, using the first codepoint (aka Rune) in the cluster to determine line break class
         var enumerator = StringInfo.GetTextElementEnumerator(text);
@@ -504,7 +504,7 @@ internal static partial class UnicodeHelper
         // Add end of text signal (which simplifies a bit of logic below)
         graphemes.Add(new(String.Empty, LineBreakClass.Eot, LineBreakType.Mandatory, 300));
 
-        List<string> lines = new();
+        List<(string, bool)> lines = [];
         int currentLength = 0;
         int thresholdLength = Math.Min(0, maxLength - 24);
         var preThreshold = new StringBuilder();
@@ -532,7 +532,7 @@ internal static partial class UnicodeHelper
                 if (cur.Class != LineBreakClass.Eot || currentLength > 0)
                 {
                     preThreshold.Append(postThreshold);
-                    lines.Add(preThreshold.ToString());
+                    lines.Add((preThreshold.ToString(), true));
                     preThreshold.Clear();
                     threshold = null;
                     postThreshold.Clear();
@@ -560,7 +560,7 @@ internal static partial class UnicodeHelper
 
                 if (preThreshold.Length > 0 && (!allowOverflow || threshold != null))
                 {
-                    lines.Add(preThreshold.ToString());
+                    lines.Add((preThreshold.ToString(), false));
                     preThreshold.Clear();
                     threshold = null;
                     postThreshold.Clear();

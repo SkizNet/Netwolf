@@ -13,6 +13,14 @@ namespace Netwolf.BotFramework;
 /// </summary>
 public static class BotUtil
 {
+    /// <summary>
+    /// Check if the two strings are equal case-insensitively according to the provided
+    /// <paramref name="caseMapping"/>.
+    /// </summary>
+    /// <param name="a"></param>
+    /// <param name="b"></param>
+    /// <param name="caseMapping"></param>
+    /// <returns></returns>
     public static bool IrcEquals(string? a, string? b, CaseMapping caseMapping)
     {
         if (a == null && b == null)
@@ -56,5 +64,20 @@ public static class BotUtil
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Check if a comma-separated list of values case-insensitively contains a given item given a particular <paramref name="caseMapping"/>.
+    /// </summary>
+    /// <param name="list"></param>
+    /// <param name="item"></param>
+    /// <param name="caseMapping"></param>
+    /// <returns></returns>
+    public static bool CommaListContains(string list, string item, CaseMapping caseMapping)
+    {
+        ArgumentNullException.ThrowIfNull(list);
+        ArgumentNullException.ThrowIfNull(item);
+
+        return list.Split(',').Any(i => IrcEquals(i, item, caseMapping));
     }
 }

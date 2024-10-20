@@ -579,24 +579,15 @@ public class Network : INetwork
     }
 
     /// <inheritdoc />
-    public ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, string?>? tags = null)
+    public ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, string?>? tags = null, string? sharedChannel = null)
     {
         var commands = new List<ICommand>();
-        var messageTags = tags ?? new Dictionary<string, string?>();
 
-        // TODO: pick the CPRIVMSG/CNOTICE variants if enabled in network options, supported by server, and we're opped on a channel shared with target;
-        // this will also need to pick the relevant channel as well. CPRIVMSG target #channel :message or CNOTICE target #channel :message
-        string oppedChannel = String.Empty;
-        bool cprivmsgEligible = false;
-        bool cnoticeEligible = false;
-
-        string verb = (messageType, cprivmsgEligible, cnoticeEligible) switch
+        string verb = messageType switch
         {
-            (MessageType.Message, false, _) => "PRIVMSG",
-            (MessageType.Message, true, _) => "CPRIVMSG",
-            (MessageType.Notice, _, false) => "NOTICE",
-            (MessageType.Notice, _, true) => "CNOTICE",
-            (_, _, _) => throw new ArgumentException("Invalid message type", nameof(messageType))
+            MessageType.Message => "PRIVMSG",
+            MessageType.Notice => "NOTICE",
+            _ => throw new ArgumentException("Invalid message type", nameof(messageType))
         };
 
         string hostmask = $"{State.Nick}!{State.Ident}@{State.Host}";
@@ -606,22 +597,93 @@ public class Network : INetwork
         // we build in an additional safety buffer of 14 bytes to account for cases where our hostmask is out of sync or the server adds additional context
         // to relayed messages (for 7 + 14 = 21 total bytes, leaving 491 for the rest normally or 490 when using CPRIVMSG/CNOTICE)
         int maxlen = MaxLength - 21 - hostmask.Length - verb.Length - target.Length;
-        if (verb[0] == 'C')
+
+        // If CPRIVMSG/CONTICE is enabled by the ircd and a sharedChannel was given, use it
+        if (sharedChannel != null)
         {
-            maxlen -= 1 + oppedChannel.Length;
-            args.Add(oppedChannel);
+            string cVerb = "C" + verb;
+            if (State.ISupport.ContainsKey(new(cVerb)))
+            {
+                verb = cVerb;
+                maxlen -= 1 + sharedChannel.Length;
+                args.Add(sharedChannel);
+            }
         }
 
         int lineIndex = args.Count;
 
         // split text if it is longer than maxlen bytes
-        // TODO: if multiline is supported by the network, add appropriate tags
+        bool multilineEnabled = TryGetEnabledCap("draft/multiline", out var multilineValue) && State.EnabledCaps.Contains("batch");
+        Dictionary<string, int> multilineLimits = [];
+        if (multilineValue != null)
+        {
+            // coerce invalid or missing values to -1, which will disable multiline if this happens to be on max-bytes or max-lines
+            multilineLimits = multilineValue.Split(',').Select(t => t.Split('=')).ToDictionary(a => a[0], a => int.TryParse(a.ElementAtOrDefault(1), out int i) ? i : -1);
+        }
+
+        multilineLimits.TryAdd("max-bytes", int.MaxValue);
+        multilineLimits.TryAdd("max-lines", int.MaxValue);
+
+        // did the server give us stupid limits? if so disable multiline
+        if (multilineLimits["max-bytes"] <= maxlen || multilineLimits["max-lines"] <= 1)
+        {
+            multilineEnabled = false;
+        }
+
         var lines = UnicodeHelper.SplitText(text, maxlen, false);
         CommandCreationOptions options = new(MaxLength);
-        foreach (string line in lines)
+        string batchId = Guid.NewGuid().ToString();
+        int batchLines = 0;
+        int batchBytes = -1; // our algorithm incorrectly credits an additional byte for a \n before the first line of the batch since isConcat is false for the first line
+        bool isConcat = false;
+        ImmutableDictionary<string, string?> tagsBase = tags != null ? ImmutableDictionary.CreateRange(tags) : ImmutableDictionary<string, string?>.Empty;
+        ImmutableDictionary<string, string?> tagsFinal = tagsBase;
+
+        foreach (var (line, isHardBreak) in lines)
         {
+            if (multilineEnabled)
+            {
+                int byteCount = Encoding.UTF8.GetByteCount(args[^1]) + (isConcat ? 0 : 1);
+
+                // do we need to start a new batch?
+                if (batchLines == 0 || batchLines + 1 > multilineLimits["max-lines"] || batchBytes + byteCount > multilineLimits["max-bytes"])
+                {
+                    // do we need to end a previous batch?
+                    if (batchLines != 0)
+                    {
+                        commands.Add(CommandFactory.CreateCommand(CommandType.Client, hostmask, "BATCH", [$"-{batchId}"], tagsBase, options));
+                        batchId = Guid.NewGuid().ToString();
+                        batchLines = 0;
+                        batchBytes = -1; // see previous comment on batchBytes for why we start at -1
+                    }
+
+                    commands.Add(CommandFactory.CreateCommand(CommandType.Client, hostmask, "BATCH", [$"+{batchId}", "draft/multiline", target], tagsBase, options));
+                    isConcat = false;
+                }
+
+                tagsFinal = tagsBase.SetItem("batch", batchId);
+                if (isConcat)
+                {
+                    tagsFinal = tagsFinal.SetItem("draft/multiline-concat", null);
+                }
+                else
+                {
+                    tagsFinal = tagsFinal.Remove("draft/multiline-concat");
+                }
+
+                batchLines++;
+                batchBytes += byteCount;
+                isConcat = !isHardBreak;
+            }
+
             args[lineIndex] = line;
-            commands.Add(CommandFactory.CreateCommand(CommandType.Client, hostmask, verb, args, messageTags, options));
+            commands.Add(CommandFactory.CreateCommand(CommandType.Client, hostmask, verb, args, tagsFinal, options));
+        }
+
+        if (multilineEnabled)
+        {
+            // end the final batch
+            commands.Add(CommandFactory.CreateCommand(CommandType.Client, hostmask, "BATCH", [$"-{batchId}"], tagsBase, options));
         }
 
         return [.. commands];
@@ -748,7 +810,9 @@ public class Network : INetwork
         // CAPs that are always enabled if supported by the server, because we support them in this layer
         HashSet<string> defaultCaps =
         [
+            "batch",
             "cap-notify",
+            "draft/multiline",
             "message-ids",
             "message-tags",
             "server-time",

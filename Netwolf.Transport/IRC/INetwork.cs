@@ -77,7 +77,23 @@ public interface INetwork : INetworkInfo, IDisposable, IAsyncDisposable
     /// </param>
     Task ConnectAsync(CancellationToken cancellationToken = default);
 
-    ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, string?>? tags = null);
+    /// <summary>
+    /// Prepare a message to be sent to the target. If the message is long,
+    /// it will be broken up into multiple commands.
+    /// </summary>
+    /// <param name="messageType">Type of message to send</param>
+    /// <param name="target">Target; can be a nickname or a channel</param>
+    /// <param name="text">Message text</param>
+    /// <param name="tags">Message tags</param>
+    /// <param name="sharedChannel">
+    /// If CPRIVMSG/CNOTICE is supported by the ircd, pass in the name of a channel your user is
+    /// opped or voiced in and that is shared with the target to use CPRIVMSG/CNOTICE instead of
+    /// the PRIVMSG/NOTICE commands. If not supported by the ircd, this parameter does nothing.
+    /// Many ircds will also automatically "promote" messages to CPRIVMSG/CNOTICE and this will
+    /// be unnecessary for those ircds as well.
+    /// </param>
+    /// <returns>One or more commands to send the message to the target</returns>
+    ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, string?>? tags = null, string? sharedChannel = null);
 
     /// <summary>
     /// Prepare a command to be sent to the network.

@@ -522,7 +522,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             "403" or "442" => BotUtil.IrcEquals(c.Args[1], name, Network.CaseMapping),
             // channel is 1st argument (might be a channel list) but verify source as well
             // TODO: compare against Source by extracting our nick if it's a full nick!user@host
-            "PART" => c.Args[0].Split(',').Contains(name) && c.Source == Network.Nick,
+            "PART" => BotUtil.CommaListContains(c.Args[0], name, Network.CaseMapping) && c.Source == Network.Nick,
             _ => false
         }).ConfigureAwait(false);
 

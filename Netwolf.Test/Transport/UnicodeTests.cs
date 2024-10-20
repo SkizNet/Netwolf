@@ -36,7 +36,7 @@ public class UnicodeTests
         // this should split on every break opportunity (both optional and mandatory)
         var lines = UnicodeHelper.SplitText(sb.ToString(), 1, true);
 
-        foreach (var line in lines)
+        foreach (var (line, _) in lines)
         {
             for (var i = 0; i < line.Length - 1; ++i)
             {
