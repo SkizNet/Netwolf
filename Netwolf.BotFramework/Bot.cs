@@ -295,7 +295,8 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
         foreach (var (method, attr) in listeners)
         {
-            CommandSubscriptions.Add(CommandStream.Where(c => c.Verb == attr!.Command).Subscribe(method.CreateDelegate<Action<ICommand>>()));
+            Logger.LogDebug("Registering server listener {Type}.{Method} for {Verb}", method.DeclaringType?.FullName ?? "<unknown>", method.Name, attr!.Command);
+            CommandSubscriptions.Add(CommandStream.Where(c => c.Verb == attr!.Command).Subscribe(method.CreateDelegate<Action<ICommand>>(this)));
         }
 
         // Wire up bot commands

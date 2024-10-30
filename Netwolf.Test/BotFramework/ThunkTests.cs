@@ -25,7 +25,7 @@ public class ThunkTests
     public ThunkTests()
     {
         Container = new ServiceCollection()
-            .AddLogging(config => config.AddConsole())
+            .AddLogging(config => config.SetMinimumLevel(LogLevel.Debug).AddConsole())
             .AddBot<TestBot>(BOT_NAME)
             .BuildServiceProvider();
     }
