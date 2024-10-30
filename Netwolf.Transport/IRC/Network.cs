@@ -11,6 +11,7 @@ using Netwolf.Transport.Internal;
 using Netwolf.Transport.Sasl;
 
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Security.Authentication.ExtendedProtection;
@@ -138,6 +139,16 @@ public class Network : INetwork
     }
 
     /// <summary>
+    /// User modes for this connection.
+    /// Throws InvalidOperationException if not currently connected.
+    /// </summary>
+    public ImmutableHashSet<char> UserModes
+    {
+        get => IsConnected ? State.UserModes : throw new InvalidOperationException("Network is disconnected.");
+        protected set => State = State with { UserModes = value };
+    }
+
+    /// <summary>
     /// Maxmium length of an IRC line (excluding tags, including final CRLF).
     /// </summary>
     private int MaxLength { get; set; } = 512;
@@ -222,6 +233,8 @@ public class Network : INetwork
     /// <param name="commandFactory"></param>
     /// <param name="connectionFactory"></param>
     /// <param name="saslMechanismFactory"></param>
+    [SuppressMessage("Style", "IDE0301:Simplify collection initialization",
+        Justification = "ImmutableHashSet.Empty is more indicative of what the data type is and requires no allocations")]
     public Network(
         string name,
         NetworkOptions options,
@@ -233,7 +246,17 @@ public class Network : INetwork
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(options);
 
-        State = new(name, options.PrimaryNick, options.Ident, string.Empty, null, ImmutableDictionary<string, string?>.Empty, ImmutableHashSet<string>.Empty, ImmutableDictionary<ISupportToken, string?>.Empty);
+        State = new(
+            name,
+            options.PrimaryNick,
+            options.Ident,
+            string.Empty,
+            null,
+            ImmutableHashSet<char>.Empty,
+            ImmutableDictionary<string, string?>.Empty,
+            ImmutableHashSet<string>.Empty,
+            ImmutableDictionary<ISupportToken, string?>.Empty);
+        
         Options = options;
         Logger = logger;
         CommandFactory = commandFactory;
@@ -774,6 +797,13 @@ public class Network : INetwork
 
                 State = State with { ISupport = State.ISupport.SetItems(newISupport) };
                 break;
+            case "221":
+                // RPL_UMODEIS
+                // first arg is our nick and the second arg is our umodes
+#pragma warning disable IDE0305 // Simplify collection initialization -- ToImmutableHashSet() captures meaning much more clearly
+                UserModes = command.Args[1].ToImmutableHashSet();
+#pragma warning restore IDE0305 // Simplify collection initialization
+                break;
             case "CAP":
                 // CAP negotation
                 OnCapCommand(command, cancellationToken);
@@ -797,6 +827,36 @@ public class Network : INetwork
                 break;
             case "908":
                 // failed, but will also get a 904, simply update supported mechs
+                break;
+            case "MODE":
+                // only care if we're changing our own modes
+                // no casefolding is done so this is mostly best-effort and assumes the ircd will give us the correct casing of our nick
+                if (command.Args[0] == Nick)
+                {
+                    var adding = true;
+                    foreach (var c in command.Args[1])
+                    {
+                        switch (c)
+                        {
+                            case '+':
+                                adding = true;
+                                break;
+                            case '-':
+                                adding = false;
+                                break;
+                            default:
+                                if (adding)
+                                {
+                                    UserModes = UserModes.Add(c);
+                                }
+                                else
+                                {
+                                    UserModes = UserModes.Remove(c);
+                                }
+                                break;
+                        }
+                    }
+                }
                 break;
             case "PING":
                 // send a PONG

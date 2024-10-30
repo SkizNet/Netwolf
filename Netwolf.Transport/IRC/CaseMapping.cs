@@ -3,9 +3,9 @@
 
 namespace Netwolf.Transport.IRC;
 
-public enum CaseMapping
+public enum CaseMapping : int
 {
-    Ascii,
-    Rfc1459,
-    Rfc1459Strict
+    Ascii = 0,
+    Rfc1459 = 1,
+    Rfc1459Strict = 2,
 }

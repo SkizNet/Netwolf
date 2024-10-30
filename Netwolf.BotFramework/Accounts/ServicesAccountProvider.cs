@@ -14,9 +14,17 @@ internal class ServicesAccountProvider : IAccountProvider, ICapProvider
     private const string CAP_NAME = "account-tag";
     private const string TAG_NAME = "account";
 
+    private UserRecordLookup UserRecordLookup { get; init; }
+
+    public ServicesAccountProvider(UserRecordLookup userRecordLookup)
+    {
+        UserRecordLookup = userRecordLookup;
+    }
+
     public Task<string?> GetAccountAsync(BotCommandContext context, CancellationToken cancellationToken)
     {
-        return Task.FromResult(context.Command.Tags.GetValueOrDefault(TAG_NAME));
+        var user = UserRecordLookup.GetUserByNick(context.SenderNickname);
+        return Task.FromResult(context.Command.Tags.GetValueOrDefault(TAG_NAME) ?? user?.Account);
     }
 
     public bool ShouldEnable(string cap, string? value)

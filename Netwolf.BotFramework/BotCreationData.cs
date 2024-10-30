@@ -35,6 +35,8 @@ public sealed class BotCreationData
     internal BotCommandContextFactory BotCommandContextFactory { get; init; }
     internal IEnumerable<ICapProvider> CapProviders { get; init; }
     internal ValidationContextFactory ValidationContextFactory { get; init; }
+    internal ChannelRecordLookup ChannelRecordLookup { get; init; }
+    internal UserRecordLookup UserRecordLookup { get; init; }
 
     // for unit testing
     internal bool EnableCommandOptimization { get; set; } = true;
@@ -48,7 +50,9 @@ public sealed class BotCreationData
         ICommandFactory commandFactory,
         BotCommandContextFactory botCommandContextFactory,
         IEnumerable<ICapProvider> capProviders,
-        ValidationContextFactory validationContextFactory)
+        ValidationContextFactory validationContextFactory,
+        ChannelRecordLookup channelRecordLookup,
+        UserRecordLookup userRecordLookup)
     {
         ArgumentNullException.ThrowIfNull(botName, nameof(botName));
 
@@ -61,5 +65,7 @@ public sealed class BotCreationData
         BotCommandContextFactory = botCommandContextFactory;
         CapProviders = capProviders;
         ValidationContextFactory = validationContextFactory;
+        ChannelRecordLookup = channelRecordLookup;
+        UserRecordLookup = userRecordLookup;
     }
 }

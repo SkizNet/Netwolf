@@ -14,6 +14,7 @@ public sealed record IrcState(
     string Ident,
     string Host,
     string? Account,
+    ImmutableHashSet<char> UserModes,
     ImmutableDictionary<string, string?> SupportedCaps,
     ImmutableHashSet<string> EnabledCaps,
     ImmutableDictionary<ISupportToken, string?> ISupport

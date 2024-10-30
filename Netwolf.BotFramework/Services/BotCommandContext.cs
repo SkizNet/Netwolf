@@ -50,12 +50,15 @@ public class BotCommandContext : IContext
     /// <param name="fullLine"></param>
     internal BotCommandContext(Bot bot, ICommand command, string fullLine)
     {
+        if (command.Source == null)
+        {
+            throw new ArgumentException("Command source cannot be null", nameof(command));
+        }
+
         Bot = bot;
         Command = command;
         FullLine = fullLine;
-
-        // TODO: split out just the nickname if this is a full nick!user@host hostmask
-        SenderNickname = command.Source!;
+        SenderNickname = BotUtil.SplitHostmask(command.Source).Nick;
     }
 
     /// <summary>

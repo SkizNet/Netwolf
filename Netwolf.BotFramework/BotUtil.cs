@@ -1,9 +1,13 @@
-﻿using Netwolf.Transport.IRC;
+﻿using Microsoft.CodeAnalysis.CSharp.Syntax;
+
+using Netwolf.Transport.Extensions;
+using Netwolf.Transport.IRC;
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace Netwolf.BotFramework;
@@ -35,35 +39,7 @@ public static class BotUtil
 
         // compare byte-by-byte since none of the currently-supported casemappings are Unicode-aware
         // and the ircds similarly use algorithms that transform bytewise via lookup tables
-        var u8a = Encoding.UTF8.GetBytes(a);
-        var u8b = Encoding.UTF8.GetBytes(b);
-
-        if (u8a.Length != u8b.Length)
-        {
-            return false;
-        }
-
-        byte upper = caseMapping switch
-        {
-            CaseMapping.Ascii => 122,
-            CaseMapping.Rfc1459 => 126,
-            CaseMapping.Rfc1459Strict => 125,
-            // Treat unknown case mapping as Ascii
-            _ => 122
-        };
-        
-        for (int i = 0; i < u8a.Length; i++)
-        {
-            var x = (u8a[i] >= 97 && u8a[i] <= upper) ? (u8a[i] - 32) : u8a[i];
-            var y = (u8b[i] >= 97 && u8b[i] <= upper) ? (u8b[i] - 32) : u8b[i];
-
-            if (x != y)
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return Enumerable.SequenceEqual(Casefold(a, caseMapping), Casefold(b, caseMapping));
     }
 
     /// <summary>
@@ -79,5 +55,64 @@ public static class BotUtil
         ArgumentNullException.ThrowIfNull(item);
 
         return list.Split(',').Any(i => IrcEquals(i, item, caseMapping));
+    }
+
+    /// <summary>
+    /// Return a casefolded version of the given string, suitable for storing as a lookup key,
+    /// but *NOT* suitable for display.
+    /// </summary>
+    /// <param name="str">String to casefold</param>
+    /// <param name="caseMapping"></param>
+    /// <returns>Byte array of the casefolded string</returns>
+    public static byte[] Casefold(string str, CaseMapping caseMapping)
+    {
+        ArgumentNullException.ThrowIfNull(str);
+        var bytes = str.EncodeUtf8();
+        byte upper = caseMapping switch
+        {
+            CaseMapping.Ascii => 122,
+            CaseMapping.Rfc1459 => 126,
+            CaseMapping.Rfc1459Strict => 125,
+            // Treat unknown case mapping as Ascii
+            _ => 122
+        };
+
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            if (bytes[i] >= 97 && bytes[i] <= upper)
+            {
+                bytes[i] -= 32;
+            }
+        }
+
+        return bytes;
+    }
+
+    public static (string Nick, string Ident, string Host) SplitHostmask(string mask)
+    {
+        string[] p;
+        string nick = string.Empty;
+        string ident = string.Empty;
+        string host = string.Empty;
+
+        if (mask.Contains('!'))
+        {
+            p = mask.Split('!', 2);
+            nick = p[0];
+            mask = p[1];
+        }
+        else if (!mask.Contains('@'))
+        {
+            nick = mask;
+        }
+
+        if (mask.Contains('@'))
+        {
+            p = mask.Split('@', 2);
+            ident = p[0];
+            host = p[1];
+        }
+
+        return (nick, ident, host);
     }
 }

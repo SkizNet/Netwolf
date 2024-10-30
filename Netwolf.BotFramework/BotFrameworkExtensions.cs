@@ -121,6 +121,8 @@ public static class BotFrameworkExtensions
             services.AddSingleton<BotRegistry>(_registry[services]);
             services.AddSingleton<IPermissionManager, BotPermissionManager>();
             services.AddScoped<ValidationContextFactory>();
+            services.AddScoped<ChannelRecordLookup>();
+            services.AddScoped<UserRecordLookup>();
         }
 
         if (runImmediately && !services.Any(s => s.ImplementationType == typeof(BotRunnerService)))
@@ -134,6 +136,8 @@ public static class BotFrameworkExtensions
                 provider.GetKeyedServices<IAccountProvider>(key),
                 provider.GetKeyedServices<IPermissionProvider>(key));
         });
+
+        services.AddKeyedSingleton<ICapProvider, DefaultCapProvider>(botName);
 
         // BotRunnerService passes this explicitly via an extra parameter in ActivatorUtilities.CreateInstance,
         // however we register it as a DI service here so that bots created outside of BotRunnerService can still
@@ -149,7 +153,9 @@ public static class BotFrameworkExtensions
                 provider.GetRequiredService<ICommandFactory>(),
                 provider.GetRequiredKeyedService<BotCommandContextFactory>(key),
                 provider.GetKeyedServices<ICapProvider>(key),
-                provider.GetRequiredService<ValidationContextFactory>());
+                provider.GetRequiredService<ValidationContextFactory>(),
+                provider.GetRequiredService<ChannelRecordLookup>(),
+                provider.GetRequiredService<UserRecordLookup>());
         });
 
         var builder = new BotBuilder(botName, services);
@@ -166,7 +172,6 @@ public static class BotFrameworkExtensions
     /// <returns></returns>
     public static IBotBuilder UseServicesAccountStrategy(this IBotBuilder builder)
     {
-        // TODO: support more than just account-tag (e.g. extended-join, account-notify, WHOX, etc. to get services account info)
         builder.Services
             .AddKeyedSingleton<IAccountProvider, ServicesAccountProvider>(builder.BotName)
             .AddKeyedSingleton<ICapProvider, ServicesAccountProvider>(builder.BotName);

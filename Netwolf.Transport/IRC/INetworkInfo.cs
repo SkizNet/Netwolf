@@ -1,6 +1,10 @@
 ﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+using Netwolf.Transport.Internal;
+
+using System.Collections.Immutable;
+
 namespace Netwolf.Transport.IRC;
 
 public interface INetworkInfo
@@ -31,14 +35,52 @@ public interface INetworkInfo
     string? Account { get; }
 
     /// <summary>
+    /// User modes for this connection
+    /// </summary>
+    ImmutableHashSet<char> UserModes { get; }
+
+    /// <summary>
     /// Channel types supported by the ircd. If an empty string, the ircd supposedly doesn't support channels.
     /// </summary>
-    string ChannelTypes => GetISupportOrDefault(ISupportToken.CHANTYPES, "#&") ?? string.Empty;
+    string ChannelTypes => GetISupportOrDefault(ISupportToken.CHANTYPES, ISupportDefaults.DefaultChannelTypes) ?? string.Empty;
+
+    /// <summary>
+    /// Channel modes that operate as lists (aka "type A" modes).
+    /// </summary>
+    string ChannelModesA => GetISupportOrDefault(ISupportToken.CHANMODES, ISupportDefaults.DefaultChannelModes)?.Split(',').ElementAtOrDefault(0) ?? string.Empty;
+
+    /// <summary>
+    /// Channel modes that require a value when setting and unsetting (aka "type B" modes).
+    /// This list <strong>does not</strong> include "prefix" modes. See <see cref="ChannelPrefixModes"/> for those.
+    /// </summary>
+    string ChannelModesB => GetISupportOrDefault(ISupportToken.CHANMODES, ISupportDefaults.DefaultChannelModes)?.Split(',').ElementAtOrDefault(1) ?? string.Empty;
+
+    /// <summary>
+    /// Channel modes that require a value when setting but not when unsetting (aka "type C" modes).
+    /// </summary>
+    string ChannelModesC => GetISupportOrDefault(ISupportToken.CHANMODES, ISupportDefaults.DefaultChannelModes)?.Split(',').ElementAtOrDefault(2) ?? string.Empty;
+
+    /// <summary>
+    /// Channel modes that do not require values (aka "type D" modes).
+    /// </summary>
+    string ChannelModesD => GetISupportOrDefault(ISupportToken.CHANMODES, ISupportDefaults.DefaultChannelModes)?.Split(',').ElementAtOrDefault(3) ?? string.Empty;
+
+    /// <summary>
+    /// Prefix modes supported by the ircd, in order from highest status to lowest status.
+    /// If an empty string, the ircd supposedly doesn't support channel status.
+    /// </summary>
+    string ChannelPrefixModes => string.Concat((GetISupportOrDefault(ISupportToken.PREFIX, ISupportDefaults.DefaultPrefix) ?? string.Empty).Skip(1).TakeWhile(static c => c != ')'));
+
+    /// <summary>
+    /// Prefix symbols supported by the ircd, in order from highest status to lowest status.
+    /// If an empty string, the ircd supposedly doesn't support channel status.
+    /// </summary>
+    string ChannelPrefixSymbols => string.Concat((GetISupportOrDefault(ISupportToken.PREFIX, ISupportDefaults.DefaultPrefix) ?? string.Empty).SkipWhile(static c => c != ')').Skip(1));
 
     /// <summary>
     /// Case mapping in use by the ircd. Unrecognized values are coerced to ascii.
     /// </summary>
-    CaseMapping CaseMapping => GetISupportOrDefault(ISupportToken.CASEMAPPING, "ascii") switch
+    CaseMapping CaseMapping => GetISupportOrDefault(ISupportToken.CASEMAPPING, ISupportDefaults.DefaultCasemapping) switch
     {
         "ascii" => CaseMapping.Ascii,
         "rfc1459" => CaseMapping.Rfc1459,

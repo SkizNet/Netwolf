@@ -18,6 +18,8 @@ public readonly record struct ISupportToken(string Name)
     public static readonly ISupportToken CHANMODES = new("CHANMODES");
     public static readonly ISupportToken CHANNELLEN = new("CHANNELLEN");
     public static readonly ISupportToken CHANTYPES = new("CHANTYPES");
+    public static readonly ISupportToken CNOTICE = new("CNOTICE");
+    public static readonly ISupportToken CPRIVMSG = new("CPRIVMSG");
     public static readonly ISupportToken ELIST = new("ELIST");
     public static readonly ISupportToken EXCEPTS = new("EXCEPTS");
     public static readonly ISupportToken EXTBAN = new("EXTBAN");
