@@ -1,14 +1,8 @@
-﻿using Microsoft.CodeAnalysis.CSharp.Syntax;
+﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 using Netwolf.Transport.Extensions;
 using Netwolf.Transport.IRC;
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
 namespace Netwolf.BotFramework;
 

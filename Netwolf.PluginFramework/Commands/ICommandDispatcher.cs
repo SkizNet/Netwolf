@@ -1,4 +1,7 @@
-﻿using Netwolf.PluginFramework.Context;
+﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+using Netwolf.PluginFramework.Context;
 
 using System.Collections.Immutable;
 using System.Reflection;

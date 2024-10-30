@@ -1,4 +1,6 @@
-﻿using Microsoft.CodeAnalysis.CSharp.Syntax;
+﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 using Microsoft.Extensions.Internal;
 
 using Netwolf.Attributes;

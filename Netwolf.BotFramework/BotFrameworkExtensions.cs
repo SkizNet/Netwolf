@@ -1,5 +1,7 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
+﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -12,12 +14,6 @@ using Netwolf.PluginFramework.Extensions.DependencyInjection;
 using Netwolf.PluginFramework.Permissions;
 using Netwolf.Transport.Extensions.DependencyInjection;
 using Netwolf.Transport.IRC;
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Netwolf.BotFramework;
 

@@ -1,12 +1,9 @@
-﻿using Netwolf.BotFramework.Exceptions;
+﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+using Netwolf.BotFramework.Exceptions;
 using Netwolf.PluginFramework.Context;
 using Netwolf.PluginFramework.Permissions;
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Netwolf.BotFramework.Services;
 

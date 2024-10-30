@@ -1,14 +1,10 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Netwolf.PluginFramework.Commands;
-using Netwolf.PluginFramework.Context;
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Netwolf.PluginFramework.Extensions.DependencyInjection;
 

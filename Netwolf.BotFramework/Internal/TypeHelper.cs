@@ -1,11 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
+﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 using System.ComponentModel;
-using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Netwolf.BotFramework.Internal;
 

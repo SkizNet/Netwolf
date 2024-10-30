@@ -1,11 +1,9 @@
-﻿using Netwolf.BotFramework.Services;
+﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-using System;
-using System.Collections.Generic;
+using Netwolf.BotFramework.Services;
+
 using System.Collections.Immutable;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Netwolf.BotFramework.Accounts;
 

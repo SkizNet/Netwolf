@@ -1,16 +1,13 @@
-﻿using Microsoft.Extensions.Logging;
+﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Netwolf.BotFramework.Internal;
 using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.Transport.IRC;
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Netwolf.BotFramework;
 

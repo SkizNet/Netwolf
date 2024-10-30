@@ -1,4 +1,6 @@
-﻿using Microsoft.CodeAnalysis.CSharp;
+﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -11,7 +13,6 @@ using Netwolf.PluginFramework.Commands;
 using Netwolf.Transport.Events;
 using Netwolf.Transport.IRC;
 
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics.CodeAnalysis;
