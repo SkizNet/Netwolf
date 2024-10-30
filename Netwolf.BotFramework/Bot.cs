@@ -459,7 +459,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         string? sharedChannel = null;
         if (Network.TryGetISupport(ISupportToken.CNOTICE, out _))
         {
-            UserRecord botUser = UserRecordLookup.GetUserByNick(NetworkInfo.Nick)!;
+            UserRecord botUser = UserRecordLookup.GetUserByNick(Network.Nick)!;
             sharedChannel = UserRecordLookup.GetUserByNick(target)?.Channels.Keys.FirstOrDefault(c => !string.IsNullOrEmpty(c.Users[BotInfo]))?.Name;
         }
 
@@ -544,6 +544,27 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         if (result.Verb != "JOIN")
         {
             throw new NumericException(result.Numeric!.Value, result.Args[_joinErrors0.Contains(result.Verb) ? 1 : 2]);
+        }
+
+        // issue a WHOX (or WHO if WHOX isn't available) to obtain more details than NAMES is able to give
+        if (Network.TryGetISupport(ISupportToken.WHOX, out _))
+        {
+            string token = Random.Shared.Next(1000).ToString();
+            var results = SendAsync("WHO", [name, $"%tcuhnfar,{token}"], linkedToken).WithReplies(
+                c => c.Verb == "354" && c.Args.Count == 9 && c.Args[1] == token && BotUtil.IrcEquals(c.Args[2], name, Network.CaseMapping),
+                c => c.Verb == "315" && BotUtil.IrcEquals(c.Args[1], name, Network.CaseMapping)
+                );
+
+            await foreach (var c in results)
+            {
+                OnWhoXReply(c);
+            }
+        }
+        else
+        {
+            _ = await SendAsync("WHO", [name], linkedToken)
+                .WithReply(c => c.Verb == "315" && BotUtil.IrcEquals(c.Args[1], name, Network.CaseMapping))
+                .ConfigureAwait(false);
         }
     }
 
@@ -754,10 +775,10 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         await Network.ConnectAsync(linkedToken).ConfigureAwait(false);
 
         // Fix up BotInfo
-        UserRecordLookup.RenameUser(BotInfo.Nick, NetworkInfo.Nick);
-        BotInfo.Ident = NetworkInfo.Ident;
-        BotInfo.Host = NetworkInfo.Host;
-        BotInfo.Account = NetworkInfo.Account;
+        UserRecordLookup.RenameUser(BotInfo.Nick, Network.Nick);
+        BotInfo.Ident = Network.Ident;
+        BotInfo.Host = Network.Host;
+        BotInfo.Account = Network.Account;
 
         // Oper up if necessary; regular oper comes first since soper might require us to be an oper
         if (Options.OperName != null)
@@ -951,7 +972,6 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     }
 
     // RPL_WHOREPLY (352) <client> <channel> <username> <host> <server> <nick> <flags> :<hopcount> <realname>
-    // Note: no default handler for WHOX replies since there's no easy way to determine which set of fields were requested
     [ServerCommand("352")]
     [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
     private void OnWhoReply(ICommand command)
@@ -970,12 +990,61 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             return;
         }
 
+        // fill in missing user info
+        user.Ident = command.Args[2];
+        user.Host = command.Args[3];
+        user.RealName = realName;
+        user.IsAway = command.Args[6][0] == 'G';
+
         // if channel is known, update our user record
         if (channel != null)
         {
             // determine prefix
             int prefixStart = (command.Args[6].Length == 1 || command.Args[6][1] != '*') ? 1 : 2;
-            string prefix = string.Concat(command.Args[6][prefixStart..].TakeWhile(NetworkInfo.ChannelPrefixSymbols.Contains));
+            string prefix = string.Concat(command.Args[6][prefixStart..].TakeWhile(Network.ChannelPrefixSymbols.Contains));
+
+            channel.Users = channel.Users.SetItem(user, prefix);
+            user.Channels = user.Channels.SetItem(channel, prefix);
+        }
+    }
+
+    // Note: no ServerCommandAttribute for WHOX replies since there's no easy way to determine which set of fields were requested
+    // This particular implementation assumes a mask of %tcuhnfar. The token is not checked.
+    // RPL_WHOSPCRPL (354) <client> [token] [channel] [user] [ip] [host] [server] [nick] [flags] [hopcount] [idle] [account] [oplevel] [:realname]
+    // this impl: <client> <token> <channel> <user> <host> <nick> <flags> <account> :<realname>
+    private void OnWhoXReply(ICommand command)
+    {
+        var user = UserRecordLookup.GetOrAddUser(
+            command.Args[5],
+            command.Args[3],
+            command.Args[4],
+            command.Args[7] == "0" ? null : command.Args[7],
+            command.Args[8],
+            command.Args[6][0] == 'G');
+
+        // channel being null is ok here since /who nick returns an arbitrary channel or potentially a '*'
+        var channel = command.Args[2] == "*" ? null : ChannelRecordLookup.GetChannel(command.Args[2]);
+
+        // if channel isn't known and this user didn't share any other channels with us, purge it
+        if (channel == null && user.Channels.Count == 0)
+        {
+            UserRecordLookup.RemoveUser(user);
+            return;
+        }
+
+        // fill in missing user info
+        user.Ident = command.Args[3];
+        user.Host = command.Args[4];
+        user.Account = command.Args[7] == "0" ? null : command.Args[7];
+        user.RealName = command.Args[8];
+        user.IsAway = command.Args[6][0] == 'G';
+
+        // if channel is known, update our user record
+        if (channel != null)
+        {
+            // determine prefix
+            int prefixStart = (command.Args[6].Length == 1 || command.Args[6][1] != '*') ? 1 : 2;
+            string prefix = string.Concat(command.Args[6][prefixStart..].TakeWhile(Network.ChannelPrefixSymbols.Contains));
 
             channel.Users = channel.Users.SetItem(user, prefix);
             user.Channels = user.Channels.SetItem(channel, prefix);
@@ -987,7 +1056,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
     private void OnNameReply(ICommand command)
     {
-        var userhostInNames = NetworkInfo.TryGetEnabledCap("userhost-in-names", out _);
+        var userhostInNames = Network.TryGetEnabledCap("userhost-in-names", out _);
         var channel = ChannelRecordLookup.GetChannel(command.Args[2]);
 
         if (channel == null)
@@ -998,7 +1067,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         foreach (var prefixedNIH in command.Args[3].Split(' ', StringSplitOptions.RemoveEmptyEntries))
         {
             // extract the prefix from the front
-            string prefix = string.Concat(prefixedNIH.TakeWhile(NetworkInfo.ChannelPrefixSymbols.Contains));
+            string prefix = string.Concat(prefixedNIH.TakeWhile(Network.ChannelPrefixSymbols.Contains));
             string nih = prefixedNIH[prefix.Length..];
 
             // this might be introducing a new (previously-unknown) user
@@ -1059,7 +1128,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
         string? account = null;
         string gecos = string.Empty;
-        if (NetworkInfo.TryGetEnabledCap("extended-join", out _))
+        if (Network.TryGetEnabledCap("extended-join", out _))
         {
             account = command.Args[1] != "*" ? command.Args[1] : null;
             gecos = command.Args[2];
@@ -1235,7 +1304,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
     private void OnMode(ICommand command)
     {
-        if (!NetworkInfo.ChannelTypes.Contains(command.Args[0][0]))
+        if (!Network.ChannelTypes.Contains(command.Args[0][0]))
         {
             // not a channel mode change
             return;
@@ -1249,12 +1318,12 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         }
 
         // take a snapshot of the various mode types since calling the underlying properties recomputes the value each time.
-        string prefixModes = NetworkInfo.ChannelPrefixModes;
-        string prefixSymbols = NetworkInfo.ChannelPrefixSymbols;
-        string typeAModes = NetworkInfo.ChannelModesA;
-        string typeBModes = NetworkInfo.ChannelModesB;
-        string typeCModes = NetworkInfo.ChannelModesC;
-        string typeDModes = NetworkInfo.ChannelModesD;
+        string prefixModes = Network.ChannelPrefixModes;
+        string prefixSymbols = Network.ChannelPrefixSymbols;
+        string typeAModes = Network.ChannelModesA;
+        string typeBModes = Network.ChannelModesB;
+        string typeCModes = Network.ChannelModesC;
+        string typeDModes = Network.ChannelModesD;
 
         // index of the next mode argument
         int argIndex = 2;
