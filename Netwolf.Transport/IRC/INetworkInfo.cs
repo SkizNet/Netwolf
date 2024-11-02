@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 using Netwolf.Transport.Internal;
+using Netwolf.Transport.State;
 
 using System.Collections.Immutable;
 
@@ -13,6 +14,13 @@ public interface INetworkInfo
     /// Network name
     /// </summary>
     string Name { get; }
+
+    /// <summary>
+    /// ID of our client connection.
+    /// Can be compared with <see cref="UserRecord.Id"/> to determine if a given <see cref="UserRecord"/> is our client.
+    /// This Guid is not guaranteed to be stable between connections and cannot be compared across different networks.
+    /// </summary>
+    Guid ClientId { get; }
 
     /// <summary>
     /// Nickname for this connection
@@ -35,9 +43,24 @@ public interface INetworkInfo
     string? Account { get; }
 
     /// <summary>
+    /// Real name (GECOS) for this connection
+    /// </summary>
+    string RealName { get; }
+
+    /// <summary>
+    /// Away status for this connection
+    /// </summary>
+    bool IsAway { get; }
+
+    /// <summary>
     /// User modes for this connection
     /// </summary>
     ImmutableHashSet<char> UserModes { get; }
+
+    /// <summary>
+    /// Channels we belong to along with our prefix (status) in those channels
+    /// </summary>
+    IReadOnlyDictionary<ChannelRecord, string> Channels { get; }
 
     /// <summary>
     /// Channel types supported by the ircd. If an empty string, the ircd supposedly doesn't support channels.
@@ -112,4 +135,66 @@ public interface INetworkInfo
     /// <param name="defaultValue">Default value to use if the token was not given by the ircd.</param>
     /// <returns></returns>
     string? GetISupportOrDefault(ISupportToken token, string? defaultValue = null);
+
+    /// <summary>
+    /// Retrieves the user with the specified nickname, or null if no such user exists.
+    /// The lookup is case-insensitive using the network's case mapping.
+    /// </summary>
+    /// <param name="nick"></param>
+    /// <returns></returns>
+    UserRecord? GetUserByNick(string nick);
+
+    /// <summary>
+    /// Retrieves users with the specified account name, or an empty collection if no such users exist.
+    /// The lookup is case-insensitive using the network's case mapping.
+    /// </summary>
+    /// <param name="account">Account to look up, cannot be null.</param>
+    /// <returns></returns>
+    IEnumerable<UserRecord> GetUsersByAccount(string account);
+
+    /// <summary>
+    /// Retrieve all users known to the network. This method is intended primarily for further refinement
+    /// via LINQ to Objects queries when other built-in filter methods are not sufficient.
+    /// The network only keeps track of its own client as well as other users in shared channels.
+    /// Execute a WHO command instead if you wish to view/filter users that do not belong to a shared channel.
+    /// </summary>
+    /// <returns></returns>
+    IEnumerable<UserRecord> GetAllUsers();
+
+    /// <summary>
+    /// Retrieves the channel with the specified name, or null if no such channel exists.
+    /// The lookup is case-insensitive using the network's case mapping.
+    /// </summary>
+    /// <param name="name"></param>
+    /// <returns></returns>
+    ChannelRecord? GetChannel(string name);
+
+    /// <summary>
+    /// Retrieve all channels known to the network. This method is intended primarily for further refinement
+    /// via LINQ to Objects queries when other built-in filter methods are not sufficient.
+    /// The network only keeps track of channels it is joined to.
+    /// Execute a LIST command instead if you wish to view/filter channels the client is not joined to.
+    /// </summary>
+    /// <returns></returns>
+    IEnumerable<ChannelRecord> GetAllChannels() => Channels.Keys;
+
+    /// <summary>
+    /// Retrieve the list of users in the given channel, along with their status in that channel.
+    /// </summary>
+    /// <param name="channel"></param>
+    /// <returns>
+    /// A read-only snapshot of users to status in the channel.
+    /// If the channel is no longer in state, returns an empty collection.
+    /// </returns>
+    IReadOnlyDictionary<UserRecord, string> GetUsersInChannel(ChannelRecord channel);
+
+    /// <summary>
+    /// Retrieve the list of channels the given user is in, along with their status in those channels.
+    /// </summary>
+    /// <param name="user"></param>
+    /// <returns>
+    /// A read-only snapshot of channels to status in the channel.
+    /// If the user is no longer in state, returns an empty collection.
+    /// </returns>
+    IReadOnlyDictionary<ChannelRecord, string> GetChannelsForUser(UserRecord user);
 }

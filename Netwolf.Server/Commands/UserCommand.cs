@@ -13,13 +13,13 @@ using System.Threading.Tasks;
 
 namespace Netwolf.Server.Commands;
 
-public class UserCommand : IServerCommandHandler
+public class UserCommand : ServerCommandHandler
 {
-    public string Command => "USER";
+    public override string Command => "USER";
 
-    public bool AllowBeforeRegistration => true;
+    public override bool AllowBeforeRegistration => true;
 
-    public async Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
+    public override async Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var client = ((ServerContext)sender).User!;

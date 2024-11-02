@@ -12,9 +12,11 @@ using System.Threading.Tasks;
 
 namespace Netwolf.Server.Commands;
 
-public class CapCommand : IServerCommandHandler
+public class CapCommand : ServerCommandHandler
 {
-    public string Command => "CAP";
+    public override string Command => "CAP";
+
+    public override bool AllowBeforeRegistration => true;
 
     private ICapabilityManager CapabilityManager { get; init; }
 
@@ -23,7 +25,7 @@ public class CapCommand : IServerCommandHandler
         CapabilityManager = capabilityManager;
     }
 
-    public async Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
+    public override async Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var client = ((ServerContext)sender).User!;

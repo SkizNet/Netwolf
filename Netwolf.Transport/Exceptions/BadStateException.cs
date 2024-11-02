@@ -1,12 +1,12 @@
 ﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: LGPL-3.0-or-later
 
-namespace Netwolf.BotFramework.Exceptions;
+namespace Netwolf.Transport.Exceptions;
 
 /// <summary>
-/// Indicates an issue with the bot's internal state.
-/// For now these are treated as unrecoverable errors, however certain instances
-/// may actually be recoverable by e.g. cycling channels.
+/// Indicates an issue with the network's internal state.
+/// The transport framework does not attempt to automatically recover from these errors,
+/// however client code may wish to do so instead of simply crashing.
 /// </summary>
 public class BadStateException : Exception
 {

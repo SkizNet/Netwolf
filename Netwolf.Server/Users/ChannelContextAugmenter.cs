@@ -14,7 +14,7 @@ internal class ChannelContextAugmenter : IContextAugmenter
 {
     public IContext AugmentForCommand(IContext context, ICommand command, ICommandHandler handler)
     {
-        if (context is not ServerContext serverContext || handler is not IServerCommandHandler commandHandler)
+        if (context is not ServerContext serverContext || handler is not ServerCommandHandler commandHandler)
         {
             return context;
         }

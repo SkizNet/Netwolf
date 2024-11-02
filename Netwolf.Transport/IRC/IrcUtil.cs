@@ -1,15 +1,19 @@
 ﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: LGPL-3.0-or-later
 
+using Netwolf.PluginFramework.Commands;
 using Netwolf.Transport.Extensions;
-using Netwolf.Transport.IRC;
+using Netwolf.Transport.State;
 
-namespace Netwolf.BotFramework;
+using System.Diagnostics.CodeAnalysis;
+
+
+namespace Netwolf.Transport.IRC;
 
 /// <summary>
 /// Utility class for hostmask and casemapping-aware string comparisons
 /// </summary>
-public static class BotUtil
+public static class IrcUtil
 {
     /// <summary>
     /// Check if the two strings are equal case-insensitively according to the provided
@@ -58,7 +62,7 @@ public static class BotUtil
     /// <param name="str">String to casefold</param>
     /// <param name="caseMapping"></param>
     /// <returns>Byte array of the casefolded string</returns>
-    public static byte[] Casefold(string str, CaseMapping caseMapping)
+    public static string Casefold(string str, CaseMapping caseMapping)
     {
         ArgumentNullException.ThrowIfNull(str);
         var bytes = str.EncodeUtf8();
@@ -79,7 +83,7 @@ public static class BotUtil
             }
         }
 
-        return bytes;
+        return bytes.DecodeUtf8();
     }
 
     public static (string Nick, string Ident, string Host) SplitHostmask(string mask)
@@ -108,5 +112,24 @@ public static class BotUtil
         }
 
         return (nick, ident, host);
+    }
+
+    public static bool TryExtractUserFromSource(ICommand command, INetworkInfo networkInfo, [NotNullWhen(true)] out UserRecord? user)
+    {
+        user = null;
+        if (command.Source == null)
+        {
+            return false;
+        }
+
+        var (nick, _, _) = SplitHostmask(command.Source);
+        if (string.IsNullOrEmpty(nick) || nick.Contains('.'))
+        {
+            // if nick contains '.' then it's probably a server name, not a user
+            return false;
+        }
+
+        user = networkInfo.GetUserByNick(nick);
+        return user != null;
     }
 }

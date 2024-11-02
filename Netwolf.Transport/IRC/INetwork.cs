@@ -4,6 +4,7 @@
 using Netwolf.PluginFramework.Commands;
 using Netwolf.Transport.Events;
 using Netwolf.Transport.Exceptions;
+using Netwolf.Transport.State;
 
 namespace Netwolf.Transport.IRC;
 
@@ -142,4 +143,26 @@ public interface INetwork : INetworkInfo, IDisposable, IAsyncDisposable
     /// <param name="reason">Reason used in the QUIT message, displayed to others on the network</param>
     /// <returns></returns>
     Task DisconnectAsync(string reason);
+
+    /// <summary>
+    /// Process a command as if it was received from the network connection.
+    /// Be very careful when using this method as it can corrupt internal state if used incorrectly.
+    /// </summary>
+    /// <param name="command"></param>
+    /// <param name="cancellationToken"></param>
+    void UnsafeReceiveCommand(ICommand command, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Updates a user in the network state with the provided details, adding or removing them as necessary.
+    /// Be very careful when using this method as it can corrupt internal state if used incorrectly.
+    /// </summary>
+    /// <param name="user"></param>
+    void UnsafeUpdateUser(UserRecord user);
+
+    /// <summary>
+    /// Updates a channel in the network state with the provided details, adding or removing it as necessary.
+    /// Be very careful when using this method as it can corrupt internal state if used incorrectly.
+    /// </summary>
+    /// <param name="channel"></param>
+    void UnsafeUpdateChannel(ChannelRecord channel);
 }

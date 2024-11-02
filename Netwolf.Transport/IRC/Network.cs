@@ -9,6 +9,7 @@ using Netwolf.Transport.Events;
 using Netwolf.Transport.Exceptions;
 using Netwolf.Transport.Internal;
 using Netwolf.Transport.Sasl;
+using Netwolf.Transport.State;
 
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
@@ -24,7 +25,7 @@ namespace Netwolf.Transport.IRC;
 /// <summary>
 /// A network that we connect to as a client
 /// </summary>
-public class Network : INetwork
+public partial class Network : INetwork
 {
     private bool _disposed;
 
@@ -86,17 +87,30 @@ public class Network : INetwork
     /// <summary>
     /// Network state
     /// </summary>
-    private IrcState State { get; set; }
+    private NetworkState State { get; set; }
 
     /// <summary>
-    /// User-defined network name (not necessarily what the network actually calls itself)
+    /// Retrieve an immutable snapshot of the current network state.
     /// </summary>
-    public string Name => State.Name;
+    /// <returns></returns>
+    public INetworkInfo AsNetworkInfo() => State;
 
     /// <summary>
     /// True if we are currently connected to this Network
     /// </summary>
     public bool IsConnected => _connection != null && _userRegistrationCompletionSource == null;
+
+    #region INetworkInfo
+    /// <summary>
+    /// User-defined network name (not necessarily what the network actually calls itself)
+    /// </summary>
+    public string Name { get; init; }
+
+    /// <summary>
+    /// Client ID for this connection.
+    /// Throws InvalidOperationException if not currently connected.
+    /// </summary>
+    public Guid ClientId => IsConnected ? State.ClientId : throw new InvalidOperationException("Network is disconnected.");
 
     /// <summary>
     /// Nickname for this connection.
@@ -105,7 +119,13 @@ public class Network : INetwork
     public string Nick
     {
         get => IsConnected ? State.Nick : throw new InvalidOperationException("Network is disconnected.");
-        protected set => State = State with { Nick = value };
+        protected set => State = State with
+        {
+            Lookup = State.Lookup
+                .Remove(IrcUtil.Casefold(State.Nick, CaseMapping))
+                .Add(IrcUtil.Casefold(value, CaseMapping), State.ClientId),
+            Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Nick = value })
+        };
     }
 
     /// <summary>
@@ -115,7 +135,7 @@ public class Network : INetwork
     public string Ident
     {
         get => IsConnected ? State.Ident : throw new InvalidOperationException("Network is disconnected.");
-        protected set => State = State with { Ident = value };
+        protected set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Ident = value }) };
     }
 
     /// <summary>
@@ -125,7 +145,7 @@ public class Network : INetwork
     public string Host
     {
         get => IsConnected ? State.Host : throw new InvalidOperationException("Network is disconnected.");
-        protected set => State = State with { Host = value };
+        protected set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Host = value }) };
     }
 
     /// <summary>
@@ -135,8 +155,25 @@ public class Network : INetwork
     public string? Account
     {
         get => IsConnected ? State.Account : throw new InvalidOperationException("Network is disconnected.");
-        protected set => State = State with { Account = value };
+        protected set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Account = value }) };
     }
+
+    /// <summary>
+    /// Real name (GECOS) for this connection.
+    /// Throws InvalidOperationException if not currently connected.
+    /// </summary>
+    public string RealName
+    {
+        get => IsConnected ? State.RealName : throw new InvalidOperationException("Network is disconnected.");
+        protected set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { RealName = value }) };
+    }
+
+    /// <summary>
+    /// Away status for this connection.
+    /// Throws InvalidOperationException if not currently connected.
+    /// Read-only; change the away reason instead to manipulate away status.
+    /// </summary>
+    public bool IsAway => IsConnected ? State.IsAway : throw new InvalidOperationException("Network is disconnected.");
 
     /// <summary>
     /// User modes for this connection.
@@ -145,13 +182,49 @@ public class Network : INetwork
     public ImmutableHashSet<char> UserModes
     {
         get => IsConnected ? State.UserModes : throw new InvalidOperationException("Network is disconnected.");
-        protected set => State = State with { UserModes = value };
+        protected set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Modes = value }) };
     }
+
+    /// <inheritdoc />
+    public IReadOnlyDictionary<ChannelRecord, string> Channels => ((INetworkInfo)State).Channels;
+
+    /// <inheritdoc />
+    public bool TryGetEnabledCap(string cap, out string? value) => State.TryGetEnabledCap(cap, out value);
+
+    /// <inheritdoc />
+    public bool TryGetISupport(ISupportToken token, out string? value) => State.TryGetISupport(token, out value);
+
+    /// <inheritdoc />
+    public string? GetISupportOrDefault(ISupportToken token, string? defaultValue = null) => State.GetISupportOrDefault(token, defaultValue);
+
+    /// <inheritdoc />
+    public IReadOnlyDictionary<UserRecord, string> GetUsersInChannel(ChannelRecord channel) => State.GetUsersInChannel(channel);
+
+    /// <inheritdoc />
+    public IReadOnlyDictionary<ChannelRecord, string> GetChannelsForUser(UserRecord user) => State.GetChannelsForUser(user);
+
+    /// <inheritdoc />
+    public UserRecord? GetUserByNick(string nick) => State.GetUserByNick(nick);
+
+    /// <inheritdoc />
+    public IEnumerable<UserRecord> GetUsersByAccount(string account) => State.GetUsersByAccount(account);
+
+    /// <inheritdoc />
+    public IEnumerable<UserRecord> GetAllUsers() => State.GetAllUsers();
+
+    /// <inheritdoc />
+    public ChannelRecord? GetChannel(string name) => State.GetChannel(name);
+    #endregion
 
     /// <summary>
     /// Maxmium length of an IRC line (excluding tags, including final CRLF).
     /// </summary>
     private int MaxLength { get; set; } = 512;
+
+    /// <summary>
+    /// Case mapping in use.
+    /// </summary>
+    private CaseMapping CaseMapping { get; set; } = CaseMapping.Ascii;
 
     /// <summary>
     /// Internal event stream for Command events
@@ -217,9 +290,9 @@ public class Network : INetwork
     /// </summary>
     public bool SuspendCapEndForSasl { get; set; } = false;
 
-    private static readonly string[] _END = ["END"];
-    private static readonly string[] _STAR = ["*"];
-    private static readonly string[] _PLUS = ["+"];
+    private static readonly string[] END = ["END"];
+    private static readonly string[] STAR = ["*"];
+    private static readonly string[] PLUS = ["+"];
 
     /// <summary>
     /// Create a new Network that can be connected to.
@@ -233,8 +306,6 @@ public class Network : INetwork
     /// <param name="commandFactory"></param>
     /// <param name="connectionFactory"></param>
     /// <param name="saslMechanismFactory"></param>
-    [SuppressMessage("Style", "IDE0301:Simplify collection initialization",
-        Justification = "ImmutableHashSet.Empty is more indicative of what the data type is and requires no allocations")]
     public Network(
         string name,
         NetworkOptions options,
@@ -246,27 +317,20 @@ public class Network : INetwork
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(options);
 
-        State = new(
-            name,
-            options.PrimaryNick,
-            options.Ident,
-            string.Empty,
-            null,
-            ImmutableHashSet<char>.Empty,
-            ImmutableDictionary<string, string?>.Empty,
-            ImmutableHashSet<string>.Empty,
-            ImmutableDictionary<ISupportToken, string?>.Empty);
-        
+        Name = name;
         Options = options;
         Logger = logger;
         CommandFactory = commandFactory;
         ConnectionFactory = connectionFactory;
         SaslMechanismFactory = saslMechanismFactory;
 
+        ResetState();
+
         // spin up the message loop for this Network
         _messageLoop = Task.Run(MessageLoop);
     }
 
+    #region IDisposable / IAsyncDisposable
     /// <summary>
     /// Perform cleanup of managed resources asynchronously.
     /// </summary>
@@ -310,6 +374,7 @@ public class Network : INetwork
         Dispose(disposing: true);
         GC.SuppressFinalize(this);
     }
+    #endregion
 
     private void MessageLoop()
     {
@@ -371,8 +436,7 @@ public class Network : INetwork
 
                     try
                     {
-                        OnCommandReceived(command, token);
-                        _commandEventStream.OnNext(new(this, command, token));
+                        UnsafeReceiveCommand(command, token);
                     }
                     catch (Exception e)
                     {
@@ -454,6 +518,10 @@ public class Network : INetwork
 
                 try
                 {
+                    // clean up any old state
+                    ResetState();
+
+                    // attempt the connection
                     Logger.LogInformation("Connecting to {server}...", server);
                     await _connection.ConnectAsync(aggregate.Token).ConfigureAwait(false);
                 }
@@ -712,6 +780,9 @@ public class Network : INetwork
         return [.. commands];
     }
 
+    #region Command handling
+    [SuppressMessage("Style", "IDE0301:Simplify collection initialization", Justification = "ImmutableHashSet.Empty is more semantically meaningful")]
+    [SuppressMessage("Style", "IDE0305:Simplify collection initialization", Justification = "ToImmutableHashSet() is more semantically meaningful")]
     private void OnCommandReceived(ICommand command, CancellationToken cancellationToken)
     {
         if (!IsConnected)
@@ -744,9 +815,6 @@ public class Network : INetwork
                     // so send out a WHO for ourselves before handing control back to client
                     _ = SendAsync(PrepareCommand("WHO", [State.Nick]), cancellationToken);
                     break;
-                case "352":
-                    State = State with { Ident = command.Args[2], Host = command.Args[3] };
-                    break;
                 case "315":
                     // end of WHO, so we've pulled our own client details and can hand back control
                     _userRegistrationCompletionSource!.SetResult();
@@ -756,7 +824,7 @@ public class Network : INetwork
                     // although if it's saying our CAP END failed (broken ircd), don't cause an infinite loop
                     if (command.Args[1] != "END")
                     {
-                        _ = SendAsync(PrepareCommand("CAP", _END), cancellationToken);
+                        _ = SendAsync(PrepareCommand("CAP", END), cancellationToken);
                     }
 
                     break;
@@ -770,6 +838,7 @@ public class Network : INetwork
                 // process ISUPPORT tokens
                 // first arg is our nick and last arg is the trailing "is supported by this server" so omit both
                 Dictionary<ISupportToken, string?> newISupport = [];
+                List<ISupportToken> removedISupport = [];
                 for (int i = 1; i < command.Args.Count - 1; i++)
                 {
                     var token = command.Args[i];
@@ -781,11 +850,54 @@ public class Network : INetwork
                         value = splitToken[1];
                     }
 
+                    // tokens can begin with '-' to indicate they are being negated
+                    if (token[0] == '-')
+                    {
+                        removedISupport.Add(new(token[1..]));
+                        continue;
+                    }
+
+                    // not being negated, it's a new token
                     newISupport[new(token)] = value;
 
                     // we process some tokens here too because we need the info
                     switch (token)
                     {
+                        case "CASEMAPPING":
+                            {
+                                var old = CaseMapping;
+
+                                CaseMapping = value switch
+                                {
+                                    "ascii" => CaseMapping.Ascii,
+                                    "rfc1459" => CaseMapping.Rfc1459,
+                                    "rfc1459-strict" => CaseMapping.Rfc1459Strict,
+                                    _ => CaseMapping.Ascii
+                                };
+
+                                if (value != "ascii" && CaseMapping == CaseMapping.Ascii)
+                                {
+                                    Logger.LogWarning("Received unsupported CASEMAPPING token {CaseMapping}; defaulting to ascii", value);
+                                }
+
+                                if (CaseMapping != old)
+                                {
+                                    // need to remap our lookup table
+                                    State = State with
+                                    {
+                                        CaseMapping = CaseMapping,
+                                        Lookup = State.Lookup.ToImmutableDictionary(
+                                            x => IrcUtil.Casefold(
+                                                State.Users.GetValueOrDefault(x.Value)?.Nick
+                                                    ?? State.Channels.GetValueOrDefault(x.Value)?.Name
+                                                    ?? throw new BadStateException("Lookup map contains an unrecognized user or channel"),
+                                                CaseMapping),
+                                            x => x.Value)
+                                    };
+                                }
+                            }
+
+                            break;
                         case "LINELEN":
                             if (int.TryParse(value, out int lineLen))
                             {
@@ -795,14 +907,147 @@ public class Network : INetwork
                     }
                 }
 
-                State = State with { ISupport = State.ISupport.SetItems(newISupport) };
+                State = State with { ISupport = State.ISupport.SetItems(newISupport).RemoveRange(removedISupport) };
                 break;
             case "221":
                 // RPL_UMODEIS
                 // first arg is our nick and the second arg is our umodes
-#pragma warning disable IDE0305 // Simplify collection initialization -- ToImmutableHashSet() captures meaning much more clearly
                 UserModes = command.Args[1].ToImmutableHashSet();
-#pragma warning restore IDE0305 // Simplify collection initialization
+                break;
+            case "305":
+                // RPL_UNAWAY
+                State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { IsAway = false }) };
+                break;
+            case "306":
+                // RPL_NOWAWAY
+                State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { IsAway = true }) };
+                break;
+            case "332":
+                // RPL_TOPIC (332) <client> <channel> :<topic>
+                {
+                    if (GetChannel(command.Args[1]) is ChannelRecord channel)
+                    {
+                        State = State with
+                        {
+                            Channels = State.Channels.SetItem(channel.Id, channel with { Topic = command.Args[2] })
+                        };
+                    }
+                }
+                break;
+            case "352":
+                // RPL_WHOREPLY (352) <client> <channel> <username> <host> <server> <nick> <flags> :<hopcount> <realname>
+                {
+                    var hopReal = command.Args[7].Split(' ', 2);
+                    string realName = hopReal.Length > 1 ? hopReal[1] : string.Empty;
+                    if (GetUserByNick(command.Args[5]) is UserRecord user)
+                    {
+                        // existing user; update info
+                        user = user with
+                        {
+                            Ident = command.Args[2],
+                            Host = command.Args[3],
+                            RealName = realName,
+                            IsAway = command.Args[6][0] == 'G',
+                        };
+                    }
+                    else
+                    {
+                        // previously unknown user
+                        user = new UserRecord(
+                            Guid.NewGuid(),
+                            command.Args[5],
+                            command.Args[2],
+                            command.Args[3],
+                            null,
+                            command.Args[6][0] == 'G',
+                            realName,
+                            ImmutableHashSet<char>.Empty,
+                            ImmutableDictionary<Guid, string>.Empty);
+                    }
+
+                    // channel being null is ok here since /who nick returns an arbitrary channel or potentially a '*'
+                    ChannelRecord? channel = command.Args[1] == "*" ? null : GetChannel(command.Args[1]);
+
+                    // if channel isn't known and this user didn't share any other channels with us, purge it
+                    if (user.Id != State.ClientId && channel == null && user.Channels.Count == 0)
+                    {
+                        State = State with
+                        {
+                            Lookup = State.Lookup.Remove(IrcUtil.Casefold(user.Nick, CaseMapping)),
+                            Users = State.Users.Remove(user.Id),
+                        };
+                        break;
+                    }
+
+                    // if channel is known, update prefixes
+                    if (channel != null)
+                    {
+                        // determine prefix
+                        int prefixStart = (command.Args[6].Length == 1 || command.Args[6][1] != '*') ? 1 : 2;
+                        string prefix = string.Concat(command.Args[6][prefixStart..].TakeWhile(((INetworkInfo)State).ChannelPrefixSymbols.Contains));
+
+                        State = State with
+                        {
+                            Lookup = State.Lookup.SetItem(IrcUtil.Casefold(user.Nick, CaseMapping), user.Id),
+                            Users = State.Users.SetItem(user.Id, user with { Channels = user.Channels.SetItem(channel.Id, prefix) }),
+                            Channels = State.Channels.SetItem(channel.Id, channel with { Users = channel.Users.SetItem(user.Id, prefix) }),
+                        };
+                    }
+                    else
+                    {
+                        State = State with
+                        {
+                            Lookup = State.Lookup.SetItem(IrcUtil.Casefold(user.Nick, CaseMapping), user.Id),
+                            Users = State.Users.SetItem(user.Id, user)
+                        };
+                    }
+                }
+                break;
+            case "353":
+                // RPL_NAMREPLY (353) <client> <symbol> <channel> :[prefix]<nick>{ [prefix]<nick>}
+                // Note: symbol is ignored, but in theory we could (un)set +s or +p for channel based on it
+                {
+                    // if userhost-in-names isn't enabled we only get nicknames here, which means UserRecords will have empty string idents/hosts,
+                    // which is a corner case that downstream users shouldn't need to deal with. Better for them to just fail a record lookup until
+                    // they issue a WHO or WHOX for the channel.
+                    if (GetChannel(command.Args[2]) is not ChannelRecord channel || !TryGetEnabledCap("userhost-in-names", out _))
+                    {
+                        break;
+                    }
+
+                    // make a copy since the underlying property on State recomputes the value on each access
+                    string prefixSymbols = ((INetworkInfo)State).ChannelPrefixSymbols;
+                    foreach (var prefixedNick in command.Args[3].Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        string prefix = string.Concat(prefixedNick.TakeWhile(prefixSymbols.Contains));
+                        // per above, userhost-in-names is enabled so we get all 3 components
+                        var (nick, ident, host) = IrcUtil.SplitHostmask(prefixedNick[prefix.Length..]);
+                        if (string.IsNullOrEmpty(nick) || string.IsNullOrEmpty(ident) || string.IsNullOrEmpty(host))
+                        {
+                            Logger.LogWarning("Protocol violation: NAMES does not contain a full nick!user@host despite userhost-in-names being negotiated");
+                            break;
+                        }
+
+                        var user = GetUserByNick(nick)
+                            ?? new UserRecord(
+                                Guid.NewGuid(),
+                                nick,
+                                ident,
+                                host,
+                                null,
+                                false,
+                                string.Empty,
+                                ImmutableHashSet<char>.Empty,
+                                ImmutableDictionary<Guid, string>.Empty);
+
+                        State = State with
+                        {
+                            Lookup = State.Lookup.SetItem(IrcUtil.Casefold(user.Nick, CaseMapping), user.Id),
+                            Channels = State.Channels.SetItem(channel.Id, channel with { Users = channel.Users.SetItem(user.Id, prefix) }),
+                            Users = State.Users.SetItem(user.Id, user with { Channels = user.Channels.SetItem(channel.Id, prefix) }),
+                        };
+                    }
+                }
                 break;
             case "CAP":
                 // CAP negotation
@@ -819,48 +1064,401 @@ public class Network : INetwork
             case "904":
             case "905":
                 // SASL failed, retry with next mech
+                // TODO: Finish this
                 break;
             case "902":
             case "906":
             case "907":
                 // SASL failed, don't retry
+                // TODO: Finish this
                 break;
             case "908":
                 // failed, but will also get a 904, simply update supported mechs
+                // TODO: Finish this
                 break;
             case "MODE":
-                // only care if we're changing our own modes
-                // no casefolding is done so this is mostly best-effort and assumes the ircd will give us the correct casing of our nick
-                if (command.Args[0] == Nick)
+                // only care if we're changing our own modes or channel modes
                 {
-                    var adding = true;
-                    foreach (var c in command.Args[1])
+                    var lookupId = State.Lookup.GetValueOrDefault(IrcUtil.Casefold(command.Args[0], CaseMapping));
+                    bool adding = true;
+
+                    if (lookupId == ClientId)
                     {
-                        switch (c)
+                        List<char> toAdd = [];
+                        List<char> toRemove = [];
+                        foreach (var c in command.Args[1])
                         {
-                            case '+':
-                                adding = true;
-                                break;
-                            case '-':
-                                adding = false;
-                                break;
-                            default:
-                                if (adding)
-                                {
-                                    UserModes = UserModes.Add(c);
-                                }
-                                else
-                                {
-                                    UserModes = UserModes.Remove(c);
-                                }
-                                break;
+                            switch (c)
+                            {
+                                case '+':
+                                    adding = true;
+                                    break;
+                                case '-':
+                                    adding = false;
+                                    break;
+                                default:
+                                    (adding ? toAdd : toRemove).Add(c);
+                                    break;
+                            }
                         }
+
+                        UserModes = UserModes.Union(toAdd).Except(toRemove);
+                    }
+                    else if (State.Channels.TryGetValue(lookupId, out var channel))
+                    {
+                        // take a snapshot of the various mode types since calling the underlying properties recomputes the value each time.
+                        string prefixModes = ((INetworkInfo)State).ChannelPrefixModes;
+                        string prefixSymbols = ((INetworkInfo)State).ChannelPrefixSymbols;
+                        string typeAModes = ((INetworkInfo)State).ChannelModesA;
+                        string typeBModes = ((INetworkInfo)State).ChannelModesB;
+                        string typeCModes = ((INetworkInfo)State).ChannelModesC;
+                        string typeDModes = ((INetworkInfo)State).ChannelModesD;
+
+                        // index of the next mode argument
+                        int argIndex = 2;
+                        var changed = channel.Modes;
+
+                        foreach (var c in command.Args[1])
+                        {
+                            switch (c)
+                            {
+                                case '+':
+                                    adding = true;
+                                    break;
+                                case '-':
+                                    adding = false;
+                                    break;
+                                case var _ when prefixModes.Contains(c):
+                                    {
+                                        var user = GetUserByNick(command.Args[argIndex]);
+                                        if (user == null || !user.Channels.TryGetValue(channel.Id, out string? status))
+                                        {
+                                            Logger.LogWarning(
+                                                "Potential state corruption detected: Received MODE message for {Nick} on {Channel} but they do not exist in state",
+                                                command.Args[argIndex],
+                                                channel.Name);
+
+                                            break;
+                                        }
+
+                                        argIndex++;
+                                        var statusSet = new HashSet<char>(status);
+                                        var symbol = prefixSymbols[prefixModes.IndexOf(c)];
+                                        if (adding)
+                                        {
+                                            statusSet.Add(symbol);
+                                        }
+                                        else
+                                        {
+                                            statusSet.Remove(symbol);
+                                        }
+
+                                        status = string.Concat(prefixSymbols.Where(statusSet.Contains));
+                                        // keep channel updated for future loop iterations
+                                        channel = channel with { Users = channel.Users.SetItem(user.Id, status) };
+
+                                        State = State with
+                                        {
+                                            Channels = State.Channels.SetItem(channel.Id, channel),
+                                            Users = State.Users.SetItem(user.Id, user with { Channels = user.Channels.SetItem(channel.Id, status) }),
+                                        };
+                                    }
+                                    break;
+                                case var _ when typeAModes.Contains(c):
+                                    // we don't track list modes but we still need to advance arg index
+                                    argIndex++;
+                                    break;
+                                case var _ when typeBModes.Contains(c):
+                                    if (adding)
+                                    {
+                                        changed = changed.SetItem(c, command.Args[argIndex]);
+                                    }
+                                    else
+                                    {
+                                        changed = changed.Remove(c);
+                                    }
+
+                                    argIndex++;
+                                    break;
+                                case var _ when typeCModes.Contains(c):
+                                    if (adding)
+                                    {
+                                        changed = changed.SetItem(c, command.Args[argIndex]);
+                                        argIndex++;
+                                    }
+                                    else
+                                    {
+                                        changed = changed.Remove(c);
+                                    }
+                                    break;
+                                case var _ when typeDModes.Contains(c):
+                                    if (adding)
+                                    {
+                                        changed = changed.SetItem(c, null);
+                                    }
+                                    else
+                                    {
+                                        changed = changed.Remove(c);
+                                    }
+                                    break;
+                                default:
+                                    // hope it's a mode without an argument as otherwise this will mess everything else up
+                                    Logger.LogWarning("Protocol violation: Received MODE command for unknown mode letter {Mode}", c);
+                                    break;
+                            }
+                        }
+
+                        State = State with { Channels = State.Channels.SetItem(channel.Id, channel with { Modes = changed }) };
+                    }
+                }
+                break;
+            case "JOIN":
+                // regular join: JOIN <channel>
+                // extended-join: JOIN <channel> <account> :<gecos>
+                {
+                    if (command.Source == null)
+                    {
+                        Logger.LogWarning("Protocol violation: JOIN message lacks a source");
+                        break;
+                    }
+
+                    var channel = GetChannel(command.Args[0]);
+                    var (nick, ident, host) = IrcUtil.SplitHostmask(command.Source);
+                    // don't blow up if the ircd gave us garbage
+                    if (string.IsNullOrEmpty(nick) || string.IsNullOrEmpty(ident) || string.IsNullOrEmpty(host))
+                    {
+                        Logger.LogWarning("Protocol violation: JOIN message source is not a full nick!user@host");
+                        break;
+                    }
+
+                    var user = GetUserByNick(nick);
+
+                    if (channel == null)
+                    {
+                        if (user?.Id == ClientId)
+                        {
+                            // if we joined a new channel, add it to state
+                            channel = new ChannelRecord(
+                                Guid.NewGuid(),
+                                command.Args[0],
+                                string.Empty,
+                                ImmutableDictionary<char, string?>.Empty,
+                                ImmutableDictionary<Guid, string>.Empty);
+                        }
+                        else
+                        {
+                            // someone other than us joining a channel we aren't aware of
+                            Logger.LogWarning("Potential state corruption detected: Received JOIN message for another user on {Channel} but it does not exist in state", command.Args[0]);
+                            break;
+                        }
+                    }
+
+                    string? account = null;
+                    string realName = string.Empty;
+                    if (TryGetEnabledCap("extended-join", out _))
+                    {
+                        account = command.Args[1] != "*" ? command.Args[1] : null;
+                        realName = command.Args[2];
+
+                        if (user != null)
+                        {
+                            user = user with
+                            {
+                                Account = account,
+                                RealName = realName
+                            };
+                        }
+                    }
+
+                    user ??= new UserRecord(
+                        Guid.NewGuid(),
+                        nick,
+                        ident,
+                        host,
+                        account,
+                        false,
+                        realName,
+                        ImmutableHashSet<char>.Empty,
+                        ImmutableDictionary<Guid, string>.Empty);
+
+                    State = State with
+                    {
+                        Lookup = State.Lookup
+                            .SetItem(IrcUtil.Casefold(channel.Name, CaseMapping), channel.Id)
+                            .SetItem(IrcUtil.Casefold(user.Nick, CaseMapping), user.Id),
+                        Channels = State.Channels.SetItem(channel.Id, channel with { Users = channel.Users.SetItem(user.Id, string.Empty) }),
+                        Users = State.Users.SetItem(user.Id, user with { Channels = user.Channels.SetItem(channel.Id, string.Empty) }),
+                    };
+                }
+                break;
+            case "PART":
+                // PART <channel>{,<channel>} [:<reason>]
+                {
+                    if (!IrcUtil.TryExtractUserFromSource(command, this, out var user))
+                    {
+                        break;
+                    }
+
+                    // RFC states that the PART message from server to client SHOULD NOT send multiple channels, not MUST NOT, so accomodate multiple channels here
+                    foreach (var channelName in command.Args[0].Split(',', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        if (GetChannel(channelName) is not ChannelRecord channel)
+                        {
+                            Logger.LogWarning("Potential state corruption detected: Received PART message for {Channel} but it does not exist in state", channelName);
+                            continue;
+                        }
+
+                        RemoveUserFromChannel(user, channel);
+                    }
+                }
+                break;
+            case "KICK":
+                // KICK <channel> <user> [:<comment>]
+                {
+                    if (command.Args[1].Contains(','))
+                    {
+                        Logger.LogWarning("Protocol violation: KICK message contains multiple nicks");
+                        break;
+                    }
+
+                    if (GetChannel(command.Args[0]) is not ChannelRecord channel)
+                    {
+                        Logger.LogWarning("Potential state corruption detected: Received KICK message for {Channel} but it does not exist in state", command.Args[0]);
+                        break;
+                    }
+
+                    if (GetUserByNick(command.Args[1]) is not UserRecord user)
+                    {
+                        Logger.LogWarning("Potential state corruption detected: Received KICK message for {Nick} but they do not exist in state", command.Args[1]);
+                        break;
+                    }
+
+                    RemoveUserFromChannel(user, channel);
+                }
+                break;
+            case "ACCOUNT":
+                // ACCOUNT <accountname>
+                {
+                    if (IrcUtil.TryExtractUserFromSource(command, this, out var user))
+                    {
+                        State = State with
+                        {
+                            Users = State.Users.SetItem(
+                                user.Id,
+                                user with { Account = command.Args[0] == "*" ? null : command.Args[0] })
+                        };
+                    }
+                }
+                break;
+            case "AWAY":
+                // AWAY [:<message>]
+                {
+                    if (IrcUtil.TryExtractUserFromSource(command, this, out var user))
+                    {
+                        State = State with
+                        {
+                            Users = State.Users.SetItem(
+                                user.Id,
+                                user with { IsAway = command.Args.Count > 0 })
+                        };
+                    }
+                }
+                break;
+            case "CHGHOST":
+                // CHGHOST <new_user> <new_host>
+                {
+                    if (IrcUtil.TryExtractUserFromSource(command, this, out var user))
+                    {
+                        State = State with
+                        {
+                            Users = State.Users.SetItem(
+                                user.Id,
+                                user with { Ident = command.Args[0], Host = command.Args[1] })
+                        };
+                    }
+                }
+                break;
+            case "SETNAME":
+                // SETNAME :<realname>
+                {
+                    if (IrcUtil.TryExtractUserFromSource(command, this, out var user))
+                    {
+                        State = State with
+                        {
+                            Users = State.Users.SetItem(
+                                user.Id,
+                                user with { RealName = command.Args[0] })
+                        };
+                    }
+                }
+                break;
+            case "NICK":
+                // NICK <nickname>
+                {
+                    if (IrcUtil.TryExtractUserFromSource(command, this, out var user))
+                    {
+                        State = State with
+                        {
+                            Lookup = State.Lookup
+                                .Remove(IrcUtil.Casefold(user.Nick, CaseMapping))
+                                .Add(IrcUtil.Casefold(command.Args[0], CaseMapping), user.Id),
+                            Users = State.Users.SetItem(
+                                user.Id,
+                                user with { Nick = command.Args[0] })
+                        };
+                    }
+                }
+                break;
+            case "RENAME":
+                // RENAME <old_channel> <new_channel>
+                {
+                    if (GetChannel(command.Args[0]) is ChannelRecord channel)
+                    {
+                        State = State with
+                        {
+                            Lookup = State.Lookup
+                                .Remove(IrcUtil.Casefold(channel.Name, CaseMapping))
+                                .Add(IrcUtil.Casefold(command.Args[1], CaseMapping), channel.Id),
+                            Channels = State.Channels.SetItem(
+                                channel.Id,
+                                channel with { Name = command.Args[1] })
+                        };
                     }
                 }
                 break;
             case "PING":
                 // send a PONG
                 _ = SendAsync(PrepareCommand("PONG", [command.Args[0]]), cancellationToken);
+                break;
+            case "QUIT":
+                // QUIT [:<reason>]
+                {
+                    if (!IrcUtil.TryExtractUserFromSource(command, this, out var user))
+                    {
+                        break;
+                    }
+
+                    // spec says if the client quits the server replies with ERROR, not QUIT
+                    if (user.Id == ClientId)
+                    {
+                        Logger.LogWarning("Protocol violation: Received a QUIT message with our client as its source");
+                        break;
+                    }
+
+                    State = State with
+                    {
+                        Lookup = State.Lookup.Remove(IrcUtil.Casefold(user.Nick, CaseMapping)),
+                        Channels = State.Channels.SetItems(user.Channels.Keys.Select(c =>
+                            new KeyValuePair<Guid, ChannelRecord>(
+                                c,
+                                State.Channels[c] with { Users = State.Channels[c].Users.Remove(user.Id) }))),
+                        Users = State.Users.Remove(user.Id),
+                    };
+                }
+                break;
+            case "ERROR":
+                // ERROR :<reason>
+                Logger.LogInformation("Received an ERROR from the server: {Reason}", command.Args[0]);
                 break;
         }
     }
@@ -870,12 +1468,20 @@ public class Network : INetwork
         // CAPs that are always enabled if supported by the server, because we support them in this layer
         HashSet<string> defaultCaps =
         [
+            "account-notify",
+            "away-notify",
             "batch",
             "cap-notify",
+            "chghost",
+            "draft/channel-rename",
             "draft/multiline",
+            "extended-join",
             "message-ids",
             "message-tags",
+            "multi-prefix",
             "server-time",
+            "setname",
+            "userhost-in-names",
         ];
 
         // figure out which subcommand we have
@@ -987,7 +1593,7 @@ public class Network : INetwork
                         else if (!IsConnected)
                         {
                             // we don't support any of the server's caps, so end cap negotiation here
-                            _ = SendAsync(PrepareCommand("CAP", _END), cancellationToken);
+                            _ = SendAsync(PrepareCommand("CAP", END), cancellationToken);
                         }
                     }
                 }
@@ -1015,7 +1621,7 @@ public class Network : INetwork
 
                     if (command.Args[1] == "ACK" && !IsConnected && !SuspendCapEndForSasl)
                     {
-                        _ = SendAsync(PrepareCommand("CAP", _END), cancellationToken);
+                        _ = SendAsync(PrepareCommand("CAP", END), cancellationToken);
                     }
                 }
 
@@ -1038,7 +1644,7 @@ public class Network : INetwork
                 // we couldn't set CAPs, bail out
                 if (!IsConnected)
                 {
-                    _ = SendAsync(PrepareCommand("CAP", _END), cancellationToken);
+                    _ = SendAsync(PrepareCommand("CAP", END), cancellationToken);
                 }
 
                 break;
@@ -1048,7 +1654,9 @@ public class Network : INetwork
                 break;
         }
     }
+    #endregion
 
+    #region SASL
     private void AttemptSasl(CancellationToken cancellationToken)
     {
         foreach (var mech in SaslMechanismFactory.GetSupportedMechanisms(Options, Server!))
@@ -1082,7 +1690,7 @@ public class Network : INetwork
         if (SuspendCapEndForSasl)
         {
             SuspendCapEndForSasl = false;
-            _ = SendAsync(PrepareCommand("CAP", _END), cancellationToken);
+            _ = SendAsync(PrepareCommand("CAP", END), cancellationToken);
         }
     }
 
@@ -1117,7 +1725,7 @@ public class Network : INetwork
             {
                 SaslBuffer.Clear();
                 SelectedSaslMech = null;
-                _ = SendAsync(PrepareCommand("AUTHENTICATE", _STAR), cancellationToken);
+                _ = SendAsync(PrepareCommand("AUTHENTICATE", STAR), cancellationToken);
             }
         }
 
@@ -1140,14 +1748,14 @@ public class Network : INetwork
             {
                 // abort SASL
                 SelectedSaslMech = null;
-                _ = SendAsync(PrepareCommand("AUTHENTICATE", _STAR), cancellationToken);
+                _ = SendAsync(PrepareCommand("AUTHENTICATE", STAR), cancellationToken);
             }
             else
             {
                 // send response
                 if (responseBytes.Length == 0)
                 {
-                    _ = SendAsync(PrepareCommand("AUTHENTICATE", _PLUS), cancellationToken);
+                    _ = SendAsync(PrepareCommand("AUTHENTICATE", PLUS), cancellationToken);
                 }
                 else
                 {
@@ -1164,12 +1772,13 @@ public class Network : INetwork
                     if (response.Length % 400 == 0)
                     {
                         // if we sent exactly 400 bytes in the last line, send a blank line to let server know we're done
-                        _ = SendAsync(PrepareCommand("AUTHENTICATE", _PLUS), cancellationToken);
+                        _ = SendAsync(PrepareCommand("AUTHENTICATE", PLUS), cancellationToken);
                     }
                 }
             }
         }
     }
+    #endregion
 
     private void AbortUserRegistration(object? sender, NetworkEventArgs e)
     {
@@ -1183,11 +1792,202 @@ public class Network : INetwork
         }
     }
 
-    public INetworkInfo AsNetworkInfo() => State;
+    private void RemoveUserFromChannel(UserRecord user, ChannelRecord channel)
+    {
+        // is this us?
+        if (user.Id == ClientId)
+        {
+            // if we left a channel, remove the channel from all users and clear our lookup entry
+            Logger.LogTrace("Cleaning up channel {Channel} because we left it", channel.Name);
 
-    public bool TryGetEnabledCap(string cap, out string? value) => State.TryGetEnabledCap(cap, out value);
+            List<string> lookupRemove = [IrcUtil.Casefold(channel.Name, CaseMapping)];
+            List<UserRecord> userRemove = GetAllUsers()
+                .Where(u => u.Channels.Count == 1 && u.Channels.ContainsKey(channel.Id))
+                .ToList();
 
-    public bool TryGetISupport(ISupportToken token, out string? value) => State.TryGetISupport(token, out value);
+            lookupRemove.AddRange(userRemove.Select(u => IrcUtil.Casefold(u.Nick, CaseMapping)));
+            userRemove.ForEach(u => Logger.LogTrace("Cleaning up user {Nick} because we left {Channel} and share no other channels with them", u.Nick, channel.Name));
 
-    public string? GetISupportOrDefault(ISupportToken token, string? defaultValue = null) => State.GetISupportOrDefault(token, defaultValue);
+            State = State with
+            {
+                Lookup = State.Lookup.RemoveRange(lookupRemove),
+                Channels = State.Channels.Remove(channel.Id),
+                Users = State.Users
+                    .RemoveRange(userRemove.Select(u => u.Id))
+                    .ToImmutableDictionary(
+                        kvp => kvp.Key,
+                        kvp => kvp.Value with { Channels = kvp.Value.Channels.Remove(channel.Id) }
+                    ),
+            };
+        }
+        else
+        {
+            // someone else left a channel, just need to update their record
+            if (user.Channels.Count == 1 && user.Channels.ContainsKey(channel.Id))
+            {
+                Logger.LogTrace("Cleaning up user {Nick} because they left {Channel} and share no other channels with us", user.Nick, channel.Name);
+                State = State with
+                {
+                    Lookup = State.Lookup.Remove(IrcUtil.Casefold(user.Nick, CaseMapping)),
+                    Channels = State.Channels.SetItem(channel.Id, channel with { Users = channel.Users.Remove(user.Id) }),
+                    Users = State.Users.Remove(user.Id),
+                };
+            }
+            else
+            {
+                State = State with
+                {
+                    Channels = State.Channels.SetItem(channel.Id, channel with { Users = channel.Users.Remove(user.Id) }),
+                    Users = State.Users.SetItem(user.Id, user with { Channels = user.Channels.Remove(channel.Id) }),
+                };
+            }
+        }
+    }
+
+    /// <summary>
+    /// Mark the network as connected and fully registered without utilizing the underlying Connection.
+    /// This method is intended for unit tests where we can avoid having a full IRC protocol registration,
+    /// therefore making tests complete much more quickly and be narrowly tailored to the items under test.
+    /// The message loop is also terminated when this is called.
+    /// </summary>
+    /// <param name="server"></param>
+    /// <param name="host"></param>
+    /// <param name="account"></param>
+    internal void RegisterForUnitTests(IServer server, string host, string? account = null)
+    {
+        _messageLoopTokenSource.Cancel();
+        // This is expected to be a mock/stub connection via DI service replacement in the test harness
+        _connection = ConnectionFactory.Create(this, server, Options);
+        Host = host;
+        Account = account;
+    }
+
+    /// <summary>
+    /// Receive a raw protocol line, for use in unit testing.
+    /// </summary>
+    /// <param name="line"></param>
+    internal void ReceiveLineForUnitTests(string line)
+    {
+        UnsafeReceiveCommand(CommandFactory.Parse(CommandType.Server, line), default);
+    }
+
+    [MemberNotNull(nameof(State))]
+    [SuppressMessage("Style", "IDE0301:Simplify collection initialization",
+        Justification = "Immutable*.Empty is more indicative of what the data type is and requires no allocations")]
+    private void ResetState()
+    {
+        Guid clientId = Guid.NewGuid();
+        UserRecord client = new(
+            clientId,
+            Options.PrimaryNick,
+            Options.Ident,
+            string.Empty,
+            null,
+            false,
+            Options.RealName,
+            ImmutableHashSet<char>.Empty,
+            ImmutableDictionary<Guid, string>.Empty);
+
+        State = new(
+            Name,
+            clientId,
+            CaseMapping,
+            ImmutableDictionary.CreateRange<Guid, UserRecord>([new(clientId, client)]),
+            ImmutableDictionary<Guid, ChannelRecord>.Empty,
+            ImmutableDictionary.CreateRange<string, Guid>([new(IrcUtil.Casefold(Options.PrimaryNick, CaseMapping), clientId)]),
+            ImmutableDictionary<string, string?>.Empty,
+            ImmutableHashSet<string>.Empty,
+            ImmutableDictionary<ISupportToken, string?>.Empty);
+    }
+
+    /// <inheritdoc />
+    public void UnsafeReceiveCommand(ICommand command, CancellationToken cancellationToken)
+    {
+        OnCommandReceived(command, cancellationToken);
+        _commandEventStream.OnNext(new(this, command, cancellationToken));
+    }
+
+    /// <inheritdoc />
+    public void UnsafeUpdateUser(UserRecord user)
+    {
+        if (State.Users.TryGetValue(user.Id, out var existing))
+        {
+            State = State with
+            {
+                Lookup = State.Lookup
+                    .Remove(IrcUtil.Casefold(existing.Nick, CaseMapping))
+                    .Add(IrcUtil.Casefold(user.Nick, CaseMapping), user.Id),
+                Channels = State.Channels
+                    .SetItems(user.Channels.Keys.Select(c =>
+                        new KeyValuePair<Guid, ChannelRecord>(
+                            c,
+                            State.Channels[c] with { Users = State.Channels[c].Users.SetItem(user.Id, user.Channels[c]) }))),
+                Users = State.Users.SetItem(user.Id, user)
+            };
+
+            var removedFromChannels = from channel in State.Channels.Values
+                                      where channel.Users.ContainsKey(user.Id) && !user.Channels.ContainsKey(channel.Id)
+                                      select channel;
+
+            foreach (var channel in removedFromChannels)
+            {
+                RemoveUserFromChannel(user, channel);
+            }
+        }
+        else
+        {
+            State = State with
+            {
+                Lookup = State.Lookup.Add(IrcUtil.Casefold(user.Nick, CaseMapping), user.Id),
+                Channels = State.Channels
+                    .SetItems(user.Channels.Keys.Select(c =>
+                        new KeyValuePair<Guid, ChannelRecord>(
+                            c,
+                            State.Channels[c] with { Users = State.Channels[c].Users.SetItem(user.Id, user.Channels[c]) }))),
+                Users = State.Users.SetItem(user.Id, user)
+            };
+        }
+    }
+
+    /// <inheritdoc />
+    public void UnsafeUpdateChannel(ChannelRecord channel)
+    {
+        if (State.Channels.TryGetValue(channel.Id, out var existing))
+        {
+            var removedUsers = from userId in existing.Users.Keys
+                               where !channel.Users.ContainsKey(userId)
+                               select State.Users[userId];
+
+            State = State with
+            {
+                Lookup = State.Lookup
+                    .Remove(IrcUtil.Casefold(existing.Name, CaseMapping))
+                    .Add(IrcUtil.Casefold(channel.Name, CaseMapping), channel.Id),
+                Channels = State.Channels.SetItem(channel.Id, channel),
+                Users = State.Users
+                    .SetItems(channel.Users.Keys.Select(u =>
+                        new KeyValuePair<Guid, UserRecord>(
+                            u,
+                            State.Users[u] with { Channels = State.Users[u].Channels.SetItem(channel.Id, channel.Users[u]) })))
+            };
+
+            foreach (var user in removedUsers)
+            {
+                RemoveUserFromChannel(user, channel);
+            }
+        }
+        else
+        {
+            State = State with
+            {
+                Lookup = State.Lookup.Add(IrcUtil.Casefold(channel.Name, CaseMapping), channel.Id),
+                Channels = State.Channels.SetItem(channel.Id, channel),
+                Users = State.Users
+                    .SetItems(channel.Users.Keys.Select(u =>
+                        new KeyValuePair<Guid, UserRecord>(
+                            u,
+                            State.Users[u] with { Channels = State.Users[u].Channels.SetItem(channel.Id, channel.Users[u]) })))
+            };
+        }
+    }
 }

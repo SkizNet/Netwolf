@@ -14,9 +14,9 @@ using System.Text;
 
 namespace Netwolf.Server.Commands;
 
-public class WhoCommand : IServerCommandHandler, IISupportTokenProvider
+public class WhoCommand : ServerCommandHandler, IISupportTokenProvider
 {
-    public string Command => "WHO";
+    public override string Command => "WHO";
 
     private bool WhoxEnabled { get; init; }
 
@@ -60,7 +60,7 @@ public class WhoCommand : IServerCommandHandler, IISupportTokenProvider
         WhoxEnabled = options.Value.EnabledFeatures.Contains("WHOX");
     }
 
-    public Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
+    public override Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var client = ((ServerContext)sender).User!;

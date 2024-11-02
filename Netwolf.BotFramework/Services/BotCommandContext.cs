@@ -3,6 +3,7 @@
 
 using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Context;
+using Netwolf.Transport.IRC;
 
 namespace Netwolf.BotFramework.Services;
 
@@ -54,7 +55,7 @@ public class BotCommandContext : IContext
         Bot = bot;
         Command = command;
         FullLine = fullLine;
-        SenderNickname = BotUtil.SplitHostmask(command.Source).Nick;
+        SenderNickname = IrcUtil.SplitHostmask(command.Source).Nick;
     }
 
     /// <summary>

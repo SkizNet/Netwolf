@@ -1,6 +1,7 @@
 ﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -8,10 +9,10 @@ using Netwolf.Attributes;
 using Netwolf.BotFramework.Exceptions;
 using Netwolf.BotFramework.Internal;
 using Netwolf.BotFramework.Services;
-using Netwolf.BotFramework.State;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.Transport.Events;
 using Netwolf.Transport.IRC;
+using Netwolf.Transport.State;
 
 using System.Collections.Immutable;
 using System.ComponentModel.DataAnnotations;
@@ -21,6 +22,7 @@ using System.Reactive.Threading.Tasks;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Text;
 using System.Threading.RateLimiting;
 
@@ -44,11 +46,6 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// Information on the Bot's network.
     /// </summary>
     public INetworkInfo NetworkInfo => Network.AsNetworkInfo();
-
-    /// <summary>
-    /// Information on the Bot's state and channels.
-    /// </summary>
-    public UserRecord BotInfo { get; private init; }
     #endregion
 
     #region Protected properties and DI services
@@ -130,10 +127,6 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     private IEnumerable<ICapProvider> CapProviders { get; init; }
 
     private ValidationContextFactory ValidationContextFactory { get; init; }
-
-    private ChannelRecordLookup ChannelRecordLookup { get; init; }
-
-    private UserRecordLookup UserRecordLookup { get; init; }
     #endregion
 
     #region Constructors
@@ -155,12 +148,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         BotCommandContextFactory = data.BotCommandContextFactory;
         ValidationContextFactory = data.ValidationContextFactory;
         CapProviders = data.CapProviders;
-        ChannelRecordLookup = data.ChannelRecordLookup;
-        UserRecordLookup = data.UserRecordLookup;
         DisconnectionSource = new();
-
-        // wire up a dummy BotInfo; we'll update it once we connect
-        BotInfo = UserRecordLookup.GetOrAddUser(Options.PrimaryNick, Options.Ident, "disconnected", Options.AccountName, Options.RealName);
 
         // Initialize rate limiters with a cached options so it can't change on us
         var cachedOptions = Options;
@@ -287,18 +275,6 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         CommandSubscriptions.Add(Network.CommandReceived.Subscribe(OnCommandReceived));
         Network.Disconnected += OnDisconnected;
 
-        // ServerCommandAttribute is internal for now as I'm not entirely happy with the API to make it public yet
-        var listeners = typeof(Bot)
-            .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
-            .Select(static method => (method, attr: method.GetCustomAttribute<ServerCommandAttribute>()))
-            .Where(t => t.attr != null);
-
-        foreach (var (method, attr) in listeners)
-        {
-            Logger.LogDebug("Registering server listener {Type}.{Method} for {Verb}", method.DeclaringType?.FullName ?? "<unknown>", method.Name, attr!.Command);
-            CommandSubscriptions.Add(CommandStream.Where(c => c.Verb == attr!.Command).Subscribe(method.CreateDelegate<Action<ICommand>>(this)));
-        }
-
         // Wire up bot commands
         // There is a reflection-based slow path and a source generator fast path; detect which was used
         var generatedTypes = GetType()
@@ -423,9 +399,12 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     public async Task SendMessageAsync(string target, string message, IReadOnlyDictionary<string, string?> tags, CancellationToken cancellationToken)
     {
         string? sharedChannel = null;
-        if (Network.TryGetISupport(ISupportToken.CPRIVMSG, out _))
+        if (Network.TryGetISupport(ISupportToken.CPRIVMSG, out _) && Network.GetUserByNick(target) is UserRecord targetUser)
         {
-            sharedChannel = UserRecordLookup.GetUserByNick(target)?.Channels.Keys.FirstOrDefault(c => !string.IsNullOrEmpty(c.Users[BotInfo]))?.Name;
+            sharedChannel = Network.GetChannelsForUser(targetUser)
+                .Select(x => x.Key)
+                .FirstOrDefault(x => !string.IsNullOrEmpty(Network.Channels.GetValueOrDefault(x)))
+                ?.Name;
         }
 
         foreach (var command in Network.PrepareMessage(MessageType.Message, target, message, tags, sharedChannel))
@@ -458,10 +437,12 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     public async Task SendNoticeAsync(string target, string message, IReadOnlyDictionary<string, string?> tags, CancellationToken cancellationToken)
     {
         string? sharedChannel = null;
-        if (Network.TryGetISupport(ISupportToken.CNOTICE, out _))
+        if (Network.TryGetISupport(ISupportToken.CNOTICE, out _) && Network.GetUserByNick(target) is UserRecord targetUser)
         {
-            UserRecord botUser = UserRecordLookup.GetUserByNick(Network.Nick)!;
-            sharedChannel = UserRecordLookup.GetUserByNick(target)?.Channels.Keys.FirstOrDefault(c => !string.IsNullOrEmpty(c.Users[BotInfo]))?.Name;
+            sharedChannel = Network.GetChannelsForUser(targetUser)
+                .Select(x => x.Key)
+                .FirstOrDefault(x => !string.IsNullOrEmpty(Network.Channels.GetValueOrDefault(x)))
+                ?.Name;
         }
 
         foreach (var command in Network.PrepareMessage(MessageType.Notice, target, message, tags, sharedChannel))
@@ -536,9 +517,9 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
         var result = await SendAsync("JOIN", [name, key], linkedToken).WithReply(c => c.Verb switch
         {
-            var x when _joinErrors0.Contains(x) => BotUtil.IrcEquals(c.Args[0], name, Network.CaseMapping),
-            var x when _joinErrors1.Contains(x) => BotUtil.IrcEquals(c.Args[1], name, Network.CaseMapping),
-            "JOIN" => BotUtil.IrcEquals(c.Args[0], name, Network.CaseMapping) && c.Source == Network.Nick,
+            var x when _joinErrors0.Contains(x) => IrcUtil.IrcEquals(c.Args[0], name, Network.CaseMapping),
+            var x when _joinErrors1.Contains(x) => IrcUtil.IrcEquals(c.Args[1], name, Network.CaseMapping),
+            "JOIN" => IrcUtil.IrcEquals(c.Args[0], name, Network.CaseMapping) && c.Source == Network.Nick,
             _ => false
         }).ConfigureAwait(false);
 
@@ -552,8 +533,8 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         {
             string token = Random.Shared.Next(1000).ToString();
             var results = SendAsync("WHO", [name, $"%tcuhnfar,{token}"], linkedToken).WithReplies(
-                c => c.Verb == "354" && c.Args.Count == 9 && c.Args[1] == token && BotUtil.IrcEquals(c.Args[2], name, Network.CaseMapping),
-                c => c.Verb == "315" && BotUtil.IrcEquals(c.Args[1], name, Network.CaseMapping)
+                c => c.Verb == "354" && c.Args.Count == 9 && c.Args[1] == token && IrcUtil.IrcEquals(c.Args[2], name, Network.CaseMapping),
+                c => c.Verb == "315" && IrcUtil.IrcEquals(c.Args[1], name, Network.CaseMapping)
                 );
 
             await foreach (var c in results)
@@ -564,7 +545,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         else
         {
             _ = await SendAsync("WHO", [name], linkedToken)
-                .WithReply(c => c.Verb == "315" && BotUtil.IrcEquals(c.Args[1], name, Network.CaseMapping))
+                .WithReply(c => c.Verb == "315" && IrcUtil.IrcEquals(c.Args[1], name, Network.CaseMapping))
                 .ConfigureAwait(false);
         }
     }
@@ -589,10 +570,10 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         var result = await SendAsync("PART", [name, reason], linkedToken).WithReply(c => c.Verb switch
         {
             // channel is 2nd argument
-            "403" or "442" => BotUtil.IrcEquals(c.Args[1], name, Network.CaseMapping),
+            "403" or "442" => IrcUtil.IrcEquals(c.Args[1], name, Network.CaseMapping),
             // channel is 1st argument (might be a channel list) but verify source as well
-            "PART" => BotUtil.CommaListContains(c.Args[0], name, Network.CaseMapping)
-                && BotUtil.IrcEquals(BotUtil.SplitHostmask(c.Source ?? string.Empty).Nick, Network.Nick, Network.CaseMapping),
+            "PART" => IrcUtil.CommaListContains(c.Args[0], name, Network.CaseMapping)
+                && IrcUtil.IrcEquals(IrcUtil.SplitHostmask(c.Source ?? string.Empty).Nick, Network.Nick, Network.CaseMapping),
             _ => false
         }).ConfigureAwait(false);
 
@@ -649,8 +630,8 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         }
 
         // ignore messages sent *from* the bot (e.g. echo-message CAP is enabled)
-        var sender = UserRecordLookup.GetUserByNick(BotUtil.SplitHostmask(e.Command.Source).Nick);
-        if (sender == BotInfo)
+        var sender = Network.GetUserByNick(IrcUtil.SplitHostmask(e.Command.Source).Nick);
+        if (sender?.Id == Network.ClientId)
         {
             return;
         }
@@ -774,12 +755,6 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
         // Connect to the network
         await Network.ConnectAsync(linkedToken).ConfigureAwait(false);
-
-        // Fix up BotInfo
-        UserRecordLookup.RenameUser(BotInfo.Nick, Network.Nick);
-        BotInfo.Ident = Network.Ident;
-        BotInfo.Host = Network.Host;
-        BotInfo.Account = Network.Account;
 
         // Oper up if necessary; regular oper comes first since soper might require us to be an oper
         if (Options.OperName != null)
@@ -959,520 +934,60 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     }
     #endregion
 
-    #region Builtin Handlers
-    // RPL_TOPIC (332) <client> <channel> :<topic>
-    [ServerCommand("332")]
-    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
-    private void OnTopic(ICommand command)
-    {
-        var channel = ChannelRecordLookup.GetChannel(command.Args[1]);
-        if (channel != null)
-        {
-            channel.Topic = command.Args[2];
-        }
-    }
-
-    // RPL_WHOREPLY (352) <client> <channel> <username> <host> <server> <nick> <flags> :<hopcount> <realname>
-    [ServerCommand("352")]
-    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
-    private void OnWhoReply(ICommand command)
-    {
-        var hopReal = command.Args[7].Split(' ', 2);
-        string realName = hopReal.Length > 1 ? hopReal[1] : string.Empty;
-        var user = UserRecordLookup.GetOrAddUser(command.Args[5], command.Args[2], command.Args[3], null, realName, command.Args[6][0] == 'G');
-
-        // channel being null is ok here since /who nick returns an arbitrary channel or potentially a '*'
-        var channel = command.Args[1] == "*" ? null : ChannelRecordLookup.GetChannel(command.Args[1]);
-
-        // if channel isn't known and this user didn't share any other channels with us, purge it
-        if (channel == null && user.Channels.Count == 0)
-        {
-            UserRecordLookup.RemoveUser(user);
-            return;
-        }
-
-        // fill in missing user info
-        user.Ident = command.Args[2];
-        user.Host = command.Args[3];
-        user.RealName = realName;
-        user.IsAway = command.Args[6][0] == 'G';
-
-        // if channel is known, update our user record
-        if (channel != null)
-        {
-            // determine prefix
-            int prefixStart = (command.Args[6].Length == 1 || command.Args[6][1] != '*') ? 1 : 2;
-            string prefix = string.Concat(command.Args[6][prefixStart..].TakeWhile(Network.ChannelPrefixSymbols.Contains));
-
-            channel.Users = channel.Users.SetItem(user, prefix);
-            user.Channels = user.Channels.SetItem(channel, prefix);
-        }
-    }
-
     // Note: no ServerCommandAttribute for WHOX replies since there's no easy way to determine which set of fields were requested
     // This particular implementation assumes a mask of %tcuhnfar. The token is not checked.
     // RPL_WHOSPCRPL (354) <client> [token] [channel] [user] [ip] [host] [server] [nick] [flags] [hopcount] [idle] [account] [oplevel] [:realname]
     // this impl: <client> <token> <channel> <user> <host> <nick> <flags> <account> :<realname>
+    [SuppressMessage("Style", "IDE0301:Simplify collection initialization",
+        Justification = "Immutable*.Empty is more indicative of what the data type is and requires no allocations")]
     private void OnWhoXReply(ICommand command)
     {
-        var user = UserRecordLookup.GetOrAddUser(
-            command.Args[5],
-            command.Args[3],
-            command.Args[4],
-            command.Args[7] == "0" ? null : command.Args[7],
-            command.Args[8],
-            command.Args[6][0] == 'G');
+        if (Network.GetUserByNick(command.Args[5]) is UserRecord user)
+        {
+            // fill in missing user info
+            user = user with
+            {
+                Ident = command.Args[3],
+                Host = command.Args[4],
+                Account = command.Args[7] == "0" ? null : command.Args[7],
+                RealName = command.Args[8],
+                IsAway = command.Args[6][0] == 'G',
+            };
+        }
+        else
+        {
+            user = new UserRecord(
+                Guid.NewGuid(),
+                command.Args[5],
+                command.Args[3],
+                command.Args[4],
+                command.Args[7] == "0" ? null : command.Args[7],
+                command.Args[6][0] == 'G',
+                command.Args[8],
+                ImmutableHashSet<char>.Empty,
+                ImmutableDictionary<Guid, string>.Empty);
+        }
 
         // channel being null is ok here since /who nick returns an arbitrary channel or potentially a '*'
-        var channel = command.Args[2] == "*" ? null : ChannelRecordLookup.GetChannel(command.Args[2]);
+        var channel = command.Args[2] == "*" ? null : Network.GetChannel(command.Args[2]);
 
-        // if channel isn't known and this user didn't share any other channels with us, purge it
+        // if channel isn't known and this user didn't share any other channels with us, then nothing to do here
         if (channel == null && user.Channels.Count == 0)
         {
-            UserRecordLookup.RemoveUser(user);
             return;
         }
 
-        // fill in missing user info
-        user.Ident = command.Args[3];
-        user.Host = command.Args[4];
-        user.Account = command.Args[7] == "0" ? null : command.Args[7];
-        user.RealName = command.Args[8];
-        user.IsAway = command.Args[6][0] == 'G';
-
-        // if channel is known, update our user record
+        // add prefix if channel is known
         if (channel != null)
         {
             // determine prefix
             int prefixStart = (command.Args[6].Length == 1 || command.Args[6][1] != '*') ? 1 : 2;
             string prefix = string.Concat(command.Args[6][prefixStart..].TakeWhile(Network.ChannelPrefixSymbols.Contains));
 
-            channel.Users = channel.Users.SetItem(user, prefix);
-            user.Channels = user.Channels.SetItem(channel, prefix);
+            user = user with { Channels = user.Channels.SetItem(channel.Id, prefix) };
         }
+
+        // update network state with the updated user info
+        Network.UnsafeUpdateUser(user);
     }
-
-    // RPL_NAMREPLY (353) <client> <symbol> <channel> :[prefix]<nick>{ [prefix]<nick>}
-    [ServerCommand("353")]
-    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
-    private void OnNameReply(ICommand command)
-    {
-        var userhostInNames = Network.TryGetEnabledCap("userhost-in-names", out _);
-        var channel = ChannelRecordLookup.GetChannel(command.Args[2]);
-
-        if (channel == null)
-        {
-            return;
-        }
-
-        foreach (var prefixedNIH in command.Args[3].Split(' ', StringSplitOptions.RemoveEmptyEntries))
-        {
-            // extract the prefix from the front
-            string prefix = string.Concat(prefixedNIH.TakeWhile(Network.ChannelPrefixSymbols.Contains));
-            string nih = prefixedNIH[prefix.Length..];
-
-            // this might be introducing a new (previously-unknown) user
-            // however unless userhost-in-names was negotiated we don't have enough info to add someone here
-            UserRecord? user;
-            if (userhostInNames)
-            {
-                // split into (nick, ident, host)
-                var (nick, ident, host) = BotUtil.SplitHostmask(nih);
-
-                // don't blow up if the ircd gave us garbage
-                if (string.IsNullOrEmpty(nick) || string.IsNullOrEmpty(ident) || string.IsNullOrEmpty(host))
-                {
-                    Logger.LogWarning("Protocol violation: userhost-in-names negotiated but NAMES does not contain a full nick!user@host");
-                    continue;
-                }
-
-                user = UserRecordLookup.GetOrAddUser(nick, ident, host);
-            }
-            else
-            {
-                // not enough info to create a new UserRecord; the bot will automatically issue a WHO #channel
-                // upon receiving a JOIN message when userhost-in-names isn't negotiated so it'll be handled there
-                user = UserRecordLookup.GetUserByNick(nih);
-            }
-
-            if (user == null)
-            {
-                continue;
-            }
-
-            user.Channels = user.Channels.SetItem(channel, prefix);
-            channel.Users = channel.Users.SetItem(user, prefix);
-        }
-    }
-
-    // regular join: JOIN <channel>
-    // extended-join: JOIN <channel> <account> :<gecos>
-    [ServerCommand("JOIN")]
-    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
-    private void OnJoin(ICommand command)
-    {
-        if (command.Source == null)
-        {
-            Logger.LogWarning("Protocol violation: JOIN message lacks a source");
-            return;
-        }
-
-        var channel = ChannelRecordLookup.GetOrAddChannel(command.Args[0]);
-        var (nick, ident, host) = BotUtil.SplitHostmask(command.Source);
-
-        // don't blow up if the ircd gave us garbage
-        if (string.IsNullOrEmpty(nick) || string.IsNullOrEmpty(ident) || string.IsNullOrEmpty(host))
-        {
-            Logger.LogWarning("Protocol violation: JOIN message source is not a full nick!user@host");
-            return;
-        }
-
-        string? account = null;
-        string gecos = string.Empty;
-        if (Network.TryGetEnabledCap("extended-join", out _))
-        {
-            account = command.Args[1] != "*" ? command.Args[1] : null;
-            gecos = command.Args[2];
-        }
-
-        var user = UserRecordLookup.GetOrAddUser(nick, ident, host, account, gecos);
-        user.Channels = user.Channels.SetItem(channel, string.Empty);
-        channel.Users = channel.Users.SetItem(user, string.Empty);
-    }
-
-    // PART <channel>{,<channel>} [:<reason>]
-    [ServerCommand("PART")]
-    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
-    private void OnPart(ICommand command)
-    {
-        if (!ExtractUserFromSource(command, out var user))
-        {
-            return;
-        }
-
-        // RFC states that the PART message from server to client SHOULD NOT send multiple channels, not MUST NOT, so accomodate multiple channels here
-        foreach (var channelName in command.Args[0].Split(',', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var channel = ChannelRecordLookup.GetChannel(channelName);
-            if (channel == null)
-            {
-                Logger.LogWarning("State corruption detected: Received PART message for {Channel} but it does not exist in state", channelName);
-                continue;
-            }
-
-            RemoveUserFromChannel(user, channel);
-        }
-    }
-
-    // KICK <channel> <user> [:<comment>]
-    [ServerCommand("KICK")]
-    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
-    private void OnKick(ICommand command)
-    {
-        if (command.Args[1].Contains(','))
-        {
-            Logger.LogWarning("Protocol violation: KICK message contains multiple nicks");
-            return;
-        }
-
-        var channel = ChannelRecordLookup.GetChannel(command.Args[0]);
-        if (channel == null)
-        {
-            Logger.LogWarning("State corruption detected: Received KICK message for {Channel} but it does not exist in state", command.Args[0]);
-            return;
-        }
-
-        var user = UserRecordLookup.GetUserByNick(command.Args[1]);
-        if (user == null)
-        {
-            Logger.LogWarning("State corruption detected: Received KICK message for {Nick} but they do not exist in state", command.Args[1]);
-            return;
-        }
-
-        RemoveUserFromChannel(user, channel);
-    }
-
-    // QUIT [:<reason>]
-    [ServerCommand("QUIT")]
-    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
-    private void OnQuit(ICommand command)
-    {
-        if (!ExtractUserFromSource(command, out var user))
-        {
-            return;
-        }
-
-        // spec says if the bot quits the server replies with ERROR, not QUIT
-        if (user == BotInfo)
-        {
-            Logger.LogWarning("Protocol violation: Received a QUIT message with the bot as its source");
-            return;
-        }
-
-        foreach (var channel in user.Channels.Keys)
-        {
-            RemoveUserFromChannel(user, channel);
-        }
-    }
-
-    // ERROR :<reason>
-    [ServerCommand("ERROR")]
-    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
-    private void OnError(ICommand _)
-    {
-        Logger.LogTrace("Received an ERROR from the server. Cleaning up all cached user and channel state.");
-        // reset BotInfo to the state it was upon Bot construction
-        BotInfo.Nick = Options.PrimaryNick;
-        BotInfo.Ident = Options.Ident;
-        BotInfo.Host = "disconnected";
-        BotInfo.Account = null;
-        BotInfo.Channels = BotInfo.Channels.Clear();
-        BotInfo.IsAway = false;
-        BotInfo.RealName = Options.RealName;
-
-        // we're about to be disconnected so clear the lookups entirely
-        UserRecordLookup.ClearAllUsers();
-        UserRecordLookup.AddExistingUser(BotInfo);
-        ChannelRecordLookup.ClearAllChannels();
-    }
-
-    // ACCOUNT <accountname>
-    [ServerCommand("ACCOUNT")]
-    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
-    private void OnAccount(ICommand command)
-    {
-        if (ExtractUserFromSource(command, out var user))
-        {
-            user.Account = command.Args[0] == "*" ? null : command.Args[0];
-        }
-    }
-
-    // AWAY [:<message>]
-    [ServerCommand("AWAY")]
-    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
-    private void OnAway(ICommand command)
-    {
-        if (ExtractUserFromSource(command, out var user))
-        {
-            user.IsAway = command.Args.Count > 0;
-        }
-    }
-
-    // CHGHOST <new_user> <new_host>
-    [ServerCommand("CHGHOST")]
-    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
-    private void OnChangeHost(ICommand command)
-    {
-        if (ExtractUserFromSource(command, out var user))
-        {
-            user.Ident = command.Args[0];
-            user.Host = command.Args[1];
-        }
-    }
-
-    // SETNAME :<realname>
-    [ServerCommand("SETNAME")]
-    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
-    private void OnSetName(ICommand command)
-    {
-        if (ExtractUserFromSource(command, out var user))
-        {
-            user.RealName = command.Args[0];
-        }
-    }
-
-    // NICK <nickname>
-    [ServerCommand("NICK")]
-    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
-    private void OnChangeNick(ICommand command)
-    {
-        if (ExtractUserFromSource(command, out var user))
-        {
-            UserRecordLookup.RenameUser(user.Nick, command.Args[0]);
-        }
-    }
-
-    // RENAME <old_channel> <new_channel>
-    [ServerCommand("RENAME")]
-    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
-    private void OnChannlRename(ICommand command)
-    {
-        ChannelRecordLookup.RenameChannel(command.Args[0], command.Args[1]);
-    }
-
-    // MODE <target> [<modestring> [<arguments>...]]
-    [ServerCommand("MODE")]
-    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Indirectly called via Reflection")]
-    private void OnMode(ICommand command)
-    {
-        if (!Network.ChannelTypes.Contains(command.Args[0][0]))
-        {
-            // not a channel mode change
-            return;
-        }
-
-        var channel = ChannelRecordLookup.GetChannel(command.Args[0]);
-        if (channel == null)
-        {
-            Logger.LogWarning("State corruption detected: Received MODE message for {Channel} but it does not exist in state", command.Args[0]);
-            return;
-        }
-
-        // take a snapshot of the various mode types since calling the underlying properties recomputes the value each time.
-        string prefixModes = Network.ChannelPrefixModes;
-        string prefixSymbols = Network.ChannelPrefixSymbols;
-        string typeAModes = Network.ChannelModesA;
-        string typeBModes = Network.ChannelModesB;
-        string typeCModes = Network.ChannelModesC;
-        string typeDModes = Network.ChannelModesD;
-
-        // index of the next mode argument
-        int argIndex = 2;
-        var changed = channel.Modes;
-        bool adding = true;
-
-        foreach (var c in command.Args[1])
-        {
-            switch (c)
-            {
-                case '+':
-                    adding = true;
-                    break;
-                case '-':
-                    adding = false;
-                    break;
-                case var _ when prefixModes.Contains(c):
-                    {
-                        var user = UserRecordLookup.GetUserByNick(command.Args[argIndex]);
-                        if (user == null || !user.Channels.TryGetValue(channel, out string? status))
-                        {
-                            Logger.LogWarning("State corruption detected: Received MODE message for {Nick} on {Channel} but they do not exist in state", command.Args[argIndex], channel.Name);
-                        }
-                        else
-                        {
-                            argIndex++;
-                            var statusSet = new HashSet<char>(status);
-                            var symbol = prefixSymbols[prefixModes.IndexOf(c)];
-                            if (adding)
-                            {
-                                statusSet.Add(symbol);
-                            }
-                            else
-                            {
-                                statusSet.Remove(symbol);
-                            }
-
-                            status = string.Concat(prefixSymbols.Where(statusSet.Contains));
-                            user.Channels = user.Channels.SetItem(channel, status);
-                            channel.Users = channel.Users.SetItem(user, status);
-                        }
-                    }
-                    break;
-                case var _ when typeAModes.Contains(c):
-                    // we don't track list modes so nothing to do here
-                    break;
-                case var _ when typeBModes.Contains(c):
-                    if (adding)
-                    {
-                        changed = changed.SetItem(c.ToString(), command.Args[argIndex]);
-                    }
-                    else
-                    {
-                        changed = changed.Remove(c.ToString());
-                    }
-
-                    argIndex++;
-                    break;
-                case var _ when typeCModes.Contains(c):
-                    if (adding)
-                    {
-                        changed = changed.SetItem(c.ToString(), command.Args[argIndex]);
-                        argIndex++;
-                    }
-                    else
-                    {
-                        changed = changed.Remove(c.ToString());
-                    }
-                    break;
-                case var _ when typeDModes.Contains(c):
-                    if (adding)
-                    {
-                        changed = changed.SetItem(c.ToString(), null);
-                    }
-                    else
-                    {
-                        changed = changed.Remove(c.ToString());
-                    }
-                    break;
-                default:
-                    // hope it's a mode without an argument as otherwise this will mess everything else up
-                    Logger.LogWarning("Protocol violation: Received MODE command for unknown mode letter {Mode}", c);
-                    break;
-            }
-        }
-
-        channel.Modes = changed;
-    }
-
-    private void RemoveUserFromChannel(UserRecord user, ChannelRecord channel)
-    {
-        // is this the bot?
-        if (user == BotInfo)
-        {
-            // if the bot left a channel, remove the channel from all users
-            foreach (var other in channel.Users.Keys)
-            {
-                other.Channels.Remove(channel);
-                if (other.Channels.Count == 0)
-                {
-                    Logger.LogTrace("Cleaning up user {Nick} because we left {Channel} and share no other channels with them", other.Nick, channel.Name);
-                    UserRecordLookup.RemoveUser(other);
-                }
-            }
-
-            Logger.LogTrace("Cleaning up channel {Channel} because we left it", channel.Name);
-            channel.Users = channel.Users.Clear();
-            ChannelRecordLookup.RemoveChannel(channel);
-        }
-        else
-        {
-            // someone else left a channel, just need to update their record
-            user.Channels = user.Channels.Remove(channel);
-            channel.Users = channel.Users.Remove(user);
-            if (user.Channels.Count == 0)
-            {
-                Logger.LogTrace("Cleaning up user {Nick} because they left {Channel} and share no other channels with us", user.Nick, channel.Name);
-                UserRecordLookup.RemoveUser(user);
-            }
-        }
-    }
-
-    private bool ExtractUserFromSource(ICommand command, out UserRecord user)
-    {
-        user = null!;
-
-        if (command.Source == null)
-        {
-            Logger.LogWarning("Protocol violation: {Command} message lacks a source", command.Verb);
-            return false;
-        }
-
-        var (nick, ident, host) = BotUtil.SplitHostmask(command.Source);
-        if (string.IsNullOrEmpty(nick) || string.IsNullOrEmpty(ident) || string.IsNullOrEmpty(host))
-        {
-            Logger.LogWarning("Protocol violation: {Command} message source is not a full nick!user@host", command.Verb);
-            return false;
-        }
-
-        user = UserRecordLookup.GetUserByNick(nick)!;
-        if (user == null)
-        {
-            // not a user we know about anyway (for some reason) -- this is probably a bug
-            Logger.LogWarning("State corruption detected: Received {Command} message for {Nick} but they do not exist in state", command.Verb, nick);
-            return false;
-        }
-
-        return true;
-    }
-    #endregion
 }

@@ -14,6 +14,7 @@ using Netwolf.PluginFramework.Extensions.DependencyInjection;
 using Netwolf.PluginFramework.Permissions;
 using Netwolf.Transport.Extensions.DependencyInjection;
 using Netwolf.Transport.IRC;
+using Netwolf.Transport.State;
 
 namespace Netwolf.BotFramework;
 
@@ -117,8 +118,6 @@ public static class BotFrameworkExtensions
             services.AddSingleton<BotRegistry>(_registry[services]);
             services.AddSingleton<IPermissionManager, BotPermissionManager>();
             services.AddScoped<ValidationContextFactory>();
-            services.AddScoped<ChannelRecordLookup>();
-            services.AddScoped<UserRecordLookup>();
         }
 
         if (runImmediately && !services.Any(s => s.ImplementationType == typeof(BotRunnerService)))
@@ -132,8 +131,6 @@ public static class BotFrameworkExtensions
                 provider.GetKeyedServices<IAccountProvider>(key),
                 provider.GetKeyedServices<IPermissionProvider>(key));
         });
-
-        services.AddKeyedSingleton<ICapProvider, DefaultCapProvider>(botName);
 
         // BotRunnerService passes this explicitly via an extra parameter in ActivatorUtilities.CreateInstance,
         // however we register it as a DI service here so that bots created outside of BotRunnerService can still
@@ -149,9 +146,7 @@ public static class BotFrameworkExtensions
                 provider.GetRequiredService<ICommandFactory>(),
                 provider.GetRequiredKeyedService<BotCommandContextFactory>(key),
                 provider.GetKeyedServices<ICapProvider>(key),
-                provider.GetRequiredService<ValidationContextFactory>(),
-                provider.GetRequiredService<ChannelRecordLookup>(),
-                provider.GetRequiredService<UserRecordLookup>());
+                provider.GetRequiredService<ValidationContextFactory>());
         });
 
         var builder = new BotBuilder(botName, services);

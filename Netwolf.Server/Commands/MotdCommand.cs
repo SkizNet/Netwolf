@@ -11,11 +11,11 @@ using System.Threading.Tasks;
 
 namespace Netwolf.Server.Commands;
 
-public class MotdCommand : IServerCommandHandler
+public class MotdCommand : ServerCommandHandler
 {
-    public string Command => "MOTD";
+    public override string Command => "MOTD";
 
-    public Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
+    public override Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult<ICommandResponse>(ExecuteInternal(((ServerContext)sender).User!));

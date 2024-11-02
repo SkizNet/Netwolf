@@ -11,11 +11,11 @@ using System.Threading.Tasks;
 
 namespace Netwolf.Server.Commands;
 
-public class ListUsersCommand : IServerCommandHandler
+public class ListUsersCommand : ServerCommandHandler
 {
-    public string Command => "LUSERS";
+    public override string Command => "LUSERS";
 
-    public Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
+    public override Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult<ICommandResponse>(ExecuteInternal(((ServerContext)sender).User!));

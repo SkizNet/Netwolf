@@ -8,6 +8,7 @@ using Netwolf.BotFramework.Internal;
 using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.Transport.IRC;
+using Netwolf.Transport.State;
 
 namespace Netwolf.BotFramework;
 
@@ -32,8 +33,6 @@ public sealed class BotCreationData
     internal BotCommandContextFactory BotCommandContextFactory { get; init; }
     internal IEnumerable<ICapProvider> CapProviders { get; init; }
     internal ValidationContextFactory ValidationContextFactory { get; init; }
-    internal ChannelRecordLookup ChannelRecordLookup { get; init; }
-    internal UserRecordLookup UserRecordLookup { get; init; }
 
     // for unit testing
     internal bool EnableCommandOptimization { get; set; } = true;
@@ -47,9 +46,7 @@ public sealed class BotCreationData
         ICommandFactory commandFactory,
         BotCommandContextFactory botCommandContextFactory,
         IEnumerable<ICapProvider> capProviders,
-        ValidationContextFactory validationContextFactory,
-        ChannelRecordLookup channelRecordLookup,
-        UserRecordLookup userRecordLookup)
+        ValidationContextFactory validationContextFactory)
     {
         ArgumentNullException.ThrowIfNull(botName, nameof(botName));
 
@@ -62,7 +59,5 @@ public sealed class BotCreationData
         BotCommandContextFactory = botCommandContextFactory;
         CapProviders = capProviders;
         ValidationContextFactory = validationContextFactory;
-        ChannelRecordLookup = channelRecordLookup;
-        UserRecordLookup = userRecordLookup;
     }
 }

@@ -13,17 +13,17 @@ using System.Threading.Tasks;
 
 namespace Netwolf.Server.Commands;
 
-public partial class NickCommand : IServerCommandHandler
+public partial class NickCommand : ServerCommandHandler
 {
     // RFC 2812 nickname validation
     [GeneratedRegex("[a-zA-Z[\\]\\\\`_^{}|][a-zA-Z0-9[\\]\\\\`_^{}|-]*")]
     private static partial Regex ValidNickRegex();
 
-    public string Command => "NICK";
+    public override string Command => "NICK";
 
-    public bool AllowBeforeRegistration => true;
+    public override bool AllowBeforeRegistration => true;
 
-    public async Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
+    public override async Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var client = ((ServerContext)sender).User!;

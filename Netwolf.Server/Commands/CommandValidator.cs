@@ -33,7 +33,7 @@ public class CommandValidator : ICommandValidator<ICommandResponse>
             throw new ArgumentException("Not passed a client command", nameof(command));
         }
 
-        var handler = (IServerCommandHandler)commandHandler;
+        var handler = (ServerCommandHandler)commandHandler;
         var ctx = (ServerContext)context;
 
         if (ctx.User == null)
@@ -55,7 +55,7 @@ public class CommandValidator : ICommandValidator<ICommandResponse>
     public bool ValidateCommandHandler(ICommandHandler<ICommandResponse> commandHandler)
     {
         var type = commandHandler.GetType();
-        var handler = (IServerCommandHandler)commandHandler;
+        var handler = (ServerCommandHandler)commandHandler;
 
         if (handler.Privilege != null)
         {
@@ -92,6 +92,6 @@ public class CommandValidator : ICommandValidator<ICommandResponse>
 
     public bool ValidateCommandType(Type commandType)
     {
-        return Options.EnabledCommands.Contains(commandType) && commandType.IsAssignableTo(typeof(IServerCommandHandler));
+        return Options.EnabledCommands.Contains(commandType) && commandType.IsAssignableTo(typeof(ServerCommandHandler));
     }
 }
