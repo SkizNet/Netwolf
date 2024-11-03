@@ -1,5 +1,4 @@
-﻿
-// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
+﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 using Microsoft.Extensions.Logging;
@@ -436,7 +435,7 @@ public partial class Network : INetwork
 
                     try
                     {
-                        UnsafeReceiveCommand(command, token);
+                        ProcessServerCommand(command, token);
                     }
                     catch (Exception e)
                     {
@@ -1868,7 +1867,7 @@ public partial class Network : INetwork
     /// <param name="line"></param>
     internal void ReceiveLineForUnitTests(string line)
     {
-        UnsafeReceiveCommand(CommandFactory.Parse(CommandType.Server, line), default);
+        UnsafeReceiveRaw(line, default);
     }
 
     [MemberNotNull(nameof(State))]
@@ -1901,10 +1900,24 @@ public partial class Network : INetwork
     }
 
     /// <inheritdoc />
-    public void UnsafeReceiveCommand(ICommand command, CancellationToken cancellationToken)
+    public void UnsafeReceiveRaw(string command, CancellationToken cancellationToken)
     {
-        OnCommandReceived(command, cancellationToken);
-        _commandEventStream.OnNext(new(this, command, cancellationToken));
+        cancellationToken.ThrowIfCancellationRequested();
+        ProcessServerCommand(CommandFactory.Parse(CommandType.Server, command), cancellationToken);
+    }
+
+    private void ProcessServerCommand(ICommand command, CancellationToken cancellationToken)
+    {
+        // ignore known commands with incorrect arity
+        if (ArityHelper.CheckArity(this, command.Verb, command.Args.Count))
+        {
+            OnCommandReceived(command, cancellationToken);
+            _commandEventStream.OnNext(new(this, command, cancellationToken));
+        }
+        else
+        {
+            Logger.LogWarning("Protocol violation: receieved {Command} with incorrect arity. Message will be ignored.", command.Verb);
+        }
     }
 
     /// <inheritdoc />

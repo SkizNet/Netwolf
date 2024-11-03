@@ -149,8 +149,11 @@ public interface INetwork : INetworkInfo, IDisposable, IAsyncDisposable
     /// Be very careful when using this method as it can corrupt internal state if used incorrectly.
     /// </summary>
     /// <param name="command"></param>
-    /// <param name="cancellationToken"></param>
-    void UnsafeReceiveCommand(ICommand command, CancellationToken cancellationToken);
+    /// <param name="cancellationToken">
+    /// Cancellation token to pass to async handlers.
+    /// This method <em>does not block</em> and will execute async handlers in a "fire and forget" fashion.
+    /// </param>
+    void UnsafeReceiveRaw(string command, CancellationToken cancellationToken);
 
     /// <summary>
     /// Updates a user in the network state with the provided details, adding or removing them as necessary.

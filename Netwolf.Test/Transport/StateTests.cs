@@ -229,4 +229,57 @@ public class StateTests
         Assert.AreEqual("5", channel.Modes['l']);
         Assert.IsNull(channel.Modes['i']);
     }
+
+    [DataTestMethod]
+    [DataRow(":a!~a@a.a RENAME #testing #test2 :", "#test2", DisplayName = "RENAME without reason")]
+    [DataRow(":irc.netwolf.org RENAME #testing #test2 :", "#test2", DisplayName = "RENAME from server")]
+    [DataRow(":a!~a@a.a RENAME #testing #test2 :reason goes here", "#test2", DisplayName = "RENAME with reason")]
+    [DataRow(":a!~a@a.a RENAME #testing #TESTING :", "#TESTING", DisplayName = "Change channel case")]
+    public void Successfully_rename_channel(string line, string newChannel)
+    {
+        using var scope = Container.CreateScope();
+        var networkFactory = Container.GetRequiredService<INetworkFactory>();
+        using var network = (Network)networkFactory.Create("NetwolfTest", Options);
+        network.RegisterForUnitTests(new StubIServer(), "127.0.0.1", "acct");
+
+        network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :draft/channel-rename");
+        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        network.ReceiveLineForUnitTests(line);
+        if (!IrcUtil.IrcEquals("#testing", newChannel, CaseMapping.Ascii))
+        {
+            // only check if the old channel went away if we aren't doing a case change
+            Assert.IsNull(network.GetChannel("#testing"));
+        }
+
+        var channel = network.GetChannel(newChannel);
+        Assert.IsNotNull(channel);
+        Assert.AreEqual(newChannel, channel.Name);
+    }
+
+    [DataTestMethod]
+    [DataRow(":irc.netwolf.org RENAME #test1 #test2", DisplayName = "Not joined to source channel")]
+    [DataRow(":irc.netwolf.org RENAME #test1 #testing", DisplayName = "Target channel overlap")]
+    [DataRow(":irc.netwolf.org RENAME #test1 foobar", DisplayName = "Target isn't a channel")]
+    [DataRow(":irc.netwolf.org RENAME test #test2", DisplayName = "Source isn't a channel")]
+    [DataRow(":irc.netwolf.org RENAME", DisplayName = "Missing all args")]
+    [DataRow(":irc.netwolf.org RENAME #testing", DisplayName = "Missing 2nd arg")]
+    [DataRow(":irc.netwolf.org RENAME #testing #test2", DisplayName = "Missing 3rd arg")]
+    [DataRow(":irc.netwolf.org RENAME #testing :#second test whee", DisplayName = "2nd arg is trailing")]
+    public void Ignore_invalid_renames(string line)
+    {
+        using var scope = Container.CreateScope();
+        var networkFactory = Container.GetRequiredService<INetworkFactory>();
+        using var network = (Network)networkFactory.Create("NetwolfTest", Options);
+        network.RegisterForUnitTests(new StubIServer(), "127.0.0.1", "acct");
+
+        network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :draft/channel-rename");
+        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        network.ReceiveLineForUnitTests(line);
+
+        var state = (NetworkState)network.AsNetworkInfo();
+        Assert.AreEqual(1, state.Users.Count);
+        Assert.AreEqual(1, state.Channels.Count);
+        Assert.AreEqual("test", state.Users.Single().Value.Nick);
+        Assert.AreEqual("#testing", state.Channels.Single().Value.Name);
+    }
 }
