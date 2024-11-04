@@ -16,6 +16,8 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Security.Authentication.ExtendedProtection;
 using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading.Channels;
 
 using static Netwolf.Transport.IRC.INetwork;
 
@@ -27,6 +29,9 @@ namespace Netwolf.Transport.IRC;
 public partial class Network : INetwork
 {
     private bool _disposed;
+
+    [GeneratedRegex("^[^:$ ,*?!@][^ ,*?!@]*$")]
+    private static partial Regex ValidNickRegex();
 
     /// <summary>
     /// Network options defined by the user
@@ -1394,8 +1399,26 @@ public partial class Network : INetwork
             case "NICK":
                 // NICK <nickname>
                 {
+                    if (!ValidNickRegex().IsMatch(command.Args[0]))
+                    {
+                        Logger.LogWarning("Protocol violation: nickname contains illegal characters");
+                        break;
+                    }
+
+                    var info = (INetworkInfo)State;
+                    if (info.ChannelTypes.Contains(command.Args[0][0]) || info.ChannelPrefixSymbols.Contains(command.Args[0][0]))
+                    {
+                        Logger.LogWarning("Protocol violation: nickname begins with a channel or status prefix");
+                        break;
+                    }
+
                     if (IrcUtil.TryExtractUserFromSource(command, this, out var user))
                     {
+                        if (info.GetUserByNick(command.Args[0]) is not null && !IrcUtil.IrcEquals(user.Nick, command.Args[0], CaseMapping))
+                        {
+                            throw new BadStateException($"Nick collision detected; attempting to rename {user.Nick} to {command.Args[0]} but the new nick already exists in state");
+                        }
+
                         State = State with
                         {
                             Lookup = State.Lookup
@@ -1409,10 +1432,16 @@ public partial class Network : INetwork
                 }
                 break;
             case "RENAME":
-                // RENAME <old_channel> <new_channel>
+                // RENAME <old_channel> <new_channel> :<reason>
                 {
-                    if (GetChannel(command.Args[0]) is ChannelRecord channel)
+                    var info = (INetworkInfo)State;
+                    if (GetChannel(command.Args[0]) is ChannelRecord channel && info.ChannelTypes.Contains(command.Args[1][0]))
                     {
+                        if (info.GetChannel(command.Args[1]) is not null && !IrcUtil.IrcEquals(channel.Name, command.Args[1], CaseMapping))
+                        {
+                            throw new BadStateException($"Channel collision detected; attempting to rename {channel.Name} to {command.Args[1]} but the new channel already exists in state");
+                        }
+
                         State = State with
                         {
                             Lookup = State.Lookup

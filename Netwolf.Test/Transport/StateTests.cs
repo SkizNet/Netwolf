@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
+using Netwolf.Transport.Exceptions;
 using Netwolf.Transport.Extensions.DependencyInjection;
 using Netwolf.Transport.IRC;
 using Netwolf.Transport.IRC.Fakes;
@@ -257,10 +258,9 @@ public class StateTests
     }
 
     [DataTestMethod]
-    [DataRow(":irc.netwolf.org RENAME #test1 #test2", DisplayName = "Not joined to source channel")]
-    [DataRow(":irc.netwolf.org RENAME #test1 #testing", DisplayName = "Target channel overlap")]
-    [DataRow(":irc.netwolf.org RENAME #test1 foobar", DisplayName = "Target isn't a channel")]
-    [DataRow(":irc.netwolf.org RENAME test #test2", DisplayName = "Source isn't a channel")]
+    [DataRow(":irc.netwolf.org RENAME #test1 #test2 :", DisplayName = "Not joined to source channel")]
+    [DataRow(":irc.netwolf.org RENAME #testing foobar :", DisplayName = "Target isn't a channel")]
+    [DataRow(":irc.netwolf.org RENAME test #test2 :", DisplayName = "Source isn't a channel")]
     [DataRow(":irc.netwolf.org RENAME", DisplayName = "Missing all args")]
     [DataRow(":irc.netwolf.org RENAME #testing", DisplayName = "Missing 2nd arg")]
     [DataRow(":irc.netwolf.org RENAME #testing #test2", DisplayName = "Missing 3rd arg")]
@@ -274,12 +274,93 @@ public class StateTests
 
         network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :draft/channel-rename");
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #another");
         network.ReceiveLineForUnitTests(line);
 
-        var state = (NetworkState)network.AsNetworkInfo();
-        Assert.AreEqual(1, state.Users.Count);
-        Assert.AreEqual(1, state.Channels.Count);
-        Assert.AreEqual("test", state.Users.Single().Value.Nick);
-        Assert.AreEqual("#testing", state.Channels.Single().Value.Name);
+        var state = network.AsNetworkInfo();
+        Assert.AreEqual("test", state.GetAllUsers().Single().Nick);
+        CollectionAssert.AreEquivalent(new List<string> { "#testing", "#another" }, state.GetAllChannels().Select(c => c.Name).ToList());
+    }
+
+    [DataTestMethod]
+    [DataRow(":irc.netwolf.org RENAME #another #testing :", DisplayName = "Channel collision")]
+    public void Throw_on_corrupted_state_renames(string line)
+    {
+        using var scope = Container.CreateScope();
+        var networkFactory = Container.GetRequiredService<INetworkFactory>();
+        using var network = (Network)networkFactory.Create("NetwolfTest", Options);
+        network.RegisterForUnitTests(new StubIServer(), "127.0.0.1", "acct");
+
+        network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :draft/channel-rename");
+        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #another");
+        Assert.ThrowsException<BadStateException>(() => network.ReceiveLineForUnitTests(line));
+    }
+
+    [DataTestMethod]
+    [DataRow("a", "b", "b", "ascii", false, DisplayName = "Regular nickchange")]
+    [DataRow("a", "a^]", "A^]", "ascii", false, DisplayName = "Regular nickchange (casefolded ascii)")]
+    [DataRow("a", "a^]", "A~}", "rfc1459", false, DisplayName = "Regular nickchange (casefolded rfc1459)")]
+    [DataRow("a", "a^]", "A^}", "rfc1459-strict", false, DisplayName = "Regular nickchange (casefolded rfc1459-strict)")]
+    [DataRow("a", "A", "a", "ascii", true, DisplayName = "Casing change")]
+    public void Successfully_change_nick(string oldNick, string newNick, string lookup, string casemapping, bool casingChange)
+    {
+        using var scope = Container.CreateScope();
+        var networkFactory = Container.GetRequiredService<INetworkFactory>();
+        using var network = (Network)networkFactory.Create("NetwolfTest", Options);
+        network.RegisterForUnitTests(new StubIServer(), "127.0.0.1", "acct");
+
+        network.ReceiveLineForUnitTests($":irc.netwolf.org 005 test CASEMAPPING={casemapping} :are supported by this server");
+        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        network.ReceiveLineForUnitTests($":{oldNick}!id2@host.two JOIN #testing");
+        network.ReceiveLineForUnitTests($":{oldNick}!id2@host.two NICK {newNick}");
+
+        var state = network.AsNetworkInfo();
+        var user = state.GetUserByNick(lookup);
+        Assert.IsNotNull(user);
+        Assert.AreEqual(newNick, user.Nick);
+        if (!casingChange)
+        {
+            Assert.IsNull(state.GetUserByNick(oldNick));
+        }
+    }
+
+    [DataTestMethod]
+    [DataRow("NICK foo", DisplayName = "Missing source")]
+    [DataRow(":irc.netwolf.org NICK foo", DisplayName = "Server as source")]
+    [DataRow(":test!id@127.0.0.1 NICK", DisplayName = "Missing argument")]
+    [DataRow(":test!id@127.0.0.1 NICK :", DisplayName = "Empty argument")]
+    [DataRow(":test!id@127.0.0.1 NICK ::", DisplayName = "Invalid nickname (protocol)")]
+    [DataRow(":test!id@127.0.0.1 NICK #testing", DisplayName = "Invalid nickname (channel)")]
+    [DataRow(":test!id@127.0.0.1 NICK +foo", DisplayName = "Invalid nickname (status)")]
+    [DataRow(":b!~b@b.b NICK c", DisplayName = "Unrecognized source")]
+    public void Ignore_invalid_nick_changes(string line)
+    {
+        using var scope = Container.CreateScope();
+        var networkFactory = Container.GetRequiredService<INetworkFactory>();
+        using var network = (Network)networkFactory.Create("NetwolfTest", Options);
+        network.RegisterForUnitTests(new StubIServer(), "127.0.0.1", "acct");
+
+        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        network.ReceiveLineForUnitTests(line);
+
+        var state = network.AsNetworkInfo();
+        CollectionAssert.AreEquivalent(new List<string> { "test", "a" }, state.GetAllUsers().Select(u => u.Nick).ToList());
+        Assert.AreEqual("#testing", state.GetAllChannels().Single().Name);
+    }
+
+    [DataTestMethod]
+    [DataRow(":a!~a@a.a NICK test", DisplayName = "Nick collision")]
+    public void Throw_on_corrupted_state_nick_changes(string line)
+    {
+        using var scope = Container.CreateScope();
+        var networkFactory = Container.GetRequiredService<INetworkFactory>();
+        using var network = (Network)networkFactory.Create("NetwolfTest", Options);
+        network.RegisterForUnitTests(new StubIServer(), "127.0.0.1", "acct");
+
+        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        Assert.ThrowsException<BadStateException>(() => network.ReceiveLineForUnitTests(line));
     }
 }

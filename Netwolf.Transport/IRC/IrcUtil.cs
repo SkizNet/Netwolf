@@ -86,6 +86,21 @@ public static class IrcUtil
         return bytes.DecodeUtf8();
     }
 
+    /// <summary>
+    /// Splits an arbitrary hostmask into nick, ident, and host components.
+    /// Missing components (when receiving only a nickname, only an ident@host,
+    /// or only a hostname/servername) will be returned as empty strings.
+    /// <para/>
+    /// Supported formats:
+    /// <list type="bullet">
+    /// <item>nick</item>
+    /// <item>ident@host</item>
+    /// <item>nick!ident@host</item>
+    /// <item>host (must contain <c>.</c>'s to be recognized as a bare host)</item>
+    /// </list>
+    /// </summary>
+    /// <param name="mask"></param>
+    /// <returns></returns>
     public static (string Nick, string Ident, string Host) SplitHostmask(string mask)
     {
         string[] p;
@@ -101,7 +116,14 @@ public static class IrcUtil
         }
         else if (!mask.Contains('@'))
         {
-            nick = mask;
+            if (mask.Contains('.'))
+            {
+                host = mask;
+            }
+            else
+            {
+                nick = mask;
+            }
         }
 
         if (mask.Contains('@'))
