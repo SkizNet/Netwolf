@@ -131,4 +131,11 @@ public class BotOptions : NetworkOptions
     /// This setting is read once during bot initialization so changes will require bot restarts.
     /// </summary>
     public SlidingWindowConfig GlobalByteLimiter { get; set; } = new();
+
+    /// <summary>
+    /// Permissions for accounts recognized by the bot. By default, this is not used.
+    /// You need to add an account provider as well as call <see cref="BotFrameworkExtensions.AddSettingsFilePermissionStrategy(IBotBuilder)"/>
+    /// to make use of permissions defined here. Keys are account names and values are lists of permissions.
+    /// </summary>
+    public Dictionary<string, List<string>> Permissions { get; set; } = [];
 }

@@ -789,6 +789,9 @@ public partial class Network : INetwork
     [SuppressMessage("Style", "IDE0305:Simplify collection initialization", Justification = "ToImmutableHashSet() is more semantically meaningful")]
     private void OnCommandReceived(ICommand command, CancellationToken cancellationToken)
     {
+        // use INetworkInfo rather than NetworkState directly to gain access to default interface implementations
+        INetworkInfo info = AsNetworkInfo();
+
         if (!IsConnected)
         {
             // callbacks we only handle if we're pre-registration
@@ -988,7 +991,7 @@ public partial class Network : INetwork
                     {
                         // determine prefix
                         int prefixStart = (command.Args[6].Length == 1 || command.Args[6][1] != '*') ? 1 : 2;
-                        string prefix = string.Concat(command.Args[6][prefixStart..].TakeWhile(((INetworkInfo)State).ChannelPrefixSymbols.Contains));
+                        string prefix = string.Concat(command.Args[6][prefixStart..].TakeWhile(info.ChannelPrefixSymbols.Contains));
 
                         State = State with
                         {
@@ -1020,7 +1023,7 @@ public partial class Network : INetwork
                     }
 
                     // make a copy since the underlying property on State recomputes the value on each access
-                    string prefixSymbols = ((INetworkInfo)State).ChannelPrefixSymbols;
+                    string prefixSymbols = info.ChannelPrefixSymbols;
                     foreach (var prefixedNick in command.Args[3].Split(' ', StringSplitOptions.RemoveEmptyEntries))
                     {
                         string prefix = string.Concat(prefixedNick.TakeWhile(prefixSymbols.Contains));
@@ -1111,12 +1114,12 @@ public partial class Network : INetwork
                     else if (State.Channels.TryGetValue(lookupId, out var channel))
                     {
                         // take a snapshot of the various mode types since calling the underlying properties recomputes the value each time.
-                        string prefixModes = ((INetworkInfo)State).ChannelPrefixModes;
-                        string prefixSymbols = ((INetworkInfo)State).ChannelPrefixSymbols;
-                        string typeAModes = ((INetworkInfo)State).ChannelModesA;
-                        string typeBModes = ((INetworkInfo)State).ChannelModesB;
-                        string typeCModes = ((INetworkInfo)State).ChannelModesC;
-                        string typeDModes = ((INetworkInfo)State).ChannelModesD;
+                        string prefixModes = info.ChannelPrefixModes;
+                        string prefixSymbols = info.ChannelPrefixSymbols;
+                        string typeAModes = info.ChannelModesA;
+                        string typeBModes = info.ChannelModesB;
+                        string typeCModes = info.ChannelModesC;
+                        string typeDModes = info.ChannelModesD;
 
                         // index of the next mode argument
                         int argIndex = 2;
@@ -1405,7 +1408,6 @@ public partial class Network : INetwork
                         break;
                     }
 
-                    var info = (INetworkInfo)State;
                     if (info.ChannelTypes.Contains(command.Args[0][0]) || info.ChannelPrefixSymbols.Contains(command.Args[0][0]))
                     {
                         Logger.LogWarning("Protocol violation: nickname begins with a channel or status prefix");
@@ -1434,7 +1436,6 @@ public partial class Network : INetwork
             case "RENAME":
                 // RENAME <old_channel> <new_channel> :<reason>
                 {
-                    var info = (INetworkInfo)State;
                     if (GetChannel(command.Args[0]) is ChannelRecord channel && info.ChannelTypes.Contains(command.Args[1][0]))
                     {
                         if (info.GetChannel(command.Args[1]) is not null && !IrcUtil.IrcEquals(channel.Name, command.Args[1], CaseMapping))

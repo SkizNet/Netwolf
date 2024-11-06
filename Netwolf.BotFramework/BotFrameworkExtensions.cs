@@ -14,7 +14,6 @@ using Netwolf.PluginFramework.Extensions.DependencyInjection;
 using Netwolf.PluginFramework.Permissions;
 using Netwolf.Transport.Extensions.DependencyInjection;
 using Netwolf.Transport.IRC;
-using Netwolf.Transport.State;
 
 namespace Netwolf.BotFramework;
 
@@ -37,25 +36,10 @@ public static class BotFrameworkExtensions
     /// <param name="services"></param>
     /// <param name="botName">Internal name for the bot, to allow for multiple bots of the same <typeparamref name="TBot"/> to be registered.</param>
     /// <returns>Service collection for fluent call chaining</returns>
-    public static IServiceCollection AddHostedBot<TBot>(this IServiceCollection services, string botName)
+    public static IBotBuilder AddHostedBot<TBot>(this IServiceCollection services, string botName)
         where TBot : Bot
     {
-        return AddBot<TBot>(services, botName, null, true);
-    }
-
-    /// <summary>
-    /// Registers a new bot to be executed in the background immediately.
-    /// The process will exit once all bots finish running.
-    /// </summary>
-    /// <typeparam name="TBot"></typeparam>
-    /// <param name="services"></param>
-    /// <param name="botName">Internal name for the bot, to allow for multiple bots of the same <typeparamref name="TBot"/> to be registered.</param>
-    /// <param name="configuration">Configuration callback to customize additional aspects of the bot.</param>
-    /// <returns>Service collection for fluent call chaining</returns>
-    public static IServiceCollection AddHostedBot<TBot>(this IServiceCollection services, string botName, Action<IBotBuilder>? configuration)
-        where TBot : Bot
-    {
-        return AddBot<TBot>(services, botName, configuration, true);
+        return AddBot<TBot>(services, botName, true);
     }
 
     /// <summary>
@@ -65,24 +49,10 @@ public static class BotFrameworkExtensions
     /// <param name="services"></param>
     /// <param name="botName">Internal name for the bot, to allow for multiple bots of the same <typeparamref name="TBot"/> to be registered.</param>
     /// <returns>Service collection for fluent call chaining</returns>
-    public static IServiceCollection AddBot<TBot>(this IServiceCollection services, string botName)
+    public static IBotBuilder AddBot<TBot>(this IServiceCollection services, string botName)
         where TBot : Bot
     {
-        return AddBot<TBot>(services, botName, null, false);
-    }
-
-    /// <summary>
-    /// Registers a new bot. It will not be run automatically; it is up to the caller to manage the bot's lifecycle.
-    /// </summary>
-    /// <typeparam name="TBot"></typeparam>
-    /// <param name="services"></param>
-    /// <param name="botName">Internal name for the bot, to allow for multiple bots of the same <typeparamref name="TBot"/> to be registered.</param>
-    /// <param name="configuration">Configuration callback to customize additional aspects of the bot.</param>
-    /// <returns>Service collection for fluent call chaining</returns>
-    public static IServiceCollection AddBot<TBot>(this IServiceCollection services, string botName, Action<IBotBuilder>? configuration)
-        where TBot : Bot
-    {
-        return AddBot<TBot>(services, botName, configuration, false);
+        return AddBot<TBot>(services, botName, false);
     }
 
     /// <summary>
@@ -91,10 +61,9 @@ public static class BotFrameworkExtensions
     /// <typeparam name="TBot"></typeparam>
     /// <param name="services"></param>
     /// <param name="botName">Internal name for the bot, to allow for multiple bots of the same <typeparamref name="TBot"/> to be registered.</param>
-    /// <param name="configuration">Configuration callback to customize additional aspects of the bot.</param>
     /// <param name="runImmediately">Whether the bot should run immediately (be hosted in BotRunnerService).</param>
     /// <returns>Service collection for fluent call chaining</returns>
-    private static IServiceCollection AddBot<TBot>(this IServiceCollection services, string botName, Action<IBotBuilder>? configuration, bool runImmediately)
+    private static IBotBuilder AddBot<TBot>(this IServiceCollection services, string botName, bool runImmediately)
         where TBot : Bot
     {
         if (!_registry.ContainsKey(services))
@@ -149,11 +118,8 @@ public static class BotFrameworkExtensions
                 provider.GetRequiredService<ValidationContextFactory>());
         });
 
-        var builder = new BotBuilder(botName, services);
-        configuration?.Invoke(builder);
-
         _registry[services].RegisterType(botName, typeof(TBot), runImmediately);
-        return services;
+        return new BotBuilder(botName, services);
     }
 
     /// <summary>
@@ -161,7 +127,7 @@ public static class BotFrameworkExtensions
     /// </summary>
     /// <param name="builder"></param>
     /// <returns></returns>
-    public static IBotBuilder UseServicesAccountStrategy(this IBotBuilder builder)
+    public static IBotBuilder AddServicesAccountStrategy(this IBotBuilder builder)
     {
         builder.Services
             .AddKeyedSingleton<IAccountProvider, ServicesAccountProvider>(builder.BotName)
@@ -175,11 +141,25 @@ public static class BotFrameworkExtensions
     /// </summary>
     /// <param name="builder"></param>
     /// <returns></returns>
-    public static IBotBuilder UseOperTagPermissionStrategy(this IBotBuilder builder)
+    public static IBotBuilder AddOperTagPermissionStrategy(this IBotBuilder builder)
     {
         builder.Services
             .AddKeyedSingleton<IPermissionProvider, OperTagPermissionProvider>(builder.BotName)
             .AddKeyedSingleton<ICapProvider, OperTagPermissionProvider>(builder.BotName);
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Retrieve permissions from appsettings.json. Permissions must be an object named "Permissions" with keys
+    /// being the account name (based on any employed account strategies) and the value being an array
+    /// of string permission names.
+    /// </summary>
+    /// <param name="builder"></param>
+    /// <returns></returns>
+    public static IBotBuilder AddSettingsFilePermissionStrategy(this IBotBuilder builder)
+    {
+        builder.Services.AddKeyedSingleton<IPermissionProvider, SettingsFilePermissionProvider>(builder.BotName);
 
         return builder;
     }

@@ -24,10 +24,10 @@ public class ThunkTests
 
     public ThunkTests()
     {
-        Container = new ServiceCollection()
-            .AddLogging(config => config.SetMinimumLevel(LogLevel.Debug).AddConsole())
-            .AddBot<TestBot>(BOT_NAME)
-            .BuildServiceProvider();
+        var services = new ServiceCollection();
+        services.AddLogging(config => config.SetMinimumLevel(LogLevel.Debug).AddConsole());
+        services.AddBot<TestBot>(BOT_NAME);
+        Container = services.BuildServiceProvider();
     }
 
     [TestMethod]

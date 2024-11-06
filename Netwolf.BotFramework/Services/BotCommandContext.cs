@@ -9,12 +9,34 @@ namespace Netwolf.BotFramework.Services;
 
 public class BotCommandContext : IContext
 {
+    /// <summary>
+    /// Bot that received the command
+    /// </summary>
     public Bot Bot { get; init; }
 
+    /// <summary>
+    /// Message target (nickname of the bot or a channel name)
+    /// </summary>
+    public string Target { get; init; }
+
+    /// <summary>
+    /// Parsed bot command
+    /// </summary>
     public ICommand Command { get; init; }
 
+    /// <summary>
+    /// Whether this command was sent to a channel or privately to the bot
+    /// </summary>
+    public bool IsPrivateCommand => !Bot.NetworkInfo.ChannelTypes.Contains(Target[0]);
+
+    /// <summary>
+    /// The full PRIVMSG contents that triggered this command
+    /// </summary>
     public string FullLine { get; init; }
 
+    /// <summary>
+    /// Sender's nickname
+    /// </summary>
     public string SenderNickname { get; init; }
 
     /// <summary>
@@ -43,9 +65,10 @@ public class BotCommandContext : IContext
     /// called from BotCommandContextFactory
     /// </summary>
     /// <param name="bot"></param>
+    /// <param name="target"></param>
     /// <param name="command"></param>
     /// <param name="fullLine"></param>
-    internal BotCommandContext(Bot bot, ICommand command, string fullLine)
+    internal BotCommandContext(Bot bot, string target, ICommand command, string fullLine)
     {
         if (command.Source == null)
         {
@@ -53,6 +76,7 @@ public class BotCommandContext : IContext
         }
 
         Bot = bot;
+        Target = target;
         Command = command;
         FullLine = fullLine;
         SenderNickname = IrcUtil.SplitHostmask(command.Source).Nick;
@@ -67,6 +91,7 @@ public class BotCommandContext : IContext
     public BotCommandContext(BotCommandContext other)
     {
         Bot = other.Bot;
+        Target = other.Target;
         Command = other.Command;
         FullLine = other.FullLine;
         SenderNickname = other.SenderNickname;
@@ -74,5 +99,33 @@ public class BotCommandContext : IContext
         AccountProvider = other.AccountProvider;
         SenderPermissions = other.SenderPermissions;
         PermissionProviders = other.PermissionProviders;
+    }
+
+    /// <summary>
+    /// Send a message in response to the command.
+    /// </summary>
+    /// <param name="message">Message to send; will be wrapped into multiple lines if long.</param>
+    /// <param name="replyType">Where and how the reply will be sent</param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public async Task ReplyAsync(string message, ReplyType replyType, CancellationToken cancellationToken)
+    {
+        var (notice, target) = replyType switch
+        {
+            ReplyType.PublicMessage => (false, IsPrivateCommand ? SenderNickname : Target),
+            ReplyType.PublicNotice => (true, IsPrivateCommand ? SenderNickname : Target),
+            ReplyType.PrivateMessage => (false, SenderNickname),
+            ReplyType.PrivateNotice => (true, SenderNickname),
+            _ => throw new ArgumentException("Invalid reply type", nameof(replyType))
+        };
+
+        if (notice)
+        {
+            await Bot.SendNoticeAsync(target, message, cancellationToken);
+        }
+        else
+        {
+            await Bot.SendMessageAsync(target, message, cancellationToken);
+        }
     }
 }

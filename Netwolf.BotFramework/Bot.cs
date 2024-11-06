@@ -646,7 +646,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             {
                 using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(CancellationSource.Token, e.Token);
                 var commandObj = CommandFactory.CreateCommand(CommandType.Bot, e.Command.Source, command, args, e.Command.Tags);
-                var context = await BotCommandContextFactory.CreateAsync(this, commandObj, fullLine, linkedSource.Token);
+                var context = await BotCommandContextFactory.CreateAsync(this, e.Command.Args[0], commandObj, fullLine, linkedSource.Token);
 
                 try
                 {
