@@ -69,7 +69,7 @@ public class NetworkOptions
     /// <summary>
     /// List of servers to try when connecting (in order of preference).
     /// </summary>
-    public List<IServer> Servers { get; init; } = [];
+    public IServer[] Servers { get; init; } = [];
 
     /// <summary>
     /// Password required to connect to the network, if any.
@@ -94,7 +94,7 @@ public class NetworkOptions
     /// The strings are compared case-insensitively. If this list is not empty,
     /// <see cref="CheckOnlineRevocation"/> will have no effect.
     /// </summary>
-    public List<string> TrustedFingerprints { get; init; } = [];
+    public string[] TrustedFingerprints { get; init; } = [];
 
     /// <summary>
     /// If true, checks the certificate's OCSP responder for revocation information before accepting a connection.
@@ -160,5 +160,5 @@ public class NetworkOptions
     /// SASL mechanisms we will never attempt, even if supported by the server and our config.
     /// Values must be ALL UPPERCASE.
     /// </summary>
-    public HashSet<string> DisabledSaslMechs { get; init; } = [];
+    public string[] DisabledSaslMechs { get; init; } = [];
 }

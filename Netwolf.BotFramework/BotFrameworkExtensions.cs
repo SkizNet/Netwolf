@@ -118,6 +118,11 @@ public static class BotFrameworkExtensions
                 provider.GetRequiredService<ValidationContextFactory>());
         });
 
+        services.AddOptions<BotOptions>(botName)
+            .BindConfiguration($"Netwolf:{botName}")
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         _registry[services].RegisterType(botName, typeof(TBot), runImmediately);
         return new BotBuilder(botName, services);
     }

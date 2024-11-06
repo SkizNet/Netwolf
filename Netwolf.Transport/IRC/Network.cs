@@ -488,7 +488,7 @@ public partial class Network : INetwork
             throw new ConnectionException("Network is already connected.");
         }
 
-        if (Options.Servers.Count == 0)
+        if (Options.Servers.Length == 0)
         {
             Logger.LogError("No servers have been defined; unable to connect.");
             throw new ConnectionException("No servers have been defined; unable to connect.");

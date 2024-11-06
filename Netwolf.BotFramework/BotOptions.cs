@@ -26,7 +26,7 @@ public class BotOptions : NetworkOptions
     /// ]
     /// </code>
     /// </summary>
-    public List<string> Channels { get; set; } = [];
+    public string[] Channels { get; set; } = [];
 
     /// <summary>
     /// If set, the bot will attempt to automatically "oper up" after connecting.

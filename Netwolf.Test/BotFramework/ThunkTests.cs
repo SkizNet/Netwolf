@@ -58,7 +58,7 @@ public class ThunkTests
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<BotCommandResult>>();
         var commandFactory = scope.ServiceProvider.GetRequiredService<ICommandFactory>();
         var command = commandFactory.CreateCommand(CommandType.Bot, "test", "SYNCVOID0", [], new Dictionary<string, string?>(), null);
-        var context = new BotCommandContext(bot, command, string.Empty);
+        var context = new BotCommandContext(bot, BOT_NAME, command, string.Empty);
 
         var result = await dispatcher.DispatchAsync(command, context, default);
         Assert.IsNotNull(result);
@@ -77,7 +77,7 @@ public class ThunkTests
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<BotCommandResult>>();
         var commandFactory = scope.ServiceProvider.GetRequiredService<ICommandFactory>();
         var command = commandFactory.CreateCommand(CommandType.Bot, "test", "SYNCINT0", [], new Dictionary<string, string?>(), null);
-        var context = new BotCommandContext(bot, command, string.Empty);
+        var context = new BotCommandContext(bot, BOT_NAME, command, string.Empty);
 
         var result = await dispatcher.DispatchAsync(command, context, default);
         Assert.IsNotNull(result);
@@ -96,7 +96,7 @@ public class ThunkTests
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<BotCommandResult>>();
         var commandFactory = scope.ServiceProvider.GetRequiredService<ICommandFactory>();
         var command = commandFactory.CreateCommand(CommandType.Bot, "test", "SYNCINT1", [], new Dictionary<string, string?>(), null);
-        var context = new BotCommandContext(bot, command, "123");
+        var context = new BotCommandContext(bot, BOT_NAME, command, "123");
 
         var result = await dispatcher.DispatchAsync(command, context, default);
         Assert.IsNotNull(result);
@@ -115,7 +115,7 @@ public class ThunkTests
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<BotCommandResult>>();
         var commandFactory = scope.ServiceProvider.GetRequiredService<ICommandFactory>();
         var command = commandFactory.CreateCommand(CommandType.Bot, "test", "ASYNCTASK0", [], new Dictionary<string, string?>(), null);
-        var context = new BotCommandContext(bot, command, string.Empty);
+        var context = new BotCommandContext(bot, BOT_NAME, command, string.Empty);
 
         var result = await dispatcher.DispatchAsync(command, context, default);
         Assert.IsNotNull(result);
@@ -134,7 +134,7 @@ public class ThunkTests
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<BotCommandResult>>();
         var commandFactory = scope.ServiceProvider.GetRequiredService<ICommandFactory>();
         var command = commandFactory.CreateCommand(CommandType.Bot, "test", "ASYNCTASKINT0", [], new Dictionary<string, string?>(), null);
-        var context = new BotCommandContext(bot, command, string.Empty);
+        var context = new BotCommandContext(bot, BOT_NAME, command, string.Empty);
 
         var result = await dispatcher.DispatchAsync(command, context, default);
         Assert.IsNotNull(result);
