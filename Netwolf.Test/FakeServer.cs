@@ -22,7 +22,7 @@ internal class FakeServer : IServer
 {
     private IServiceProvider Services { get; init; }
 
-    internal ICommandDispatcher<ICommandResponse> CommandDispatcher { get; init; }
+    internal ICommandDispatcher<ICommandResponse>? CommandDispatcher { get; init; }
 
     internal ConcurrentDictionary<IConnection, User> State { get; init; } = new();
 
@@ -32,13 +32,16 @@ internal class FakeServer : IServer
 
     public bool SecureConnection => true;
 
-    public FakeServer(IServiceProvider services, ICommandDispatcher<ICommandResponse> commandDispatcher)
+    internal FakeServer(IServiceProvider services)
     {
         Services = services;
-        CommandDispatcher = commandDispatcher;
+        CommandDispatcher = services.GetService<ICommandDispatcher<ICommandResponse>>();
+    }
 
-        // Add builtin commands (keep the type below fully qualified so we can easily verify what assembly it's from)
-        CommandDispatcher.AddCommandsFromAssembly(typeof(Netwolf.Server.Network).Assembly);
+    internal FakeServer AddCommands<T>()
+    {
+        CommandDispatcher!.AddCommandsFromAssembly(typeof(T).Assembly);
+        return this;
     }
 
     internal void ConnectClient(IConnection connection)

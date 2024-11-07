@@ -119,7 +119,7 @@ public static class BotFrameworkExtensions
         });
 
         services.AddOptions<BotOptions>(botName)
-            .BindConfiguration($"Netwolf:{botName}")
+            .BindConfiguration($"Netwolf.Bot:{botName}")
             .ValidateDataAnnotations()
             .ValidateOnStart();
 

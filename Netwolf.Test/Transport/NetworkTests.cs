@@ -27,24 +27,23 @@ public class NetworkTests
 
     private static NetworkOptions MakeOptions(FakeServer server)
     {
-        var options = new NetworkOptions()
+        return new NetworkOptions()
         {
             // keep timeouts low so tests don't take forever
             // there are some internal 5s timeouts (ident/hostname lookup) so be a bit longer than that
             ConnectTimeout = TimeSpan.FromSeconds(7),
             ConnectRetries = 0,
-            PrimaryNick = "test"
+            PrimaryNick = "test",
+            Servers = [server]
         };
-
-        options.Servers.Add(server);
-        return options;
     }
 
     [TestMethod]
     public async Task User_registration_succeeds()
     {
         using var scope = Container.CreateScope();
-        var server = ActivatorUtilities.CreateInstance<FakeServer>(scope.ServiceProvider);
+        var server = new FakeServer(scope.ServiceProvider)
+            .AddCommands<Netwolf.Server.Network>();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = networkFactory.Create("NetwolfTest", MakeOptions(server));
 

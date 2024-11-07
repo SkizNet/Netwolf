@@ -1,17 +1,11 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using Netwolf.BotFramework;
 using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.Transport.IRC;
-using Netwolf.Transport.IRC.Fakes;
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Netwolf.Test.BotFramework;
 
@@ -27,6 +21,7 @@ public class ThunkTests
         var services = new ServiceCollection();
         services.AddLogging(config => config.SetMinimumLevel(LogLevel.Debug).AddConsole());
         services.AddBot<TestBot>(BOT_NAME);
+        services.AddSingleton<IOptionsMonitor<BotOptions>>(new TestOptionsMonitor<BotOptions>() { CurrentValue = new BotOptions() });
         Container = services.BuildServiceProvider();
     }
 

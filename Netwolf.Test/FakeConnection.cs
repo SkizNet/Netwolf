@@ -17,7 +17,7 @@ internal class FakeConnection : IConnection
 
     private ICommandFactory CommandFactory { get; set; }
 
-    private ICommandDispatcher<ICommandResponse> CommandDispatcher { get; set; }
+    private ICommandDispatcher<ICommandResponse>? CommandDispatcher { get; set; }
 
     private ILogger<IConnection> Logger { get; set; }
 
@@ -58,7 +58,7 @@ internal class FakeConnection : IConnection
         try
         {
             var context = new ServerContext() { User = Server.State[this] };
-            var result = await CommandDispatcher.DispatchAsync(command, context, cancellationToken);
+            var result = await CommandDispatcher!.DispatchAsync(command, context, cancellationToken);
             (result ?? new NumericResponse(Server.State[this], Numeric.ERR_UNKNOWNCOMMAND)).Send();
         }
         catch (CommandException ex)
