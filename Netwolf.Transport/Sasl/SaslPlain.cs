@@ -3,6 +3,8 @@
 
 using Netwolf.Transport.Extensions;
 
+using System.Security.Cryptography;
+
 namespace Netwolf.Transport.Sasl;
 
 public sealed class SaslPlain : ISaslMechanism
@@ -19,16 +21,19 @@ public sealed class SaslPlain : ISaslMechanism
 
     public SaslPlain(string username, string? impersonate, string password)
     {
-        Username = username?.EncodeUtf8() ?? throw new ArgumentNullException(nameof(username));
-        Impersonate = impersonate?.EncodeUtf8() ?? Array.Empty<byte>();
-        Password = password?.EncodeUtf8() ?? throw new ArgumentNullException(nameof(password));
+        ArgumentNullException.ThrowIfNull(username);
+        ArgumentNullException.ThrowIfNull(password);
+
+        Username = username.EncodeUtf8();
+        Impersonate = impersonate?.EncodeUtf8() ?? [];
+        Password = password.EncodeUtf8();
     }
 
     public bool Authenticate(ReadOnlySpan<byte> challenge, out ReadOnlySpan<byte> response)
     {
         if (++State > 1 || challenge.Length > 0)
         {
-            response = Array.Empty<byte>();
+            response = [];
             return false;
         }
 
@@ -54,5 +59,10 @@ public sealed class SaslPlain : ISaslMechanism
 
         response = buffer;
         return true;
+    }
+
+    public void Dispose()
+    {
+        CryptographicOperations.ZeroMemory(Password);
     }
 }

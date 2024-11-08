@@ -21,6 +21,10 @@ public sealed class SaslScram : ISaslMechanism
 
     private ChannelBinding? EndpointBindingData { get; set; }
 
+    private ChannelBinding? ExporterBindingData { get; set; }
+
+    private bool CanBind => UniqueBindingData != null || EndpointBindingData != null || ExporterBindingData != null;
+
     private HashAlgorithmName HashName { get; init; }
 
     private Func<byte[], byte[]> Hash { get; init; }
@@ -53,10 +57,9 @@ public sealed class SaslScram : ISaslMechanism
 
     public SaslScram(string hashName, string username, string? impersonate, string password, bool plus = false, IMfaMechanism? mfa = null)
     {
-        if (hashName == null)
-        {
-            throw new ArgumentNullException(nameof(hashName));
-        }
+        ArgumentNullException.ThrowIfNull(hashName);
+        ArgumentNullException.ThrowIfNull(username);
+        ArgumentNullException.ThrowIfNull(password);
 
         switch (hashName)
         {
@@ -83,12 +86,10 @@ public sealed class SaslScram : ISaslMechanism
         }
 
         Name = "SCRAM-" + hashName + (plus ? "-PLUS" : String.Empty);
-        Username = username?.Normalize(NormalizationForm.FormKC).Replace("=", "=3D").Replace(",", "=2C")
-            ?? throw new ArgumentNullException(nameof(username));
+        Username = username.Normalize(NormalizationForm.FormKC).Replace("=", "=3D").Replace(",", "=2C");
         Impersonate = impersonate?.Normalize(NormalizationForm.FormKC).Replace("=", "=3D").Replace(",", "=2C");
         // password gets normalized but doesn't have the replacements for = and ,
-        Password = password?.Normalize(NormalizationForm.FormKC).EncodeUtf8()
-            ?? throw new ArgumentNullException(nameof(password));
+        Password = password.Normalize(NormalizationForm.FormKC).EncodeUtf8();
         // 128-bit random nonce (trailing ='s are unnecessary and don't add to security of nonce)
         Nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16)).TrimEnd('=');
         MFA = mfa;
@@ -97,10 +98,10 @@ public sealed class SaslScram : ISaslMechanism
     // This needs some refactoring into helper methods
     public bool Authenticate(ReadOnlySpan<byte> challenge, out ReadOnlySpan<byte> response)
     {
-        if (Plus && UniqueBindingData == null && EndpointBindingData == null)
+        if (Plus && !CanBind)
         {
             // can't bind
-            response = Array.Empty<byte>();
+            response = [];
             return false;
         }
 
@@ -112,7 +113,7 @@ public sealed class SaslScram : ISaslMechanism
         {
             if (challenge.Length > 0)
             {
-                response = Array.Empty<byte>();
+                response = [];
                 return false;
             }
 
@@ -120,13 +121,17 @@ public sealed class SaslScram : ISaslMechanism
             // GS2 header
             string header;
 
-            if (UniqueBindingData == null && EndpointBindingData == null)
+            if (!CanBind)
             {
                 header = "n,";
             }
             else if (!Plus)
             {
                 header = "y,";
+            }
+            else if (ExporterBindingData != null)
+            {
+                header = "p=tls-exporter,";
             }
             else if (UniqueBindingData != null)
             {
@@ -154,9 +159,9 @@ public sealed class SaslScram : ISaslMechanism
             sb.Append(",r=");
             sb.Append(Nonce);
 
-            response = (header + sb.ToString()).EncodeUtf8();
             ClientHeader = header;
             ClientFirstMessageBare = sb.ToString();
+            response = (ClientHeader + ClientFirstMessageBare).EncodeUtf8();
             return true;
         }
         else if (State == 2)
@@ -168,7 +173,7 @@ public sealed class SaslScram : ISaslMechanism
 
             if (serverResponse.Length < 3)
             {
-                response = Array.Empty<byte>();
+                response = [];
                 return false;
             }
 
@@ -178,7 +183,7 @@ public sealed class SaslScram : ISaslMechanism
                 var d = piece.Split('=', 2);
                 if (d.Length != 2 || d[0].Length != 1 || !Char.IsAsciiLetter(d[0][0]))
                 {
-                    response = Array.Empty<byte>();
+                    response = [];
                     return false;
                 }
 
@@ -188,7 +193,7 @@ public sealed class SaslScram : ISaslMechanism
                     // or server didn't add on their own nonce to the end?
                     if (!d[1].StartsWith(Nonce) || d[1] == Nonce)
                     {
-                        response = Array.Empty<byte>();
+                        response = [];
                         return false;
                     }
 
@@ -197,7 +202,7 @@ public sealed class SaslScram : ISaslMechanism
                 else if (i == 0 && d[0] == "m")
                 {
                     // we don't support mandatory extensions
-                    response = Array.Empty<byte>();
+                    response = [];
                     return false;
                 }
                 else if (i == 1 && d[0] == "s")
@@ -209,14 +214,14 @@ public sealed class SaslScram : ISaslMechanism
                     catch (FormatException)
                     {
                         // invalid base64
-                        response = Array.Empty<byte>();
+                        response = [];
                         return false;
                     }
 
                     // missing salt?
                     if (salt.Length == 0)
                     {
-                        response = Array.Empty<byte>();
+                        response = [];
                         return false;
                     }
                 }
@@ -225,14 +230,14 @@ public sealed class SaslScram : ISaslMechanism
                     // try to parse the number
                     if (!Int32.TryParse(d[1], out iterations))
                     {
-                        response = Array.Empty<byte>();
+                        response = [];
                         return false;
                     }
 
                     // number invalid?
                     if (iterations < 1)
                     {
-                        response = Array.Empty<byte>();
+                        response = [];
                         return false;
                     }
                 }
@@ -248,7 +253,7 @@ public sealed class SaslScram : ISaslMechanism
                 else
                 {
                     // invalid / ill-formed server challenge
-                    response = Array.Empty<byte>();
+                    response = [];
                     return false;
                 }
             }
@@ -257,7 +262,7 @@ public sealed class SaslScram : ISaslMechanism
 
             // base64-encoded GS2 header + channel binding data
             var gs2Header = ClientHeader.EncodeUtf8();
-            var bindingData = UniqueBindingData ?? EndpointBindingData;
+            var bindingData = ExporterBindingData ?? UniqueBindingData ?? EndpointBindingData;
             int dataSize = (Plus && bindingData != null) ? bindingData.Size : 0;
             byte[] buffer = new byte[gs2Header.Length + dataSize];
             Array.Copy(gs2Header, buffer, gs2Header.Length);
@@ -277,7 +282,7 @@ public sealed class SaslScram : ISaslMechanism
                 if (!success)
                 {
                     // channel binding data got deallocated?
-                    response = Array.Empty<byte>();
+                    response = [];
                     return false;
                 }
 
@@ -326,7 +331,7 @@ public sealed class SaslScram : ISaslMechanism
         else if (State == 3)
         {
             var serverResponse = challenge.DecodeUtf8().Split(',');
-            response = Array.Empty<byte>();
+            response = [];
 
             for (var i = 0; i < serverResponse.Length; ++i)
             {
@@ -365,17 +370,45 @@ public sealed class SaslScram : ISaslMechanism
         }
 
         // invalid state
-        response = Array.Empty<byte>();
+        response = [];
         return false;
     }
 
-    bool ISaslMechanism.SetChannelBindingData(ChannelBinding? uniqueData, ChannelBinding? endpointData)
+    bool ISaslMechanism.SetChannelBindingData(ChannelBindingKind kind, ChannelBinding? data)
     {
-        UniqueBindingData = uniqueData;
-        EndpointBindingData = endpointData;
+        switch (kind)
+        {
+            case ChannelBindingKind.Unique:
+                UniqueBindingData?.Dispose();
+                UniqueBindingData = data;
+                break;
+            case ChannelBindingKind.Endpoint:
+                EndpointBindingData?.Dispose();
+                EndpointBindingData = data;
+                break;
+            default:
+                // unrecognized binding kind, so this fails if we're requiring PLUS
+                return !Plus;
+        }
 
         // Binding data is required if we are using a PLUS mechanism,
         // otherwise it is advisory to alert the server whether or not we support binding
-        return !Plus || uniqueData != null || endpointData != null;
+        return !Plus || data != null;
+    }
+
+    public void Dispose()
+    {
+        EndpointBindingData?.Dispose();
+        EndpointBindingData = null;
+        UniqueBindingData?.Dispose();
+        UniqueBindingData = null;
+        ExporterBindingData?.Dispose();
+        ExporterBindingData = null;
+        CryptographicOperations.ZeroMemory(Password);
+        Nonce = null!;
+        ClientHeader = null!;
+        ClientFirstMessageBare = null!;
+        ExpectedServerSignature = null!;
+        MfaChallenge = null;
     }
 }

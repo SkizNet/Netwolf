@@ -27,4 +27,9 @@ public sealed class SaslExternal : ISaslMechanism
         response = Username;
         return true;
     }
+
+    public void Dispose()
+    {
+        // nothing to do here
+    }
 }

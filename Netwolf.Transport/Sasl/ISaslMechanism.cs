@@ -5,7 +5,7 @@ using System.Security.Authentication.ExtendedProtection;
 
 namespace Netwolf.Transport.Sasl;
 
-public interface ISaslMechanism
+public interface ISaslMechanism : IDisposable
 {
     string Name { get; }
 
@@ -22,7 +22,7 @@ public interface ISaslMechanism
     /// <param name="uniqueData"></param>
     /// <param name="endpointData"></param>
     /// <returns>true if we accept the data, false if this mechanism cannot work with the passed-in data</returns>
-    bool SetChannelBindingData(ChannelBinding? uniqueData, ChannelBinding? endpointData)
+    bool SetChannelBindingData(ChannelBindingKind kind, ChannelBinding? data)
     {
         throw new NotImplementedException();
     }

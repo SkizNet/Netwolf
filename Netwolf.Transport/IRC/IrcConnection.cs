@@ -13,6 +13,7 @@ using System.IO.Pipelines;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
 using System.Security.Authentication.ExtendedProtection;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -297,10 +298,20 @@ public class IrcConnection : IConnection
         }
     }
 
+#pragma warning disable SYSLIB0039 // Type or member is obsolete -- we're not using them, just checking if the end user used them
+    private static readonly SslProtocols[] _supportsUnique = [SslProtocols.Tls, SslProtocols.Tls11, SslProtocols.Tls12];
+#pragma warning restore SYSLIB0039 // Type or member is obsolete
+
     public ChannelBinding? GetChannelBinding(ChannelBindingKind kind)
     {
         if (Stream is SslStream sslStream)
         {
+            // Unique is not supported in TLS 1.3+, so do not use it there
+            if (kind == ChannelBindingKind.Unique && !_supportsUnique.Contains(sslStream.SslProtocol))
+            {
+                return null;
+            }
+
             try
             {
                 return sslStream.TransportContext.GetChannelBinding(kind);

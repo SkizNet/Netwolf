@@ -340,6 +340,7 @@ public partial class Network : INetwork
     /// <returns>Awaitable ValueTask for the async cleanup operation</returns>
     protected virtual async ValueTask DisposeAsyncCore()
     {
+        SelectedSaslMech?.Dispose();
         _capEventStream.Dispose();
         _messageLoopTokenSource.Cancel();
         await _messageLoop.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
@@ -360,6 +361,7 @@ public partial class Network : INetwork
         {
             if (disposing)
             {
+                SelectedSaslMech?.Dispose();
                 _capEventStream.Dispose();
                 _messageLoopTokenSource.Cancel();
                 _messageLoop.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing).GetAwaiter().GetResult();
@@ -1069,6 +1071,8 @@ public partial class Network : INetwork
                 break;
             case "903":
             case "907":
+                SelectedSaslMech?.Dispose();
+                SelectedSaslMech = null;
                 if (SuspendCapEndForSasl)
                 {
                     SuspendCapEndForSasl = false;
@@ -1083,6 +1087,8 @@ public partial class Network : INetwork
             case "902":
             case "906":
                 // SASL failed, don't retry
+                SelectedSaslMech?.Dispose();
+                SelectedSaslMech = null;
                 if (Options.AbortOnSaslFailure)
                 {
                     Logger.LogWarning("SASL failed with an unrecoverable error; aborting connection");
@@ -1722,15 +1728,20 @@ public partial class Network : INetwork
         {
             if (SaslMechs.Contains(mech))
             {
+                SelectedSaslMech?.Dispose();
                 SelectedSaslMech = SaslMechanismFactory.CreateMechanism(mech, Options);
                 if (SelectedSaslMech.SupportsChannelBinding)
                 {
+                    // Connection.GetChannelBinding returns null for an unsupported binding type (e.g. Unique on TLS 1.3+)
                     var uniqueData = Connection.GetChannelBinding(ChannelBindingKind.Unique);
                     var endpointData = Connection.GetChannelBinding(ChannelBindingKind.Endpoint);
 
-                    if (!SelectedSaslMech.SetChannelBindingData(uniqueData, endpointData))
+                    if (
+                        !SelectedSaslMech.SetChannelBindingData(ChannelBindingKind.Unique, uniqueData)
+                        && !SelectedSaslMech.SetChannelBindingData(ChannelBindingKind.Endpoint, endpointData))
                     {
                         // we want binding but it's not supported; skip this mech
+                        SelectedSaslMech.Dispose();
                         SelectedSaslMech = null;
                         SaslMechs.Remove(mech);
                         continue;
@@ -1744,6 +1755,7 @@ public partial class Network : INetwork
         }
 
         // no more mechs in common
+        SelectedSaslMech?.Dispose();
         SelectedSaslMech = null;
 
         if (SuspendCapEndForSasl)
@@ -1790,8 +1802,10 @@ public partial class Network : INetwork
             if (SaslBuffer.Length > SASL_BUFFER_MAX_LENGTH)
             {
                 SaslBuffer.Clear();
+                SelectedSaslMech.Dispose();
                 SelectedSaslMech = null;
                 _ = SendAsync(PrepareCommand("AUTHENTICATE", STAR), cancellationToken);
+                return;
             }
         }
 
@@ -1808,11 +1822,12 @@ public partial class Network : INetwork
                 data = [];
             }
 
-            bool success = SelectedSaslMech!.Authenticate(data, out var responseBytes);
+            bool success = SelectedSaslMech.Authenticate(data, out var responseBytes);
 
             if (!success)
             {
                 // abort SASL
+                SelectedSaslMech.Dispose();
                 SelectedSaslMech = null;
                 _ = SendAsync(PrepareCommand("AUTHENTICATE", STAR), cancellationToken);
             }
