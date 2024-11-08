@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 using Netwolf.Transport.IRC;
+using Netwolf.Transport.State;
 
 namespace Netwolf.Transport.Sasl;
 
@@ -23,9 +24,9 @@ public class SaslMechanismFactory : ISaslMechanismFactory
         };
     }
 
-    public IEnumerable<string> GetSupportedMechanisms(NetworkOptions options, IServer server)
+    public IEnumerable<string> GetSupportedMechanisms(NetworkOptions options, ServerRecord server)
     {
-        List<string> supported = new();
+        List<string> supported = [];
 
         if (options.AccountCertificateFile != null && server.SecureConnection)
         {

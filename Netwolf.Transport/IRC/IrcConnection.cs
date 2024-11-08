@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.Transport.Extensions;
 using Netwolf.Transport.Internal;
+using Netwolf.Transport.State;
 
 using System.Buffers;
 using System.IO.Pipelines;
@@ -39,7 +40,7 @@ public class IrcConnection : IConnection
 
     private bool AcceptAllCertificates { get; init; }
 
-    private List<string> TrustedFingerprints { get; init; } = new List<string>();
+    private List<string> TrustedFingerprints { get; init; } = [];
 
     private bool CheckOnlineRevocation { get; init; }
 
@@ -52,7 +53,7 @@ public class IrcConnection : IConnection
     private ILogger<IConnection> Logger { get; init; }
 
     internal IrcConnection(
-        IServer server,
+        ServerRecord server,
         NetworkOptions options,
         ILogger<IConnection> logger,
         ICommandFactory commandFactory)

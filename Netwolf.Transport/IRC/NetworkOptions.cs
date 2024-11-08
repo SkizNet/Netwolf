@@ -1,6 +1,8 @@
 ﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+using Netwolf.Transport.State;
+
 namespace Netwolf.Transport.IRC;
 
 /// <summary>
@@ -13,7 +15,7 @@ public class NetworkOptions
     private string? _accountName;
 
     /// <summary>
-    /// How long to wait before abandoning a connection to a particular <see cref="Server"/>.
+    /// How long to wait before abandoning a connection to a particular <see cref="ServerRecord"/>.
     /// </summary>
     public TimeSpan ConnectTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
@@ -25,7 +27,7 @@ public class NetworkOptions
     public int ConnectRetries { get; set; } = Int32.MaxValue;
 
     /// <summary>
-    /// How often to ping the remote <see cref="Server"/> to see if the connection is still live.
+    /// How often to ping the remote <see cref="ServerRecord"/> to see if the connection is still live.
     /// </summary>
     public TimeSpan PingInterval { get; set; } = TimeSpan.FromSeconds(30);
 
@@ -69,7 +71,7 @@ public class NetworkOptions
     /// <summary>
     /// List of servers to try when connecting (in order of preference).
     /// </summary>
-    public IServer[] Servers { get; init; } = [];
+    public ServerRecord[] Servers { get; init; } = [];
 
     /// <summary>
     /// Password required to connect to the network, if any.

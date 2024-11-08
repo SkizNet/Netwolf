@@ -13,11 +13,13 @@ namespace Netwolf.Test.Transport;
 public class StateTests
 {
     private ServiceProvider Container { get; init; }
+
     private static NetworkOptions Options => new()
     {
         PrimaryNick = "test",
         Ident = "id",
         RealName = "real name",
+        Servers = [new("irc.netwolf.org", 6697)]
     };
 
     public StateTests()
@@ -36,7 +38,7 @@ public class StateTests
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
-        network.RegisterForUnitTests(new FakeServer(scope.ServiceProvider), "127.0.0.1", "acct");
+        network.RegisterForUnitTests("127.0.0.1", "acct");
 
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #TestiNg");
         var channel = network.GetChannel("#testing");
@@ -53,7 +55,7 @@ public class StateTests
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
-        network.RegisterForUnitTests(new FakeServer(scope.ServiceProvider), "127.0.0.1", "acct");
+        network.RegisterForUnitTests("127.0.0.1", "acct");
 
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #TestiNg");
         network.ReceiveLineForUnitTests(":foo!~bar@baz/baz JOIN #TestiNg");
@@ -79,7 +81,7 @@ public class StateTests
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
-        network.RegisterForUnitTests(new FakeServer(scope.ServiceProvider), "127.0.0.1", "acct");
+        network.RegisterForUnitTests("127.0.0.1", "acct");
 
         network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :extended-join");
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #TestiNg different :also different");
@@ -110,7 +112,7 @@ public class StateTests
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
-        network.RegisterForUnitTests(new FakeServer(scope.ServiceProvider), "127.0.0.1", "acct");
+        network.RegisterForUnitTests("127.0.0.1", "acct");
 
         network.ReceiveLineForUnitTests(":foo!~bar@baz/baz JOIN #testing");
         var channel = network.GetChannel("#testing");
@@ -132,7 +134,7 @@ public class StateTests
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
-        network.RegisterForUnitTests(new FakeServer(scope.ServiceProvider), "127.0.0.1", "acct");
+        network.RegisterForUnitTests("127.0.0.1", "acct");
 
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
         network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
@@ -159,7 +161,7 @@ public class StateTests
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
-        network.RegisterForUnitTests(new FakeServer(scope.ServiceProvider), "127.0.0.1", "acct");
+        network.RegisterForUnitTests("127.0.0.1", "acct");
 
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
         network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
@@ -179,7 +181,7 @@ public class StateTests
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
-        network.RegisterForUnitTests(new FakeServer(scope.ServiceProvider), "127.0.0.1", "acct");
+        network.RegisterForUnitTests("127.0.0.1", "acct");
 
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
         network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
@@ -231,7 +233,7 @@ public class StateTests
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
-        network.RegisterForUnitTests(new FakeServer(scope.ServiceProvider), "127.0.0.1", "acct");
+        network.RegisterForUnitTests("127.0.0.1", "acct");
 
         network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :draft/channel-rename");
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
@@ -260,7 +262,7 @@ public class StateTests
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
-        network.RegisterForUnitTests(new FakeServer(scope.ServiceProvider), "127.0.0.1", "acct");
+        network.RegisterForUnitTests("127.0.0.1", "acct");
 
         network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :draft/channel-rename");
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
@@ -279,7 +281,7 @@ public class StateTests
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
-        network.RegisterForUnitTests(new FakeServer(scope.ServiceProvider), "127.0.0.1", "acct");
+        network.RegisterForUnitTests("127.0.0.1", "acct");
 
         network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :draft/channel-rename");
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
@@ -298,7 +300,7 @@ public class StateTests
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
-        network.RegisterForUnitTests(new FakeServer(scope.ServiceProvider), "127.0.0.1", "acct");
+        network.RegisterForUnitTests("127.0.0.1", "acct");
 
         network.ReceiveLineForUnitTests($":irc.netwolf.org 005 test CASEMAPPING={casemapping} :are supported by this server");
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
@@ -329,7 +331,7 @@ public class StateTests
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
-        network.RegisterForUnitTests(new FakeServer(scope.ServiceProvider), "127.0.0.1", "acct");
+        network.RegisterForUnitTests("127.0.0.1", "acct");
 
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
         network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
@@ -347,7 +349,7 @@ public class StateTests
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
-        network.RegisterForUnitTests(new FakeServer(scope.ServiceProvider), "127.0.0.1", "acct");
+        network.RegisterForUnitTests("127.0.0.1", "acct");
 
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
         network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");

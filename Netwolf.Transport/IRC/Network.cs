@@ -17,7 +17,6 @@ using System.Reactive.Subjects;
 using System.Security.Authentication.ExtendedProtection;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Channels;
 
 using static Netwolf.Transport.IRC.INetwork;
 
@@ -72,7 +71,7 @@ public partial class Network : INetwork
     /// <summary>
     /// Server we are connected to, null if not connected
     /// </summary>
-    private IServer? Server { get; set; }
+    private ServerRecord? Server { get; set; }
 
     private IConnection? _connection;
 
@@ -1882,11 +1881,11 @@ public partial class Network : INetwork
     /// <param name="server"></param>
     /// <param name="host"></param>
     /// <param name="account"></param>
-    internal void RegisterForUnitTests(IServer server, string host, string? account = null)
+    internal void RegisterForUnitTests(string host, string? account = null)
     {
         _messageLoopTokenSource.Cancel();
         // This is expected to be a mock/stub connection via DI service replacement in the test harness
-        _connection = ConnectionFactory.Create(this, server, Options);
+        _connection = ConnectionFactory.Create(this, Options.Servers[0], Options);
         Host = host;
         Account = account;
     }

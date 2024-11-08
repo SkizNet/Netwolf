@@ -13,40 +13,48 @@ namespace Netwolf.Test;
 
 internal class FakeConnection : IConnection
 {
-    private FakeServer Server { get; init; }
+    private INetwork Network { get; init; }
 
-    private ICommandFactory CommandFactory { get; set; }
+    private FakeServer? Server { get; init; }
 
-    private ICommandDispatcher<ICommandResponse>? CommandDispatcher { get; set; }
+    private ICommandFactory CommandFactory { get; init; }
 
-    private ILogger<IConnection> Logger { get; set; }
+    private ICommandDispatcher<ICommandResponse>? CommandDispatcher { get; init; }
+
+    private ILogger<IConnection> Logger { get; init; }
 
     private bool disposedValue;
 
-    internal FakeConnection(FakeServer server, ICommandFactory commandFactory, ILogger<IConnection> logger)
+    internal FakeConnection(
+        INetwork network,
+        FakeServer? server,
+        ICommandFactory commandFactory,
+        ICommandDispatcher<ICommandResponse>? commandDispatcher,
+        ILogger<IConnection> logger)
     {
+        Network = network;
         CommandFactory = commandFactory;
-        CommandDispatcher = server.CommandDispatcher;
+        CommandDispatcher = commandDispatcher;
         Server = server;
         Logger = logger;
     }
 
     public Task ConnectAsync(CancellationToken cancellationToken)
     {
-        Server.ConnectClient(this);
+        Server?.ConnectClient(Network, this);
         return Task.CompletedTask;
     }
 
     public Task DisconnectAsync()
     {
-        Server.DisconnectClient(this);
+        Server?.DisconnectClient(Network, this);
         return Task.CompletedTask;
     }
 
     public async Task<ICommand> ReceiveAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var command = await Server.ReceiveCommand(this, cancellationToken);
+        var command = await Server!.ReceiveCommand(Network, this, cancellationToken);
         Logger.LogDebug("<-- {Command}", command.FullCommand);
         return command;
     }
@@ -57,13 +65,13 @@ internal class FakeConnection : IConnection
         Logger.LogDebug("--> {Command}", command.FullCommand);
         try
         {
-            var context = new ServerContext() { User = Server.State[this] };
+            var context = new ServerContext() { User = Server!.State[Network][this] };
             var result = await CommandDispatcher!.DispatchAsync(command, context, cancellationToken);
-            (result ?? new NumericResponse(Server.State[this], Numeric.ERR_UNKNOWNCOMMAND)).Send();
+            (result ?? new NumericResponse(Server.State[Network][this], Numeric.ERR_UNKNOWNCOMMAND)).Send();
         }
         catch (CommandException ex)
         {
-            ex.GetNumericResponse(Server.State[this]).Send();
+            ex.GetNumericResponse(Server!.State[Network][this]).Send();
         }
     }
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 using Netwolf.Transport.IRC;
+using Netwolf.Transport.State;
 
 namespace Netwolf.Transport.Sasl;
 
@@ -16,7 +17,7 @@ public interface ISaslMechanismFactory
     /// <param name="options">Network options for the current connection</param>
     /// <param name="server">Server we are currently connected to</param>
     /// <returns></returns>
-    IEnumerable<string> GetSupportedMechanisms(NetworkOptions options, IServer server);
+    IEnumerable<string> GetSupportedMechanisms(NetworkOptions options, ServerRecord server);
 
     /// <summary>
     /// 

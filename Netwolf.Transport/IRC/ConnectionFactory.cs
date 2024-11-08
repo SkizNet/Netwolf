@@ -3,6 +3,8 @@
 
 using Microsoft.Extensions.Logging;
 
+using Netwolf.Transport.State;
+
 namespace Netwolf.Transport.IRC;
 
 public class ConnectionFactory : IConnectionFactory
@@ -18,7 +20,7 @@ public class ConnectionFactory : IConnectionFactory
     }
 
     /// <inheritdoc/>
-    public IConnection Create(INetwork network, IServer server, NetworkOptions options)
+    public IConnection Create(INetwork network, ServerRecord server, NetworkOptions options)
     {
         return new IrcConnection(server, options, Logger, CommandFactory);
     }
