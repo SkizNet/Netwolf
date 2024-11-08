@@ -142,7 +142,7 @@ public interface INetwork : INetworkInfo, IDisposable, IAsyncDisposable
     /// </summary>
     /// <param name="reason">Reason used in the QUIT message, displayed to others on the network</param>
     /// <returns></returns>
-    Task DisconnectAsync(string reason);
+    Task DisconnectAsync(string? reason = null);
 
     /// <summary>
     /// Process a command as if it was received from the network connection.

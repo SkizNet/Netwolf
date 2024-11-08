@@ -5,6 +5,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <SignAssembly>False</SignAssembly>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <Version>0.1.0-alpha</Version>
+    <Description>IRC client library</Description>
+    <RepositoryUrl>https://github.com/SkizNet/Netwolf</RepositoryUrl>
+    <PackageTags>irc</PackageTags>
+    <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
+    <IncludeSymbols>True</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PackageProjectUrl>https://netwolf.org</PackageProjectUrl>
   </PropertyGroup>
 
   <ItemGroup>

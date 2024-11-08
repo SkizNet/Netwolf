@@ -625,7 +625,7 @@ public partial class Network : INetwork
     }
 
     /// <inheritdoc />
-    public async Task DisconnectAsync(string reason)
+    public async Task DisconnectAsync(string? reason = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -1067,20 +1067,42 @@ public partial class Network : INetwork
                 // successful SASL, record our account name
                 Account = command.Args[2];
                 break;
+            case "903":
+            case "907":
+                if (SuspendCapEndForSasl)
+                {
+                    SuspendCapEndForSasl = false;
+                    _ = SendAsync(PrepareCommand("CAP", END), cancellationToken);
+                }
+                break;
             case "904":
             case "905":
                 // SASL failed, retry with next mech
-                // TODO: Finish this
+                AttemptSasl(cancellationToken);
                 break;
             case "902":
             case "906":
-            case "907":
                 // SASL failed, don't retry
-                // TODO: Finish this
+                if (Options.AbortOnSaslFailure)
+                {
+                    Logger.LogWarning("SASL failed with an unrecoverable error; aborting connection");
+                    _ = DisconnectAsync();
+                }
                 break;
             case "908":
                 // failed, but will also get a 904, simply update supported mechs
-                // TODO: Finish this
+                {
+                    HashSet<string> mechs = new(SaslMechs);
+                    mechs.IntersectWith(command.Args[1].Split(','));
+                    if (mechs.Count == 0 && Options.AbortOnSaslFailure)
+                    {
+                        Logger.LogError("Server and client have no SASL mechanisms in common; aborting connection");
+                        _ = DisconnectAsync();
+                        return;
+                    }
+
+                    SaslMechs = mechs;
+                }
                 break;
             case "MODE":
                 // only care if we're changing our own modes or channel modes
@@ -1088,7 +1110,10 @@ public partial class Network : INetwork
                     var lookupId = State.Lookup.GetValueOrDefault(IrcUtil.Casefold(command.Args[0], CaseMapping));
                     bool adding = true;
 
-                    if (lookupId == ClientId)
+                    // for user modes, we may receive a MODE message before we officially mark us as "connected"
+                    // (i.e. before we complete a WHO on ourselves), so ensure we directly use State instead of
+                    // properties that throw if not connected
+                    if (lookupId == State.ClientId)
                     {
                         List<char> toAdd = [];
                         List<char> toRemove = [];
@@ -1108,7 +1133,7 @@ public partial class Network : INetwork
                             }
                         }
 
-                        UserModes = UserModes.Union(toAdd).Except(toRemove);
+                        UserModes = State.UserModes.Union(toAdd).Except(toRemove);
                     }
                     else if (State.Channels.TryGetValue(lookupId, out var channel))
                     {
@@ -1584,6 +1609,12 @@ public partial class Network : INetwork
                                     request.Add("sasl");
                                     SaslMechs = supportedSaslTypes;
                                 }
+                                else if (supportedSaslTypes.Count == 0 && Options.AbortOnSaslFailure)
+                                {
+                                    Logger.LogError("Server and client have no SASL mechanisms in common; aborting connection");
+                                    _ = DisconnectAsync();
+                                    return;
+                                }
                             }
                             else if (shouldEnable)
                             {
@@ -1717,6 +1748,13 @@ public partial class Network : INetwork
 
         if (SuspendCapEndForSasl)
         {
+            if (Options.AbortOnSaslFailure)
+            {
+                Logger.LogError("All SASL mechanisms supported by both server and client failed, aborting connection.");
+                _ = DisconnectAsync();
+                return;
+            }
+
             SuspendCapEndForSasl = false;
             _ = SendAsync(PrepareCommand("CAP", END), cancellationToken);
         }
@@ -1926,6 +1964,8 @@ public partial class Network : INetwork
             ImmutableDictionary<string, string?>.Empty,
             ImmutableHashSet<string>.Empty,
             ImmutableDictionary<ISupportToken, string?>.Empty);
+
+        SuspendCapEndForSasl = false;
     }
 
     /// <inheritdoc />

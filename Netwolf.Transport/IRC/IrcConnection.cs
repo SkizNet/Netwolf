@@ -16,7 +16,6 @@ using System.Net.Sockets;
 using System.Security.Authentication.ExtendedProtection;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 
 namespace Netwolf.Transport.IRC;
 
@@ -250,11 +249,9 @@ public class IrcConnection : IConnection
         if (sequenceReader.TryReadTo(out ReadOnlySpan<byte> span, _crlf, advancePastDelimiter: true))
         {
             // we need to decode command before advancing Reader to avoid memory corruption
-            var sb = new StringBuilder(span.DecodeUtf8(strict: false));
+            var message = span.DecodeUtf8(strict: false);
             Reader!.AdvanceTo(sequenceReader.Position);
-            // ICommandFactory.Parse requires that the message ends with CRLF
-            sb.Append("\r\n");
-            return sb.ToString();
+            return message;
         }
         else if (buffer.Length > 8192 + 512)
         {
