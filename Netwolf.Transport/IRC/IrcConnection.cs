@@ -200,10 +200,11 @@ public class IrcConnection : IConnection
     }
 
     /// <inheritdoc />
-    public async Task DisconnectAsync()
+    public Task DisconnectAsync()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        await Task.Run(Disconnect).ConfigureAwait(false);
+        Disconnect();
+        return Task.CompletedTask;
     }
 
     private void Disconnect()

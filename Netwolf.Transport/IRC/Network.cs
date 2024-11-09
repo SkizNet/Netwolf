@@ -383,6 +383,9 @@ public partial class Network : INetwork
 
     private void MessageLoop()
     {
+        bool activityFlag = false;
+        Task<ICommand>? receiveTask = null;
+
         var tasks = new List<Task>();
         var token = _messageLoopTokenSource.Token;
         var pingTimer = Task.Delay(Options.PingInterval, token);
@@ -396,14 +399,17 @@ public partial class Network : INetwork
 
             if (IsConnected)
             {
-                tasks.Add(Connection.ReceiveAsync(token)); // index 1
+                // only fire a new ReceiveAsync if we've fully received the previous one
+                receiveTask ??= Connection.ReceiveAsync(token);
+                tasks.Add(receiveTask); // index 1
                 tasks.Add(pingTimer); // index 2
                 tasks.AddRange(pingTimeoutTimers); // index 3+
             }
             else if (_connection != null)
             {
                 // in user registration (not fully connected yet, so do not send any PINGs)
-                tasks.Add(Connection.ReceiveAsync(token)); // index 1
+                receiveTask ??= Connection.ReceiveAsync(token);
+                tasks.Add(receiveTask); // index 1
             }
 
             int index = Task.WaitAny([.. tasks], token);
@@ -419,12 +425,16 @@ public partial class Network : INetwork
                     break;
                 case 1:
                     // Connection.ReceiveAsync fired, so we have a command to dispatch
+                    receiveTask = null;
                     if (tasks[index].Status == TaskStatus.Faulted)
                     {
                         // Remote end died, close the connection
+                        Logger.LogError(tasks[index].Exception, "ReceiveAsync failed; terminating connection.");
                         goto default;
                     }
 
+                    // Mark the connection as active so we don't send unnecessary PINGs
+                    activityFlag = true;
                     var command = ((Task<ICommand>)tasks[index]).Result;
 
                     // Handle PONG specially so we can manage our timers
@@ -451,28 +461,30 @@ public partial class Network : INetwork
                         
                     break;
                 case 2:
-                    // pingTimer fired, send a PING and reset the timer
-                    // in the future we could detect other activity and hold off on sending PINGs if they're not needed
+                    // pingTimer fired, send a PING if necessary and reset the timer
                     pingTimer = Task.Delay(Options.PingInterval, token);
-                    pingTimeoutTimers.Add(Task.Delay(Options.PingTimeout, token));
-                    string cookie = String.Format("NWPC{0:X16}", Random.Shared.NextInt64());
-                    pingTimeoutCookies.Add(cookie);
-                    _ = SendAsync(PrepareCommand("PING", [cookie], null), token);
+                    if (!activityFlag)
+                    {
+                        pingTimeoutTimers.Add(Task.Delay(Options.PingTimeout, token));
+                        string cookie = String.Format("NWPC{0:X16}", Random.Shared.NextInt64());
+                        pingTimeoutCookies.Add(cookie);
+                        _ = SendAsync(PrepareCommand("PING", [cookie], null), token);
+                    }
+
+                    // reset activity so that if we make it to another PingInterval with no activity we send a PING
+                    activityFlag = false;
                     break;
                 default:
                     // one of the pingTimeoutTimers fired or ReceiveAsync threw an exception
                     // this leaves the internal state "dirty" (by not cleaning up pingTimeoutTimers/Cookies, etc.)
                     // but on reconnect the completion source will be flagged and reset those
-                    Task.Run(async () =>
+                    if (_connection != null)
                     {
-                        if (_connection != null)
-                        {
-                            await _connection.DisconnectAsync().ConfigureAwait(false);
-                            _connection = null;
+                        _connection.DisconnectAsync().Wait();
+                        _connection = null;
 
-                            Disconnected?.Invoke(this, new(this, tasks[index].Exception));
-                        }
-                    });
+                        Disconnected?.Invoke(this, new(this, tasks[index].Exception));
+                    }
                     break;
             }
         }
@@ -706,7 +718,10 @@ public partial class Network : INetwork
             }
         }
 
+        // we overwrite the final value in args with each line of text
+        // however List doesn't let us create *new* indexes using the indexer, so add a placeholder for the time being
         int lineIndex = args.Count;
+        args.Add(null!);
 
         // split text if it is longer than maxlen bytes
         bool multilineEnabled = TryGetEnabledCap("draft/multiline", out var multilineValue) && State.EnabledCaps.Contains("batch");

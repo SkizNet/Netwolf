@@ -27,7 +27,7 @@ internal class BotRunnerService : BackgroundService
         Registry = registry;
     }
 
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         List<Task> botTasks = [];
 
@@ -47,13 +47,15 @@ internal class BotRunnerService : BackgroundService
 
             Registry.RegisterBot(botName, bot);
             ManagedBots.Add(botName);
-            botTasks.Add(bot.ExecuteAsync(stoppingToken));
+
+            // deferring to the thread pool (via Task.Run) ensures that the logger prints that the application has started
+            // before any bot connections are made, which makes for prettier log output :)
+            botTasks.Add(Task.Run(() => bot.ExecuteAsync(stoppingToken), CancellationToken.None));
         }
 
         // block until all bots are disconnected
         // eventually we could WaitAny() here to handle things like reconnect logic
-        Task.WaitAll([.. botTasks], stoppingToken);
-        return Task.CompletedTask;
+        await Task.WhenAll(botTasks);
     }
 
     public override void Dispose()

@@ -1,7 +1,6 @@
 ﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -22,7 +21,6 @@ using System.Reactive.Threading.Tasks;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using System.Security.Principal;
 using System.Text;
 using System.Threading.RateLimiting;
 
@@ -519,7 +517,8 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         {
             var x when _joinErrors0.Contains(x) => IrcUtil.IrcEquals(c.Args[0], name, Network.CaseMapping),
             var x when _joinErrors1.Contains(x) => IrcUtil.IrcEquals(c.Args[1], name, Network.CaseMapping),
-            "JOIN" => IrcUtil.IrcEquals(c.Args[0], name, Network.CaseMapping) && c.Source == Network.Nick,
+            "JOIN" => IrcUtil.IrcEquals(c.Args[0], name, Network.CaseMapping)
+                && IrcUtil.IrcEquals(IrcUtil.SplitHostmask(c.Source ?? string.Empty).Nick, Network.Nick, Network.CaseMapping),
             _ => false
         }).ConfigureAwait(false);
 
@@ -794,7 +793,9 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             }
         }
 
-        if (!Task.WaitAll([.. joinTasks], Options.JoinTimeout, CancellationToken.None))
+        var delay = Task.Delay(Options.JoinTimeout, CancellationToken.None);
+        await Task.WhenAny(Task.WhenAll(joinTasks), delay);
+        if (delay.Status == TaskStatus.RanToCompletion)
         {
             Logger.LogWarning("Initial JOINs are taking longer than {Time}ms to resolve. This could be a bug, please investigate further.", Options.JoinTimeout);
         }
