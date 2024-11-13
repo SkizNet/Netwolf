@@ -639,13 +639,13 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         try
         {
             bool toBot = e.Command.Args[0] == Network.Nick;
-            bool haveCommand = TryParseCommandAndArgs(e.Command.Args[1].AsSpan(), out var command, out var args, out var fullLine);
+            bool haveCommand = TryParseCommandAndArgs(e.Command.Args[1].AsSpan(), out var command, out var args);
 
             if (haveCommand || toBot)
             {
                 using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(CancellationSource.Token, e.Token);
                 var commandObj = CommandFactory.CreateCommand(CommandType.Bot, e.Command.Source, command, args, e.Command.Tags);
-                var context = await BotCommandContextFactory.CreateAsync(this, e.Command.Args[0], commandObj, fullLine, linkedSource.Token);
+                var context = await BotCommandContextFactory.CreateAsync(this, e.Command.Args[0], commandObj, e.Command.Args[1], linkedSource.Token);
 
                 try
                 {
@@ -696,48 +696,48 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         }
     }
 
-    private bool TryParseCommandAndArgs(ReadOnlySpan<char> line, out string command, out string[] args, out string fullLine)
+    private bool TryParseCommandAndArgs(ReadOnlySpan<char> line, out string command, out List<string> args)
     {
         bool haveCommand = false;
         string nickPrefix = $"{Network.Nick}: ";
 
         if (line.StartsWith(Options.CommandPrefix))
         {
-            haveCommand = true;
             line = line[Options.CommandPrefix.Length..];
+            haveCommand = line.Length > 0 && line[0] != ' ';
         }
         else if (line.StartsWith(nickPrefix))
         {
-            haveCommand = true;
             line = line[nickPrefix.Length..].TrimStart(' ');
+            haveCommand = line.Length > 0;
         }
 
-        command = string.Empty;
         args = [];
-        fullLine = string.Empty;
 
         if (!haveCommand)
         {
+            command = string.Empty;
             return false;
         }
 
-        // some extra copying is performed here since the ReadOnlySpan<char>.Split() methods suck in .NET 8
-        // As of .NET 9 this API surface is far improved and we can avoid copies until the assignments to command/args/fullLine
-        var splitTrimmed = line.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var splitRaw = line.ToString().Split(' ', 2);
+        Span<Range> rawSplits = stackalloc Range[2];
+        int num = line.Split(rawSplits, ' ');
+        command = line[rawSplits[0]].ToString();
 
-        command = splitTrimmed[0];
-        
-        if (splitTrimmed.Length > 1)
+        if (num == 2)
         {
-            args = splitTrimmed[1..];
+            ReadOnlySpan<char> argLine = line[rawSplits[1]];
+            foreach (var range in argLine.Split(' '))
+            {
+                if (range.GetOffsetAndLength(argLine.Length).Length == 0)
+                {
+                    continue;
+                }
+
+                args.Add(argLine[range].ToString());
+            }
         }
 
-        if (splitRaw.Length == 2)
-        {
-            fullLine = splitRaw[1];
-        }
-        
         return true;
     }
 
