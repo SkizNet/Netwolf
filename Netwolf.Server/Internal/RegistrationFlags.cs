@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace Netwolf.Server.Internal;
 
 [Flags]
-internal enum RegistrationFlags
+internal enum RegistrationFlags : int
 {
     None = 0,
     PendingPass = 1 << 0,

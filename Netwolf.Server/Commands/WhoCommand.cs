@@ -57,7 +57,7 @@ public class WhoCommand : ServerCommandHandler, IISupportTokenProvider
 
     public WhoCommand(IOptionsSnapshot<ServerOptions> options)
     {
-        WhoxEnabled = options.Value.EnabledFeatures.Contains("WHOX");
+        WhoxEnabled = options.Value.EnabledFeatures.Contains(FeatureFlags.WhoX);
     }
 
     public override Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)

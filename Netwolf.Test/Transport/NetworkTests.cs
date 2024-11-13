@@ -7,6 +7,9 @@ using Netwolf.Server.Extensions.DependencyInjection;
 using Netwolf.Transport.IRC;
 using Netwolf.Transport.Extensions.DependencyInjection;
 using Netwolf.PluginFramework.Commands;
+using Netwolf.Server;
+using Microsoft.Extensions.Options;
+using Netwolf.BotFramework;
 
 namespace Netwolf.Test.Transport;
 
@@ -32,6 +35,7 @@ public class NetworkTests
             .AddTransportServices()
             .AddServerServices()
             .AddSingleton<FakeServer>()
+            .AddSingleton<IOptionsSnapshot<ServerOptions>>(new TestOptionsSnapshot<ServerOptions>() { Value = new ServerOptions() })
             .Replace(ServiceDescriptor.Singleton<IConnectionFactory, FakeConnectionFactory>())
             .BuildServiceProvider();
 

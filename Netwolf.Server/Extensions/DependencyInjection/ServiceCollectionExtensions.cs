@@ -21,7 +21,9 @@ public static class ServiceCollectionExtensions
     {
         AddServerServicesBase(services);
         services.AddOptions<ServerOptions>()
-            .ValidateDataAnnotations();
+            .BindConfiguration("Netwolf.Server")
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
 
         return services;
     }
@@ -31,7 +33,8 @@ public static class ServiceCollectionExtensions
         AddServerServicesBase(services);
         services.AddOptions<ServerOptions>()
             .Configure(configureOptions)
-            .ValidateDataAnnotations();
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
 
         return services;
     }

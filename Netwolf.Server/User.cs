@@ -12,6 +12,7 @@ using System.Text.RegularExpressions;
 using Netwolf.Server.Capabilities;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Context;
+using Microsoft.Extensions.Options;
 
 namespace Netwolf.Server;
 
@@ -20,6 +21,8 @@ public class User : IDisposable
     private bool disposedValue;
 
     private ICommandFactory CommandFactory { get; init; }
+
+    private ServerOptions Options { get; init; }
 
     public Network Network { get; init; }
 
@@ -31,7 +34,7 @@ public class User : IDisposable
 
     public string Nickname { get; internal set; } = null!;
 
-    public string LookupKey => Nickname.ToUpperInvariant();
+    public string LookupKey => IrcUtil.Casefold(Nickname, CaseMapping.Ascii);
 
     public string Ident { get; internal set; } = null!;
 
@@ -75,7 +78,8 @@ public class User : IDisposable
 
     public string? AwayReason { get; internal set; }
 
-    internal RegistrationFlags RegistrationFlags { get; private set; } = RegistrationFlags.Default;
+    private int _registrationFlags = (int)RegistrationFlags.Default;
+    internal RegistrationFlags RegistrationFlags => (RegistrationFlags)_registrationFlags;
 
     private CancellationTokenSource TokenSource { get; init; } = new();
 
@@ -102,10 +106,17 @@ public class User : IDisposable
 
     public HashSet<string> OperPrivileges { get; init; } = [];
 
-    public User(Network network, ICommandFactory commandFactory, IPAddress ip, int localPort, int remotePort)
+    public User(
+        Network network,
+        ICommandFactory commandFactory,
+        IOptionsSnapshot<ServerOptions> options,
+        IPAddress ip,
+        int localPort,
+        int remotePort)
     {
         Network = network;
         CommandFactory = commandFactory;
+        Options = options.Value;
         RealIP = ip;
         LocalPort = localPort;
         RemotePort = remotePort;
@@ -192,44 +203,41 @@ public class User : IDisposable
     {
         if (!Registered)
         {
-            RegistrationFlags |= flag;
+            Interlocked.Or(ref _registrationFlags, (int)flag);
         }
     }
 
     internal ICommandResponse ClearRegistrationFlag(RegistrationFlags flag)
     {
-        if (RegistrationFlags.HasFlag(flag))
+        Interlocked.And(ref _registrationFlags, ~(int)flag);
+
+        if (Registered)
         {
-            RegistrationFlags ^= flag;
-
-            if (Registered)
+            // connection has now been fully registered
+            Interlocked.Decrement(ref Network._pendingCount);
+            Network.Clients[LookupKey] = this;
+            var newClientCount = Network.Clients.Count;
+            var currentMax = Network.MaxUserCount;
+            if (newClientCount > currentMax)
             {
-                // connection has now been fully registered
-                Interlocked.Decrement(ref Network._pendingCount);
-                Network.Clients[LookupKey] = this;
-                var newClientCount = Network.Clients.Count;
-                var currentMax = Network.MaxUserCount;
-                if (newClientCount > currentMax)
-                {
-                    Interlocked.CompareExchange(ref Network._maxUserCount, currentMax, newClientCount);
-                }
-
-                // send them all of the post-registration info
-                var batch = new MultiResponse();
-                batch.AddNumeric(this, Numeric.RPL_WELCOME);
-                batch.AddNumeric(this, Numeric.RPL_YOURHOST);
-                batch.AddNumeric(this, Numeric.RPL_CREATED);
-                batch.AddNumeric(this, Numeric.RPL_MYINFO, Network.ServerName, Network.Version, Network.UserModes, Network.ChannelModes, Network.ChannelModesWithParams);
-                batch.AddRange(Network.ReportISupport(this));
-                batch.AddRange(ListUsersCommand.ExecuteInternal(this));
-                if (ModeString != "+")
-                {
-                    batch.AddNumeric(this, Numeric.RPL_UMODEIS, ModeString);
-                }
-                batch.AddRange(MotdCommand.ExecuteInternal(this));
-
-                return batch;
+                Interlocked.CompareExchange(ref Network._maxUserCount, currentMax, newClientCount);
             }
+
+            // send them all of the post-registration info
+            var batch = new MultiResponse();
+            batch.AddNumeric(this, Numeric.RPL_WELCOME);
+            batch.AddNumeric(this, Numeric.RPL_YOURHOST);
+            batch.AddNumeric(this, Numeric.RPL_CREATED);
+            batch.AddNumeric(this, Numeric.RPL_MYINFO, Network.ServerName, Network.Version, Network.UserModes, Network.ChannelModes, Network.ChannelModesWithParams);
+            batch.AddRange(Network.ReportISupport(this));
+            batch.AddRange(ListUsersCommand.ExecuteInternal(this));
+            if (ModeString != "+")
+            {
+                batch.AddNumeric(this, Numeric.RPL_UMODEIS, ModeString);
+            }
+            batch.AddRange(MotdCommand.ExecuteInternal(this));
+
+            return batch;
         }
 
         return new EmptyResponse();
@@ -249,9 +257,7 @@ public class User : IDisposable
         }
 
         // mark connection as having a config attached (by clearing the fact we're looking for a PASS command)
-        // this will never complete user registration so directly manipulate flags rather than calling ClearRegistrationFlag()
-        RegistrationFlags ^= RegistrationFlags.PendingPass;
-
+        ClearRegistrationFlag(RegistrationFlags.PendingPass);
         return Task.FromResult(true);
     }
 
@@ -277,10 +283,17 @@ public class User : IDisposable
         string? ident = Ident;
 
         TokenSource.Token.ThrowIfCancellationRequested();
-        if (LocalPort == 0 || RemotePort == 0)
+        if (LocalPort == 0 || RemotePort == 0 || !Options.EnabledFeatures.Contains(FeatureFlags.IdentLookups))
         {
             // skip lookup if we don't have port data
             Queue.Add(CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", ["*", "*** Ident lookup disabled; not checking ident"], tags));
+
+            if (!await MaybeDoImplicitPassCommand(RegistrationFlags.PendingIdentLookup))
+            {
+                // TODO: move string to a resource file for l10n
+                new ErrorResponse(this, "You do not have access to this network (missing password?).").Send();
+            }
+
             ClearRegistrationFlag(RegistrationFlags.PendingIdentLookup).Send();
             return;
         }
@@ -360,6 +373,23 @@ public class User : IDisposable
     private async Task LookUpHost()
     {
         var tags = new Dictionary<string, string?>();
+
+        // TODO: refactor this and LookUpIdent to eliminate some code duplication for the "disabled" case
+        if (!Options.EnabledFeatures.Contains(FeatureFlags.HostLookups))
+        {
+            Queue.Add(CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", ["*", "*** Host lookup disabled; using your IP address"], tags));
+            RealHost = RealIP.ToString();
+
+            if (!await MaybeDoImplicitPassCommand(RegistrationFlags.PendingHostLookup))
+            {
+                // TODO: move string to a resource file for l10n
+                new ErrorResponse(this, "You do not have access to this network (missing password?).").Send();
+            }
+
+            ClearRegistrationFlag(RegistrationFlags.PendingHostLookup).Send();
+            return;
+        }
+
         TokenSource.Token.ThrowIfCancellationRequested();
         Queue.Add(CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", ["*", "*** Looking up your hostname..."], tags));
 
