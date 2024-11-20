@@ -9,6 +9,7 @@ using Netwolf.Generator.Attributes;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Context;
 
+using System.Collections;
 using System.ComponentModel.DataAnnotations;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -29,7 +30,7 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
 
     private ValidationContextFactory ValidationContextFactory { get; init; }
 
-    private delegate bool Converter(string input, out object? output);
+    private delegate bool Converter(ReadOnlySpan<char> input, out object? output);
 
     private record ParameterConverter(ParameterInfo Parameter, Converter Converter);
 
@@ -48,10 +49,13 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
 
         foreach (var param in Executor.MethodParameters)
         {
-            // CreateDelegate doesn't work here because TypeHelper.TryChangeType as T as an out param, so we need to build up a linq expression
+            // CreateDelegate doesn't work here because TypeHelper.TryChangeType has T as an out param, so we need to build up a linq expression
             // that calls the function and performs appropriate type casts, and then compile that expression.
-            var inParam = Expression.Parameter(typeof(string), "input");
-            var converted = Expression.Variable(param.ParameterType, "c");
+            var convType = (param.ParameterType.IsSZArray ? param.ParameterType.GetElementType() : param.ParameterType)
+                ?? throw new InvalidOperationException("Unsupported array type in bot command signature");
+
+            var inParam = Expression.Parameter(typeof(ReadOnlySpan<char>), "input");
+            var converted = Expression.Variable(convType, "c");
             var success = Expression.Variable(typeof(bool), "r");
             var outParam = Expression.Parameter(typeof(object).MakeByRefType(), "output");
             var lambda = Expression.Lambda<Converter>(
@@ -60,7 +64,7 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
                     [converted, success],
                     // function code; the value of the final expression is used as the return value
                     Expression.Assign(outParam, Expression.Constant(null)),
-                    Expression.Assign(success, Expression.Call(convertMethod.MakeGenericMethod(param.ParameterType), inParam, converted)),
+                    Expression.Assign(success, Expression.Call(convertMethod.MakeGenericMethod(convType), inParam, converted)),
                     Expression.IfThen(Expression.IsTrue(success), Expression.Assign(outParam, Expression.Convert(converted, typeof(object)))),
                     success
                 ),
@@ -77,12 +81,28 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
         List<object?> args = [];
         object? value;
 
-        string[] splitLine = context.FullLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        int splitIndex = 0;
+        var lineSpan = context.FullLine.AsSpan();
+        int lineLength = context.FullLine.Length;
+        var splitEnumerator = lineSpan.Split(' ');
+
+        static bool advance(ref MemoryExtensions.SpanSplitEnumerator<char> enumerator, int length)
+        {
+            while (enumerator.MoveNext())
+            {
+                var (_, len) = enumerator.Current.GetOffsetAndLength(length);
+                if (len == 0)
+                {
+                    continue;
+                }
+
+                return true;
+            }
+
+            return false;
+        };
 
         foreach (var (param, conv) in ParameterConverters)
         {
-            // Handle special types
             if (param.ParameterType == typeof(BotCommandContext))
             {
                 args.Add(context);
@@ -105,13 +125,37 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
                     throw new InvalidOperationException("The parameter with CommandNameAttribute needs to be a string or convertible from string");
                 }
             }
-            // TODO: Add a RestAttribute to obtain the remainder of params as a string
-            // TODO: Handle enumerables somehow by taking 0+ of a thing?
-
-            // Handle regular types
-            if (splitIndex < splitLine.Length && conv(splitLine[splitIndex], out value))
+            else if (param.GetCustomAttribute<RestAttribute>() != null && advance(ref splitEnumerator, lineLength))
             {
-                splitIndex++;
+                if (!conv(lineSpan[new Range(splitEnumerator.Current.Start, Index.End)], out value))
+                {
+                    throw new InvalidOperationException("The parameter with RestAttribute needs to be a string or convertible from string");
+                }
+
+                while (advance(ref splitEnumerator, lineLength)) { /* consume the remainder of the parameters too */ }
+
+                // no continue here as we want the default validation logic below
+            }
+            else if (param.ParameterType.IsSZArray)
+            {
+                // make a copy of the enumerator since we grab as many args as we can for the array but stop once conversion fails
+                // however if we advance to the point that conversion fails, that arg gets skipped over because it'll advance again during the next iteration
+                var copy = splitEnumerator;
+                var listType = typeof(List<>).MakeGenericType(param.ParameterType.GetElementType()!);
+                dynamic arrayBuilder = Activator.CreateInstance(listType)!;
+
+                while (advance(ref copy, lineLength) && conv(lineSpan[copy.Current], out value))
+                {
+                    arrayBuilder.Add(value);
+                    advance(ref splitEnumerator, lineLength);
+                }
+
+                // convert the List<whatever> to whatever[] since that's what param expects
+                value = arrayBuilder.ToArray();
+            }
+            else if (advance(ref splitEnumerator, lineLength) && conv(lineSpan[splitEnumerator.Current], out value))
+            {
+                // nothing to do in this block; value was set as part of conv()
             }
             else if (param.GetCustomAttribute<RequiredAttribute>() is RequiredAttribute req)
             {
