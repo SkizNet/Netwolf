@@ -2,9 +2,12 @@
 
 using Netwolf.Attributes;
 using Netwolf.BotFramework;
+using Netwolf.BotFramework.Services;
+using Netwolf.Generator.Attributes;
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -49,5 +52,33 @@ internal class TestBot : Bot
     {
         Logger.LogInformation("SyncInt1 Called");
         return param;
+    }
+
+    [Command("COMPLEX")]
+    public string Complex(
+        BotCommandContext context,
+        [CommandName]
+        string commandName,
+        CommandTestType testType,
+        [Required, Range(0, 100)]
+        int requiredInt,
+        double[] extraNumbers,
+        [Rest]
+        string rest)
+    {
+        return testType switch
+        {
+            CommandTestType.CommandName => commandName,
+            CommandTestType.SenderNick => context.SenderNickname,
+            CommandTestType.FullLine => context.FullLine,
+            CommandTestType.NumArgs => context.Command.Args.Count.ToString(),
+            CommandTestType.RawArgs => context.RawArgs,
+            CommandTestType.IntVal => requiredInt.ToString(),
+            CommandTestType.NumDoubles => extraNumbers.Length.ToString(),
+            CommandTestType.FirstDouble => extraNumbers.FirstOrDefault().ToString(),
+            CommandTestType.LastDouble => extraNumbers.LastOrDefault().ToString(),
+            CommandTestType.Rest => rest,
+            _ => throw new NotImplementedException()
+        };
     }
 }

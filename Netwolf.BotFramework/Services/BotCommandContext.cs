@@ -35,6 +35,11 @@ public class BotCommandContext : IContext
     public string FullLine { get; init; }
 
     /// <summary>
+    /// The raw unparsed arguments sent to the command, with leading spaces trimmed
+    /// </summary>
+    public string RawArgs { get; init; }
+
+    /// <summary>
     /// Sender's nickname
     /// </summary>
     public string SenderNickname { get; init; }
@@ -68,7 +73,8 @@ public class BotCommandContext : IContext
     /// <param name="target"></param>
     /// <param name="command"></param>
     /// <param name="fullLine"></param>
-    internal BotCommandContext(Bot bot, string target, ICommand command, string fullLine)
+    /// <param name="rawArgs"></param>
+    internal BotCommandContext(Bot bot, string target, ICommand command, string fullLine, string rawArgs)
     {
         if (command.Source == null)
         {
@@ -79,6 +85,7 @@ public class BotCommandContext : IContext
         Target = target;
         Command = command;
         FullLine = fullLine;
+        RawArgs = rawArgs;
         SenderNickname = IrcUtil.SplitHostmask(command.Source).Nick;
     }
 
@@ -94,6 +101,7 @@ public class BotCommandContext : IContext
         Target = other.Target;
         Command = other.Command;
         FullLine = other.FullLine;
+        RawArgs = other.RawArgs;
         SenderNickname = other.SenderNickname;
         SenderAccount = other.SenderAccount;
         AccountProvider = other.AccountProvider;

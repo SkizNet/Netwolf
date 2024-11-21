@@ -5,12 +5,13 @@ using Microsoft.CSharp.RuntimeBinder;
 
 using System.ComponentModel;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 
 namespace Netwolf.BotFramework.Internal;
 
 internal static class TypeHelper
 {
+    private static readonly NullabilityInfoContext _context = new();
+
     internal static object?[] GetParameterDefaultValues(MethodInfo method)
     {
         List<object?> values = [];
@@ -18,6 +19,7 @@ internal static class TypeHelper
         foreach (var param in method.GetParameters())
         {
             var underlyingType = Nullable.GetUnderlyingType(param.ParameterType);
+            var nullability = _context.Create(param);
 
             if (param.HasDefaultValue && param.DefaultValue != null)
             {
@@ -30,17 +32,31 @@ internal static class TypeHelper
                     values.Add(param.DefaultValue);
                 }
             }
-            else if (!param.ParameterType.IsValueType || underlyingType != null)
+            else if ((!param.ParameterType.IsValueType && nullability.WriteState != NullabilityState.NotNull) || underlyingType != null)
             {
-                // have a reference type or nullable value type, so null is an appropriate default
+                // have a nullable (or null oblivious) reference type or nullable value type, so null is an appropriate default
                 values.Add(null);
+            }
+            else if (param.ParameterType == typeof(string))
+            {
+                // non-nullable string
+                values.Add(string.Empty);
+            }
+            else if (param.ParameterType.HasElementType)
+            {
+                // non-nullable array, create as empty
+                var rank = param.ParameterType.GetArrayRank();
+                values.Add(Array.CreateInstanceFromArrayType(param.ParameterType, new int[rank]));
+            }
+            else if (param.ParameterType.IsValueType || (!param.ParameterType.IsAbstract && param.ParameterType.GetConstructor(Type.EmptyTypes) != null))
+            {
+                // This potentially calls user-defined parameterless constructors
+                values.Add(Activator.CreateInstance(param.ParameterType));
             }
             else
             {
-                // value type without default; these are always considered initialized
-                // so GetUninitializedObject returns the default value without calling user-defined
-                // parameterless constructors
-                values.Add(RuntimeHelpers.GetUninitializedObject(param.ParameterType));
+                // it's a reference type and we have nothing better to use, so assign a default of null despite the not-null annotation
+                values.Add(null);
             }
         }
 
@@ -112,5 +128,5 @@ internal static class TypeHelper
             return false;
         }
     }
-#nullable enable
+#nullable restore
 }

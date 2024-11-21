@@ -9,7 +9,6 @@ using Netwolf.Generator.Attributes;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Context;
 
-using System.Collections;
 using System.ComponentModel.DataAnnotations;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -81,8 +80,8 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
         List<object?> args = [];
         object? value;
 
-        var lineSpan = context.FullLine.AsSpan();
-        int lineLength = context.FullLine.Length;
+        var lineSpan = context.RawArgs.AsSpan();
+        int lineLength = context.RawArgs.Length;
         var splitEnumerator = lineSpan.Split(' ');
 
         static bool advance(ref MemoryExtensions.SpanSplitEnumerator<char> enumerator, int length)
@@ -146,7 +145,7 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
 
                 while (advance(ref copy, lineLength) && conv(lineSpan[copy.Current], out value))
                 {
-                    arrayBuilder.Add(value);
+                    arrayBuilder.Add((dynamic?)value);
                     advance(ref splitEnumerator, lineLength);
                 }
 

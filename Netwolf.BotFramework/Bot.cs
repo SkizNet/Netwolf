@@ -639,13 +639,13 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         try
         {
             bool toBot = e.Command.Args[0] == Network.Nick;
-            bool haveCommand = TryParseCommandAndArgs(e.Command.Args[1].AsSpan(), out var command, out var args);
+            bool haveCommand = TryParseCommandAndArgs(e.Command.Args[1].AsSpan(), out var command, out var rawArgs, out var parsedArgs);
 
             if (haveCommand || toBot)
             {
                 using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(CancellationSource.Token, e.Token);
-                var commandObj = CommandFactory.CreateCommand(CommandType.Bot, e.Command.Source, command, args, e.Command.Tags);
-                var context = await BotCommandContextFactory.CreateAsync(this, e.Command.Args[0], commandObj, e.Command.Args[1], linkedSource.Token);
+                var commandObj = CommandFactory.CreateCommand(CommandType.Bot, e.Command.Source, command, parsedArgs, e.Command.Tags);
+                var context = await BotCommandContextFactory.CreateAsync(this, e.Command.Args[0], commandObj, e.Command.Args[1], rawArgs, linkedSource.Token);
 
                 try
                 {
@@ -696,7 +696,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         }
     }
 
-    private bool TryParseCommandAndArgs(ReadOnlySpan<char> line, out string command, out List<string> args)
+    private bool TryParseCommandAndArgs(ReadOnlySpan<char> line, out string command, out string rawArgs, out string[] parsedArgs)
     {
         bool haveCommand = false;
         string nickPrefix = $"{Network.Nick}: ";
@@ -712,30 +712,26 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             haveCommand = line.Length > 0;
         }
 
-        args = [];
-
         if (!haveCommand)
         {
             command = string.Empty;
+            rawArgs = string.Empty;
+            parsedArgs = [];
             return false;
         }
 
         Span<Range> rawSplits = stackalloc Range[2];
         int num = line.Split(rawSplits, ' ');
         command = line[rawSplits[0]].ToString();
+        rawArgs = line[rawSplits[1]].ToString();
 
         if (num == 2)
         {
-            ReadOnlySpan<char> argLine = line[rawSplits[1]];
-            foreach (var range in argLine.Split(' '))
-            {
-                if (range.GetOffsetAndLength(argLine.Length).Length == 0)
-                {
-                    continue;
-                }
-
-                args.Add(argLine[range].ToString());
-            }
+            parsedArgs = line[rawSplits[1]].ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        }
+        else
+        {
+            parsedArgs = [];
         }
 
         return true;

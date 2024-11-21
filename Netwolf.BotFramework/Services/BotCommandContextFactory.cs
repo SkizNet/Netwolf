@@ -18,7 +18,7 @@ public class BotCommandContextFactory
         PermissionProviders = permissionProviders;
     }
 
-    public async Task<BotCommandContext> CreateAsync(Bot bot, string target, ICommand command, string fullLine, CancellationToken cancellationToken)
+    public async Task<BotCommandContext> CreateAsync(Bot bot, string target, ICommand command, string fullLine, string rawArgs, CancellationToken cancellationToken)
     {
         if (command.Source == null || command.CommandType != CommandType.Bot)
         {
@@ -27,7 +27,7 @@ public class BotCommandContextFactory
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var context = new BotCommandContext(bot, target, command, fullLine);
+        var context = new BotCommandContext(bot, target, command, fullLine, rawArgs);
 
         // Populate account
         foreach (var accountProvider in AccountProviders)
