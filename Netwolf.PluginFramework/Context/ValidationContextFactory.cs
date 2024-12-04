@@ -3,9 +3,9 @@
 
 using System.ComponentModel.DataAnnotations;
 
-namespace Netwolf.BotFramework.Internal;
+namespace Netwolf.PluginFramework.Context;
 
-internal sealed class ValidationContextFactory
+internal sealed class ValidationContextFactory : IValidationContextFactory
 {
     private IServiceProvider ServiceProvider { get; init; }
 

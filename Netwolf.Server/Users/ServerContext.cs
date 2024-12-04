@@ -14,4 +14,8 @@ public class ServerContext : IContext
     public User? User { get; set; }
 
     public Channel? Channel { get; set; }
+
+    public required object Sender { get; set; }
+
+    public IValidationContextFactory? ValidationContextFactory => null;
 }

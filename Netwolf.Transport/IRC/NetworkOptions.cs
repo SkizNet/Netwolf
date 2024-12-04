@@ -128,6 +128,8 @@ public class NetworkOptions
 
     /// <summary>
     /// File path of TLS client certificate used to authenticate to the user's account.
+    /// The file must contain both the certificate and private key in PEM format.
+    /// If the key is encrypted, <see cref="AccountCertificatePassword"/> must also be set.
     /// </summary>
     public string? AccountCertificateFile { get; set; }
 

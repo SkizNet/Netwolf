@@ -32,21 +32,18 @@ Documentation files, including README files, are available under the
 Creative Commons Attribution-ShareAlike 4.0 International license. To view a
 copy of this license, visit <https://creativecommons.org/licenses/by-sa/4.0/>.
 
-# Netwolf.Generator special exception
+# Netwolf.Generator skeleton files
 
-As a special exception, you may create a larger work that contains part or all
-of the Netwolf.Generator source generator skeleton contained within files
-marked as having this special exception within the licensing comments at the
-top of those files and distribute that work under terms of your choice, so long
-as that work isn't itself a source generator using the skeleton or a modified
-version thereof as a source generator skeleton. Alternatively, if you modify or
-redistribute the source generator skeleton itself, you may (at your option)
-remove this special exception, which will cause the skeleton and the resulting
-Netwolf.Generator output files to be licensed under the GNU Lesser General
-Public License without this special exception.
+Some source generator skeleton files (that is, files which contain the
+frameworks for generated source code) are available to you under either the
+CC0 1.0 Universal license or the GNU Lesser General Public License, version
+3.0 or later (your choice). To view a copy of the CC0 1.0 Universl license,
+visit <https://creativecommons.org/publicdomain/zero/1.0/>.
 
-Additionally, some data files within the Netwolf.Generator project are
-copyright by the Unicode project and are made available to you under the
+# Netwolf.Generator data files
+
+Some data files within the Netwolf.Generator project are copyright by the
+Unicode project and are made available to you under the
 Uncode License v3 below instead of the GNU Lesser General Public License.
 
 UNICODE LICENSE V3

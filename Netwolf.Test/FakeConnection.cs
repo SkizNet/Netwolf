@@ -53,25 +53,35 @@ internal class FakeConnection : IConnection
 
     public async Task<ICommand> ReceiveAsync(CancellationToken cancellationToken)
     {
+        if (Server == null)
+        {
+            throw new InvalidOperationException("Server is null");
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
-        var command = await Server!.ReceiveCommand(Network, this, cancellationToken);
+        var command = await Server.ReceiveCommand(Network, this, cancellationToken);
         Logger.LogDebug("<-- {Command}", command.FullCommand);
         return command;
     }
 
     public async Task SendAsync(ICommand command, CancellationToken cancellationToken)
     {
+        if (Server == null)
+        {
+            throw new InvalidOperationException("Server is null");
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
         Logger.LogDebug("--> {Command}", command.FullCommand);
         try
         {
-            var context = new ServerContext() { User = Server!.State[Network][this] };
+            var context = new ServerContext() { Sender = Server, User = Server.State[Network][this] };
             var result = await CommandDispatcher!.DispatchAsync(command, context, cancellationToken);
             (result ?? new NumericResponse(Server.State[Network][this], Numeric.ERR_UNKNOWNCOMMAND)).Send();
         }
         catch (CommandException ex)
         {
-            ex.GetNumericResponse(Server!.State[Network][this]).Send();
+            ex.GetNumericResponse(Server.State[Network][this]).Send();
         }
     }
 

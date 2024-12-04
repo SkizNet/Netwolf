@@ -123,8 +123,6 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// Additional CAPs that may be supported, whether conditionally by us or by user-defined code
     /// </summary>
     private IEnumerable<ICapProvider> CapProviders { get; init; }
-
-    private ValidationContextFactory ValidationContextFactory { get; init; }
     #endregion
 
     #region Constructors
@@ -144,7 +142,6 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         CommandDispatcher = data.CommandDispatcher;
         CommandFactory = data.CommandFactory;
         BotCommandContextFactory = data.BotCommandContextFactory;
-        ValidationContextFactory = data.ValidationContextFactory;
         CapProviders = data.CapProviders;
         DisconnectionSource = new();
 
@@ -293,7 +290,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
                 .GetMethods()
                 .Select(method => (method, attr: method.GetCustomAttribute<CommandAttribute>()))
                 .Where(o => o.attr != null)
-                .Select(o => new BotCommandThunk(this, o.method, o.attr!, ValidationContextFactory));
+                .Select(o => new BotCommandThunk(this, o.method, o.attr!));
 
             foreach (var command in commands)
             {
@@ -639,13 +636,13 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         try
         {
             bool toBot = e.Command.Args[0] == Network.Nick;
-            bool haveCommand = TryParseCommandAndArgs(e.Command.Args[1].AsSpan(), out var command, out var rawArgs, out var parsedArgs);
+            bool haveCommand = TryParseCommandAndArgs(e.Command.Args[1].AsSpan(), out var command, out var args);
 
             if (haveCommand || toBot)
             {
                 using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(CancellationSource.Token, e.Token);
-                var commandObj = CommandFactory.CreateCommand(CommandType.Bot, e.Command.Source, command, parsedArgs, e.Command.Tags);
-                var context = await BotCommandContextFactory.CreateAsync(this, e.Command.Args[0], commandObj, e.Command.Args[1], rawArgs, linkedSource.Token);
+                var commandObj = CommandFactory.CreateCommand(CommandType.Bot, e.Command.Source, command, args, e.Command.Tags);
+                var context = await BotCommandContextFactory.CreateAsync(this, e.Command.Args[0], commandObj, e.Command.Args[1], linkedSource.Token);
 
                 try
                 {
@@ -696,7 +693,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         }
     }
 
-    private bool TryParseCommandAndArgs(ReadOnlySpan<char> line, out string command, out string rawArgs, out string[] parsedArgs)
+    private bool TryParseCommandAndArgs(ReadOnlySpan<char> line, out string command, out string[] args)
     {
         bool haveCommand = false;
         string nickPrefix = $"{Network.Nick}: ";
@@ -715,24 +712,16 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         if (!haveCommand)
         {
             command = string.Empty;
-            rawArgs = string.Empty;
-            parsedArgs = [];
+            args = [];
             return false;
         }
 
         Span<Range> rawSplits = stackalloc Range[2];
         int num = line.Split(rawSplits, ' ');
         command = line[rawSplits[0]].ToString();
-        rawArgs = line[rawSplits[1]].ToString();
-
-        if (num == 2)
-        {
-            parsedArgs = line[rawSplits[1]].ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        }
-        else
-        {
-            parsedArgs = [];
-        }
+        args = num == 2
+            ? [line[rawSplits[1]].ToString()]
+            : [];
 
         return true;
     }

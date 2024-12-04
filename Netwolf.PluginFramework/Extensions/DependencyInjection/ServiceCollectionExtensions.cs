@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Netwolf.PluginFramework.Commands;
+using Netwolf.PluginFramework.Context;
 
 namespace Netwolf.PluginFramework.Extensions.DependencyInjection;
 
@@ -14,6 +15,7 @@ public static class ServiceCollectionExtensions
     {
         services.TryAddScoped(typeof(ICommandDispatcher<>), typeof(CommandDispatcher<>));
         services.TryAddSingleton(typeof(ICommandValidator<>), typeof(CommandValidator<>));
+        services.TryAddScoped<IValidationContextFactory, ValidationContextFactory>();
 
         return services;
     }

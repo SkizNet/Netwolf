@@ -13,6 +13,7 @@ using System.IO.Pipelines;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Security.Authentication;
 using System.Security.Authentication.ExtendedProtection;
 using System.Security.Cryptography;
@@ -79,15 +80,18 @@ public class IrcConnection : IConnection
             || AcceptAllCertificates
             || TrustedFingerprints.Count > 0;
 
-        if (!String.IsNullOrEmpty(options.AccountCertificateFile))
+        // X509Certificate stuff isn't supported on browsers so skip it there
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Create("browser")) && !string.IsNullOrEmpty(options.AccountCertificateFile))
         {
             try
             {
-                ClientCertificate = new X509Certificate2(options.AccountCertificateFile, options.AccountCertificatePassword);
+                ClientCertificate = options.AccountCertificatePassword != null
+                    ? X509Certificate2.CreateFromEncryptedPemFile(options.AccountCertificateFile, options.AccountCertificatePassword)
+                    : X509Certificate2.CreateFromPemFile(options.AccountCertificateFile);
             }
             catch (CryptographicException ex)
             {
-                logger.LogWarning("Cannot load TLS client certificate {AccountCertificateFile}: {Message}", options, ex);
+                logger.LogWarning("Cannot load TLS client certificate {AccountCertificateFile}: {Message}", options, ex.Message);
             }
         }
     }

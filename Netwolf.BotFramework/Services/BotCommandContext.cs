@@ -9,6 +9,10 @@ namespace Netwolf.BotFramework.Services;
 
 public class BotCommandContext : IContext
 {
+    object IContext.Sender => Bot;
+
+    public IValidationContextFactory? ValidationContextFactory { get; init; }
+
     /// <summary>
     /// Bot that received the command
     /// </summary>
@@ -33,11 +37,6 @@ public class BotCommandContext : IContext
     /// The full PRIVMSG contents that triggered this command
     /// </summary>
     public string FullLine { get; init; }
-
-    /// <summary>
-    /// The raw unparsed arguments sent to the command, with leading spaces trimmed
-    /// </summary>
-    public string RawArgs { get; init; }
 
     /// <summary>
     /// Sender's nickname
@@ -73,8 +72,7 @@ public class BotCommandContext : IContext
     /// <param name="target"></param>
     /// <param name="command"></param>
     /// <param name="fullLine"></param>
-    /// <param name="rawArgs"></param>
-    internal BotCommandContext(Bot bot, string target, ICommand command, string fullLine, string rawArgs)
+    internal BotCommandContext(Bot bot, IValidationContextFactory validationContextFactory, string target, ICommand command, string fullLine)
     {
         if (command.Source == null)
         {
@@ -82,10 +80,10 @@ public class BotCommandContext : IContext
         }
 
         Bot = bot;
+        ValidationContextFactory = validationContextFactory;
         Target = target;
         Command = command;
         FullLine = fullLine;
-        RawArgs = rawArgs;
         SenderNickname = IrcUtil.SplitHostmask(command.Source).Nick;
     }
 
@@ -101,7 +99,6 @@ public class BotCommandContext : IContext
         Target = other.Target;
         Command = other.Command;
         FullLine = other.FullLine;
-        RawArgs = other.RawArgs;
         SenderNickname = other.SenderNickname;
         SenderAccount = other.SenderAccount;
         AccountProvider = other.AccountProvider;

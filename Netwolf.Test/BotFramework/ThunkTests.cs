@@ -5,7 +5,10 @@ using Microsoft.Extensions.Options;
 using Netwolf.BotFramework;
 using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
+using Netwolf.PluginFramework.Context;
 using Netwolf.Transport.IRC;
+
+using System.ComponentModel.DataAnnotations;
 
 namespace Netwolf.Test.BotFramework;
 
@@ -24,6 +27,24 @@ public class ThunkTests
         services.AddBot<TestBot>(BOT_NAME);
         services.AddSingleton<IOptionsMonitor<BotOptions>>(new TestOptionsMonitor<BotOptions>() { CurrentValue = new BotOptions() });
         Container = services.BuildServiceProvider();
+    }
+
+    private Task<BotCommandResult?> RunTest(string commandName, string param = "")
+    {
+        using var scope = Container.CreateScope();
+        var data = scope.ServiceProvider.GetRequiredKeyedService<BotCreationData>(BOT_NAME);
+
+        // we want to generate thunks for this test
+        data.EnableCommandOptimization = false;
+        var bot = new TestBot(data);
+        var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<BotCommandResult>>();
+        var commandFactory = scope.ServiceProvider.GetRequiredService<ICommandFactory>();
+        var validationContextFactory = scope.ServiceProvider.GetRequiredService<IValidationContextFactory>();
+        var command = commandFactory.CreateCommand(CommandType.Bot, "test", commandName.ToUpperInvariant(), param.Split(' ', StringSplitOptions.RemoveEmptyEntries), new Dictionary<string, string?>(), null);
+        var fullLine = (param == string.Empty) ? $"!{commandName}" : $"!{commandName} {param}";
+        var context = new BotCommandContext(bot, validationContextFactory, BOT_NAME, command, fullLine, param);
+
+        return dispatcher.DispatchAsync(command, context, default);
     }
 
     [TestMethod]
@@ -45,18 +66,7 @@ public class ThunkTests
     [TestMethod]
     public async Task Successfully_call_thunk_sync_void_0()
     {
-        using var scope = Container.CreateScope();
-        var data = scope.ServiceProvider.GetRequiredKeyedService<BotCreationData>(BOT_NAME);
-
-        // we want to generate thunks for this test
-        data.EnableCommandOptimization = false;
-        var bot = new TestBot(data);
-        var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<BotCommandResult>>();
-        var commandFactory = scope.ServiceProvider.GetRequiredService<ICommandFactory>();
-        var command = commandFactory.CreateCommand(CommandType.Bot, "test", "SYNCVOID0", [], new Dictionary<string, string?>(), null);
-        var context = new BotCommandContext(bot, BOT_NAME, command, "!syncvoid0", string.Empty);
-
-        var result = await dispatcher.DispatchAsync(command, context, default);
+        var result = await RunTest("syncvoid0");
         Assert.IsNotNull(result);
         Assert.IsNull(result.Value);
     }
@@ -64,18 +74,7 @@ public class ThunkTests
     [TestMethod]
     public async Task Successfully_call_thunk_sync_int_0()
     {
-        using var scope = Container.CreateScope();
-        var data = scope.ServiceProvider.GetRequiredKeyedService<BotCreationData>(BOT_NAME);
-
-        // we want to generate thunks for this test
-        data.EnableCommandOptimization = false;
-        var bot = new TestBot(data);
-        var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<BotCommandResult>>();
-        var commandFactory = scope.ServiceProvider.GetRequiredService<ICommandFactory>();
-        var command = commandFactory.CreateCommand(CommandType.Bot, "test", "SYNCINT0", [], new Dictionary<string, string?>(), null);
-        var context = new BotCommandContext(bot, BOT_NAME, command, "!syncint0", string.Empty);
-
-        var result = await dispatcher.DispatchAsync(command, context, default);
+        var result = await RunTest("syncint0");
         Assert.IsNotNull(result);
         Assert.AreEqual(42, result.Value);
     }
@@ -87,18 +86,7 @@ public class ThunkTests
     [DataRow("123 456", 123, DisplayName = "extra param")]
     public async Task Successfully_call_thunk_sync_int_1(string param, int expected)
     {
-        using var scope = Container.CreateScope();
-        var data = scope.ServiceProvider.GetRequiredKeyedService<BotCreationData>(BOT_NAME);
-
-        // we want to generate thunks for this test
-        data.EnableCommandOptimization = false;
-        var bot = new TestBot(data);
-        var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<BotCommandResult>>();
-        var commandFactory = scope.ServiceProvider.GetRequiredService<ICommandFactory>();
-        var command = commandFactory.CreateCommand(CommandType.Bot, "test", "SYNCINT1", param.Split(' ', StringSplitOptions.RemoveEmptyEntries), new Dictionary<string, string?>(), null);
-        var context = new BotCommandContext(bot, BOT_NAME, command, $"!syncint1 {param}", param);
-
-        var result = await dispatcher.DispatchAsync(command, context, default);
+        var result = await RunTest("syncint1", param);
         Assert.IsNotNull(result);
         Assert.AreEqual(expected, result.Value);
     }
@@ -106,18 +94,7 @@ public class ThunkTests
     [TestMethod]
     public async Task Successfully_call_thunk_async_task_0()
     {
-        using var scope = Container.CreateScope();
-        var data = scope.ServiceProvider.GetRequiredKeyedService<BotCreationData>(BOT_NAME);
-
-        // we want to generate thunks for this test
-        data.EnableCommandOptimization = false;
-        var bot = new TestBot(data);
-        var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<BotCommandResult>>();
-        var commandFactory = scope.ServiceProvider.GetRequiredService<ICommandFactory>();
-        var command = commandFactory.CreateCommand(CommandType.Bot, "test", "ASYNCTASK0", [], new Dictionary<string, string?>(), null);
-        var context = new BotCommandContext(bot, BOT_NAME, command, "!asynctask0", string.Empty);
-
-        var result = await dispatcher.DispatchAsync(command, context, default);
+        var result = await RunTest("asynctask0");
         Assert.IsNotNull(result);
         Assert.IsNull(result.Value);
     }
@@ -125,18 +102,7 @@ public class ThunkTests
     [TestMethod]
     public async Task Successfully_call_thunk_async_task_int_0()
     {
-        using var scope = Container.CreateScope();
-        var data = scope.ServiceProvider.GetRequiredKeyedService<BotCreationData>(BOT_NAME);
-
-        // we want to generate thunks for this test
-        data.EnableCommandOptimization = false;
-        var bot = new TestBot(data);
-        var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<BotCommandResult>>();
-        var commandFactory = scope.ServiceProvider.GetRequiredService<ICommandFactory>();
-        var command = commandFactory.CreateCommand(CommandType.Bot, "test", "ASYNCTASKINT0", [], new Dictionary<string, string?>(), null);
-        var context = new BotCommandContext(bot, BOT_NAME, command, "!asynctaskint0", string.Empty);
-
-        var result = await dispatcher.DispatchAsync(command, context, default);
+        var result = await RunTest("asynctaskint0");
         Assert.IsNotNull(result);
         Assert.AreEqual(42, result.Value);
     }
@@ -160,19 +126,46 @@ public class ThunkTests
     [DataRow("Rest 0 0.1 0.2  foo   bar baz  ", "foo   bar baz  ")]
     public async Task Successfully_call_thunk_complex(string param, string expected)
     {
-        using var scope = Container.CreateScope();
-        var data = scope.ServiceProvider.GetRequiredKeyedService<BotCreationData>(BOT_NAME);
-
-        // we want to generate thunks for this test
-        data.EnableCommandOptimization = false;
-        var bot = new TestBot(data);
-        var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<BotCommandResult>>();
-        var commandFactory = scope.ServiceProvider.GetRequiredService<ICommandFactory>();
-        var command = commandFactory.CreateCommand(CommandType.Bot, "test", "COMPLEX", param.Split(' ', StringSplitOptions.RemoveEmptyEntries), new Dictionary<string, string?>(), null);
-        var context = new BotCommandContext(bot, BOT_NAME, command, $"!complex {param}", param);
-
-        var result = await dispatcher.DispatchAsync(command, context, default);
+        var result = await RunTest("complex", param);
         Assert.IsNotNull(result);
         Assert.AreEqual(expected, result.Value);
+    }
+
+    [DataTestMethod]
+    [DataRow("CommandName", DisplayName = "No param")]
+    [DataRow("CommandName qq", DisplayName = "Invalid param")]
+    [DataRow("CommandName -9999999999999", DisplayName = "Below int.MinValue")]
+    [DataRow("CommandName 9999999999999", DisplayName = "Above int.MaxValue")]
+    public async Task Fail_missing_required_param(string param)
+    {
+        // capture the Task so we can also examine properties on the exception itself to verify the *correct* exception was thrown
+        var task = RunTest("complex", param);
+        await Assert.ThrowsExceptionAsync<ValidationException>(() => task);
+        try
+        {
+            await task;
+        }
+        catch (ValidationException ex)
+        {
+            Assert.IsInstanceOfType<RequiredAttribute>(ex.ValidationAttribute);
+        }
+    }
+
+    [DataTestMethod]
+    [DataRow("CommandName -1", DisplayName = "Too low")]
+    [DataRow("CommandName 582", DisplayName = "Too high")]
+    public async Task Fail_invalid_range_param(string param)
+    {
+        // capture the Task so we can also examine properties on the exception itself to verify the *correct* exception was thrown
+        var task = RunTest("complex", param);
+        await Assert.ThrowsExceptionAsync<ValidationException>(() => task);
+        try
+        {
+            await task;
+        }
+        catch (ValidationException ex)
+        {
+            Assert.IsInstanceOfType<RangeAttribute>(ex.ValidationAttribute);
+        }
     }
 }

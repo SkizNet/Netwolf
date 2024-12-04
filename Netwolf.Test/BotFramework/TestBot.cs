@@ -3,7 +3,6 @@
 using Netwolf.Attributes;
 using Netwolf.BotFramework;
 using Netwolf.BotFramework.Services;
-using Netwolf.Generator.Attributes;
 
 using System;
 using System.Collections.Generic;

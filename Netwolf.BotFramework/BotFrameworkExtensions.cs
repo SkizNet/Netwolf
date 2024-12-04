@@ -10,6 +10,7 @@ using Netwolf.BotFramework.Internal;
 using Netwolf.BotFramework.Permissions;
 using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
+using Netwolf.PluginFramework.Context;
 using Netwolf.PluginFramework.Extensions.DependencyInjection;
 using Netwolf.PluginFramework.Permissions;
 using Netwolf.Transport.Extensions.DependencyInjection;
@@ -86,7 +87,6 @@ public static class BotFrameworkExtensions
             // below is only called exactly once; TryAdd is not used for this reason
             services.AddSingleton<BotRegistry>(_registry[services]);
             services.AddSingleton<IPermissionManager, BotPermissionManager>();
-            services.AddScoped<ValidationContextFactory>();
         }
 
         if (runImmediately && !services.Any(s => s.ImplementationType == typeof(BotRunnerService)))
@@ -98,7 +98,8 @@ public static class BotFrameworkExtensions
         {
             return new BotCommandContextFactory(
                 provider.GetKeyedServices<IAccountProvider>(key),
-                provider.GetKeyedServices<IPermissionProvider>(key));
+                provider.GetKeyedServices<IPermissionProvider>(key),
+                provider.GetRequiredService<IValidationContextFactory>());
         });
 
         // BotRunnerService passes this explicitly via an extra parameter in ActivatorUtilities.CreateInstance,
@@ -114,8 +115,7 @@ public static class BotFrameworkExtensions
                 provider.GetRequiredService<ICommandDispatcher<BotCommandResult>>(),
                 provider.GetRequiredService<ICommandFactory>(),
                 provider.GetRequiredKeyedService<BotCommandContextFactory>(key),
-                provider.GetKeyedServices<ICapProvider>(key),
-                provider.GetRequiredService<ValidationContextFactory>());
+                provider.GetKeyedServices<ICapProvider>(key));
         });
 
         services.AddOptions<BotOptions>(botName)

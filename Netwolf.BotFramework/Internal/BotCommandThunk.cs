@@ -5,9 +5,9 @@ using Microsoft.Extensions.Internal;
 
 using Netwolf.Attributes;
 using Netwolf.BotFramework.Services;
-using Netwolf.Generator.Attributes;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Context;
+using Netwolf.PluginFramework.Util;
 
 using System.ComponentModel.DataAnnotations;
 using System.Linq.Expressions;
@@ -21,13 +21,13 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
 
     public string? Privilege { get; init; }
 
+    string? ICommandHandler.Privilege => Privilege;
+
     private Bot Bot { get; init; }
 
     private ObjectMethodExecutor Executor { get; init; }
 
     private List<ParameterConverter> ParameterConverters { get; init; } = [];
-
-    private ValidationContextFactory ValidationContextFactory { get; init; }
 
     private delegate bool Converter(ReadOnlySpan<char> input, out object? output);
 
@@ -35,12 +35,11 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
 
     string ICommandHandler<BotCommandResult>.UnderlyingFullName => $"{Executor.MethodInfo.DeclaringType!.FullName}.{Executor.MethodInfo.Name}";
 
-    internal BotCommandThunk(Bot bot, MethodInfo method, CommandAttribute attr, ValidationContextFactory validationContextFactory)
+    internal BotCommandThunk(Bot bot, MethodInfo method, CommandAttribute attr)
     {
         Bot = bot;
         Command = attr.Name;
         Privilege = attr.Privilege;
-        ValidationContextFactory = validationContextFactory;
         Executor = ObjectMethodExecutor.Create(method, bot.GetType().GetTypeInfo(), TypeHelper.GetParameterDefaultValues(method));
 
         var convertMethod = typeof(TypeHelper).GetMethod(nameof(TypeHelper.TryChangeType))
@@ -80,8 +79,8 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
         List<object?> args = [];
         object? value;
 
-        var lineSpan = context.RawArgs.AsSpan();
-        int lineLength = context.RawArgs.Length;
+        var lineSpan = command.Args.FirstOrDefault(string.Empty).AsSpan();
+        int lineLength = lineSpan.Length;
         var splitEnumerator = lineSpan.Split(' ');
 
         static bool advance(ref MemoryExtensions.SpanSplitEnumerator<char> enumerator, int length)
@@ -169,7 +168,7 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
             }
 
             // TODO: figure out what asp.net passes here when validating params on actions to see if that's something we want to replicate or not
-            var validationContext = ValidationContextFactory.Create(param);
+            var validationContext = context.ValidationContextFactory?.Create(param) ?? new ValidationContext(param);
             validationContext.MemberName = param.Name;
             validationContext.DisplayName = param.GetCustomAttribute<DisplayAttribute>()?.GetName() ?? param.Name ?? $"_{args.Count + 1}";
 
