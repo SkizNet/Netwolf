@@ -11,7 +11,6 @@ internal enum CommandTestType
     SenderNick,
     FullLine,
     RawArgs,
-    NumArgs,
     IntVal,
     NumDoubles,
     FirstDouble,

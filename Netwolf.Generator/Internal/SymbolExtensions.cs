@@ -9,6 +9,6 @@ internal static class SymbolExtensions
 {
     internal static string ToFullyQualifiedString(this ISymbol symbol)
     {
-        return symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        return symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat.WithGlobalNamespaceStyle(SymbolDisplayGlobalNamespaceStyle.Omitted));
     }
 }

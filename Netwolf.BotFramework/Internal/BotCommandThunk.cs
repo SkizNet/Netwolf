@@ -29,7 +29,7 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
 
     private List<ParameterConverter> ParameterConverters { get; init; } = [];
 
-    private delegate bool Converter(ReadOnlySpan<char> input, out object? output);
+    private delegate bool Converter(string input, out object? output);
 
     private record ParameterConverter(ParameterInfo Parameter, Converter Converter);
 
@@ -52,7 +52,7 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
             var convType = (param.ParameterType.IsSZArray ? param.ParameterType.GetElementType() : param.ParameterType)
                 ?? throw new InvalidOperationException("Unsupported array type in bot command signature");
 
-            var inParam = Expression.Parameter(typeof(ReadOnlySpan<char>), "input");
+            var inParam = Expression.Parameter(typeof(string), "input");
             var converted = Expression.Variable(convType, "c");
             var success = Expression.Variable(typeof(bool), "r");
             var outParam = Expression.Parameter(typeof(object).MakeByRefType(), "output");
@@ -125,7 +125,7 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
             }
             else if (param.GetCustomAttribute<RestAttribute>() != null && advance(ref splitEnumerator, lineLength))
             {
-                if (!conv(lineSpan[new Range(splitEnumerator.Current.Start, Index.End)], out value))
+                if (!conv(lineSpan[new Range(splitEnumerator.Current.Start, Index.End)].ToString(), out value))
                 {
                     throw new InvalidOperationException("The parameter with RestAttribute needs to be a string or convertible from string");
                 }
@@ -142,7 +142,7 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
                 var listType = typeof(List<>).MakeGenericType(param.ParameterType.GetElementType()!);
                 dynamic arrayBuilder = Activator.CreateInstance(listType)!;
 
-                while (advance(ref copy, lineLength) && conv(lineSpan[copy.Current], out value))
+                while (advance(ref copy, lineLength) && conv(lineSpan[copy.Current].ToString(), out value))
                 {
                     arrayBuilder.Add((dynamic?)value);
                     advance(ref splitEnumerator, lineLength);
@@ -151,16 +151,9 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
                 // convert the List<whatever> to whatever[] since that's what param expects
                 value = arrayBuilder.ToArray();
             }
-            else if (advance(ref splitEnumerator, lineLength) && conv(lineSpan[splitEnumerator.Current], out value))
+            else if (advance(ref splitEnumerator, lineLength) && conv(lineSpan[splitEnumerator.Current].ToString(), out value))
             {
                 // nothing to do in this block; value was set as part of conv()
-            }
-            else if (param.GetCustomAttribute<RequiredAttribute>() is RequiredAttribute req)
-            {
-                // always throws ValidationException
-                req.Validate(null, param.Name ?? $"_{args.Count + 1}");
-                // never called, but needed to make the compiler happy that value is always initialized below
-                continue;
             }
             else
             {

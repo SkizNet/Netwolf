@@ -60,7 +60,7 @@ internal class TestBot : Bot
         string commandName,
         CommandTestType testType,
         [Required, Range(0, 100)]
-        int requiredInt,
+        int? requiredInt,
         double[] extraNumbers,
         [Rest]
         string rest)
@@ -70,9 +70,8 @@ internal class TestBot : Bot
             CommandTestType.CommandName => commandName,
             CommandTestType.SenderNick => context.SenderNickname,
             CommandTestType.FullLine => context.FullLine,
-            CommandTestType.NumArgs => context.Command.Args.Count.ToString(),
-            CommandTestType.RawArgs => context.RawArgs,
-            CommandTestType.IntVal => requiredInt.ToString(),
+            CommandTestType.RawArgs => context.Command.Args.FirstOrDefault() ?? string.Empty,
+            CommandTestType.IntVal => requiredInt?.ToString() ?? "null",
             CommandTestType.NumDoubles => extraNumbers.Length.ToString(),
             CommandTestType.FirstDouble => extraNumbers.FirstOrDefault().ToString(),
             CommandTestType.LastDouble => extraNumbers.LastOrDefault().ToString(),

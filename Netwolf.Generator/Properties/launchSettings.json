@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "PluginCommandGenerator": {
+      "commandName": "DebugRoslynComponent",
+      "targetProject": "..\\Netwolf.Test\\Netwolf.Test.csproj"
+    },
+    "UnicodeHelperGenerator": {
+      "commandName": "DebugRoslynComponent",
+      "targetProject": "..\\Netwolf.Transport\\Netwolf.Transport.csproj"
+    }
+  }
+}

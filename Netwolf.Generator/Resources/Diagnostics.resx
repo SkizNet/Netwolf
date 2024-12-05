@@ -136,7 +136,7 @@
     <value>Unsupported command parameter default value</value>
   </data>
   <data name="UnsupportedParameterTypeMessageFormat" xml:space="preserve">
-    <value>Parameter type '{0}' for parameter '{1}' is not supported for command handlers. The type must be convertible from string either via TypeConverterAttribute, an explicit or implicit user-defined conversion operator, or a public constructor that takes string as its only parameter.</value>
+    <value>Parameter type '{0}' for parameter '{1}' is not supported for command handlers. The type must be convertible from string either via IConvertible, TypeConverterAttribute, or an explicit or implicit user-defined conversion operator.</value>
   </data>
   <data name="UnsupportedParameterTypeTitle" xml:space="preserve">
     <value>Unsupported command parameter type</value>

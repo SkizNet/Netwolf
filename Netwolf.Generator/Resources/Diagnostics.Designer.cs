@@ -115,7 +115,7 @@ namespace Netwolf.Generator.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Parameter type &apos;{0}&apos; for parameter &apos;{1}&apos; is not supported for command handlers. The type must be convertible from string either via TypeConverterAttribute, an explicit or implicit user-defined conversion operator, or a public constructor that takes string as its only parameter..
+        ///   Looks up a localized string similar to Parameter type &apos;{0}&apos; for parameter &apos;{1}&apos; is not supported for command handlers. The type must be convertible from string either via IConvertible, TypeConverterAttribute, or an explicit or implicit user-defined conversion operator..
         /// </summary>
         internal static string UnsupportedParameterTypeMessageFormat {
             get {

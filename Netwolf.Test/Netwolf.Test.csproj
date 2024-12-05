@@ -14,19 +14,20 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
-    <PackageReference Include="MSTest.TestAdapter" Version="3.6.1" />
-    <PackageReference Include="MSTest.TestFramework" Version="3.6.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="MSTest.TestAdapter" Version="3.6.4" />
+    <PackageReference Include="MSTest.TestFramework" Version="3.6.4" />
     <PackageReference Include="coverlet.collector" Version="6.0.2">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="System.Linq.Dynamic.Core" Version="1.4.5" />
+    <PackageReference Include="System.Linq.Dynamic.Core" Version="1.4.9" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Netwolf.BotFramework\Netwolf.BotFramework.csproj" />
     <ProjectReference Include="..\Netwolf.PluginFramework\Netwolf.PluginFramework.csproj" />
     <ProjectReference Include="..\Netwolf.Server\Netwolf.Server.csproj" />
     <ProjectReference Include="..\Netwolf.Transport\Netwolf.Transport.csproj" />
+    <ProjectReference Include="..\Netwolf.Generator\Netwolf.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

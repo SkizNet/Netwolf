@@ -15,9 +15,9 @@ contained within:
 **GNU Lesser General Public License, version 3.0 or later**
 - Netwolf.Transport
 - Netwolf.Generator (with exceptions, see below)
+- Netwolf.PluginFramework
 
 **GNU General Public License, version 3.0 or later**
-- Netwolf.PluginFramework
 - Netwolf.BotFramework (with exceptions, see below)
 
 **GNU Affero General Public License, version 3.0 or later**

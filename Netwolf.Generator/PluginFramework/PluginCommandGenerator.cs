@@ -10,6 +10,8 @@ using Netwolf.Generator.Internal;
 using System.Collections.Immutable;
 
 namespace Netwolf.Generator.PluginFramework;
+
+[Generator]
 public class PluginCommandGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
@@ -132,7 +134,7 @@ public class PluginCommandGenerator : IIncrementalGenerator
         {
             // char.IsAsciiLetterOrDigit is a .NET 6 feature, so we have to do this manually
             // 48-57: 0-9, 65-90: A-Z, 97-122: a-z
-            if (string.IsNullOrEmpty(attribute.Name) || !attribute.Name.Cast<short>().All(s => (s >= 48 && s <= 57) || (s >= 65 && s <= 90) || (s >= 97 && s <= 122)))
+            if (string.IsNullOrEmpty(attribute.Name) || !attribute.Name.Select(Convert.ToUInt16).All(s => (s >= 48 && s <= 57) || (s >= 65 && s <= 90) || (s >= 97 && s <= 122)))
             {
                 // not a valid command name, so don't generate a thunk for it
                 sourceContext.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidCommandName, attribute.Location, attribute.Name));

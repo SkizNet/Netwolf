@@ -8,7 +8,7 @@
     <Description>Provides an extensible means of creating plugins</Description>
     <RepositoryUrl>https://github.com/SkizNet/Netwolf</RepositoryUrl>
     <PackageTags>irc</PackageTags>
-    <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+    <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
     <IncludeSymbols>True</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <PackageProjectUrl>https://netwolf.org</PackageProjectUrl>

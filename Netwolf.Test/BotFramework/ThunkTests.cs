@@ -40,9 +40,9 @@ public class ThunkTests
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<BotCommandResult>>();
         var commandFactory = scope.ServiceProvider.GetRequiredService<ICommandFactory>();
         var validationContextFactory = scope.ServiceProvider.GetRequiredService<IValidationContextFactory>();
-        var command = commandFactory.CreateCommand(CommandType.Bot, "test", commandName.ToUpperInvariant(), param.Split(' ', StringSplitOptions.RemoveEmptyEntries), new Dictionary<string, string?>(), null);
+        var command = commandFactory.CreateCommand(CommandType.Bot, "test", commandName.ToUpperInvariant(), param == string.Empty ? [] : [param], new Dictionary<string, string?>(), null);
         var fullLine = (param == string.Empty) ? $"!{commandName}" : $"!{commandName} {param}";
-        var context = new BotCommandContext(bot, validationContextFactory, BOT_NAME, command, fullLine, param);
+        var context = new BotCommandContext(bot, validationContextFactory, BOT_NAME, command, fullLine);
 
         return dispatcher.DispatchAsync(command, context, default);
     }
@@ -112,7 +112,6 @@ public class ThunkTests
     [DataRow("SenderNick 0", "test")]
     [DataRow("FullLine 0 0.1 0.2  foo   bar baz  ", "!complex FullLine 0 0.1 0.2  foo   bar baz  ")]
     [DataRow("RawArgs 0 0.1 0.2  foo   bar baz  ", "RawArgs 0 0.1 0.2  foo   bar baz  ")]
-    [DataRow("NumArgs 0 0.1 0.2  foo   bar baz  ", "7")]
     [DataRow("IntVal 99", "99")]
     [DataRow("NumDoubles 99", "0")]
     [DataRow("NumDoubles 99 1", "1")]
