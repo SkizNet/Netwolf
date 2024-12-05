@@ -83,9 +83,9 @@ public class PluginCommandGenerator : IIncrementalGenerator
         var parameters = method.Parameters
             .Select(param => new CommandParameterContext(
                 param.Name,
-                param.Type.ToFullyQualifiedString(),
+                GetArrayMemberType(param.Type).ToFullyQualifiedString(),
                 GetParameterClassification(param),
-                GetConversionTemplate(syntaxContext.SemanticModel.Compilation, param.Type, GetDefaultValue(param)),
+                GetConversionTemplate(syntaxContext.SemanticModel.Compilation, GetArrayMemberType(param.Type), GetDefaultValue(param)),
                 param.HasExplicitDefaultValue,
                 GetDefaultValue(param),
                 param.Locations[0]))
@@ -109,6 +109,7 @@ public class PluginCommandGenerator : IIncrementalGenerator
             {
                 ParameterClassification.CommandName or
                 ParameterClassification.Rest or
+                ParameterClassification.Array or
                 ParameterClassification.Scalar => DiagnosticDescriptors.UnsupportedParameterType,
                 _ => null
             };
@@ -227,6 +228,11 @@ public class PluginCommandGenerator : IIncrementalGenerator
         };
     }
 
+    private ITypeSymbol GetArrayMemberType(ITypeSymbol type)
+    {
+        return type is IArrayTypeSymbol array ? array.ElementType : type;
+    }
+
     private string? GetConversionTemplate(Compilation compilation, ITypeSymbol type, string? defaultSyntax)
     {
         // is this a string? if so just use it directly and skip all of the faff below
@@ -237,34 +243,36 @@ public class PluginCommandGenerator : IIncrementalGenerator
 
         // is type a nullable value type? If so get conversion template for the underlying type instead
         // the compiler will lift this back to Nullable<T> in the method call as part of compiling our generated source
-        if (type.SpecialType == SpecialType.System_Nullable_T)
+        var underlying = type;
+        if (type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
         {
-            type = (type as INamedTypeSymbol)?.TypeArguments[0] ?? type;
+            underlying = (type as INamedTypeSymbol)?.TypeArguments[0] ?? type;
         }
 
         string typeName = type.ToFullyQualifiedString();
         defaultSyntax ??= "default";
 
-        // built-in type handling
-        string parseMethod = type.SpecialType switch
+        // built-in type handling; make these lambdas so they can be automatically lifted to nullable value types if applicable
+        // directly passing the whatever.Parse method group causes compile errors if type is Nullable<T>
+        string parseMethod = underlying.SpecialType switch
         {
-            SpecialType.System_Boolean => "bool.Parse",
-            SpecialType.System_Byte => "byte.Parse",
-            SpecialType.System_Char => "char.Parse",
-            SpecialType.System_DateTime => "DateTime.Parse",
-            SpecialType.System_Decimal => "decimal.Parse",
-            SpecialType.System_Double => "double.Parse",
-            SpecialType.System_Enum => $"s => Enum.Parse<{typeName}>(s, true)",
-            SpecialType.System_Int16 => "short.Parse",
-            SpecialType.System_Int32 => "int.Parse",
-            SpecialType.System_Int64 => "long.Parse",
-            SpecialType.System_IntPtr => "nint.Parse",
-            SpecialType.System_SByte => "sbyte.Parse",
-            SpecialType.System_Single => "float.Parse",
-            SpecialType.System_UInt16 => "ushort.Parse",
-            SpecialType.System_UInt32 => "uint.Parse",
-            SpecialType.System_UInt64 => "ulong.Parse",
-            SpecialType.System_UIntPtr => "nuint.Parse",
+            SpecialType.System_Boolean => "s => bool.Parse(s)",
+            SpecialType.System_Byte => "s => byte.Parse(s)",
+            SpecialType.System_Char => "s => char.Parse(s)",
+            SpecialType.System_DateTime => "s => DateTime.Parse(s)",
+            SpecialType.System_Decimal => "s => decimal.Parse(s)",
+            SpecialType.System_Double => "s => double.Parse(s)",
+            SpecialType.System_Int16 => "s => short.Parse(s)",
+            SpecialType.System_Int32 => "s => int.Parse(s)",
+            SpecialType.System_Int64 => "s => long.Parse(s)",
+            SpecialType.System_IntPtr => "s => nint.Parse(s)",
+            SpecialType.System_SByte => "s => sbyte.Parse(s)",
+            SpecialType.System_Single => "s => float.Parse(s)",
+            SpecialType.System_UInt16 => "s => ushort.Parse(s)",
+            SpecialType.System_UInt32 => "s => uint.Parse(s)",
+            SpecialType.System_UInt64 => "s => ulong.Parse(s)",
+            SpecialType.System_UIntPtr => "s => nuint.Parse(s)",
+            _ when underlying.TypeKind == TypeKind.Enum => $"s => Enum.Parse<{underlying.ToFullyQualifiedString()}>(s, true)",
             _ => "null"
         };
 
@@ -286,7 +294,7 @@ public class PluginCommandGenerator : IIncrementalGenerator
         // try explicit and implicit user-defined conversion operators from string
         // (just string, not ReadOnlySpan<char>, to maintain parity with TypeHelper.TryChangeType, since ref structs cannot be cast to dynamic)
         string castMethod = "null";
-        if (compilation.ClassifyConversion(compilation.GetSpecialType(SpecialType.System_String), type).Exists)
+        if (compilation.ClassifyConversion(compilation.GetSpecialType(SpecialType.System_String), underlying).Exists)
         {
             castMethod = $"s => ({typeName})s";
         }

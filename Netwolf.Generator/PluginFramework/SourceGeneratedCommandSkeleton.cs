@@ -54,6 +54,7 @@ public sealed class {generatedTypeName} : ICommandHandler<{resultType}>
 
         var haveArg = enumerator.MoveNext();
         bool success = false;
+        ValidationContext validationContext = null;
         var paramInfos = typeof({command.ContainerType})
             .GetMethod(""{command.MethodName}"", new Type[] {{ {paramTypes} }})
             .GetParameters()
@@ -64,13 +65,26 @@ public sealed class {generatedTypeName} : ICommandHandler<{resultType}>
         for (int i = 0; i < command.Parameters.Count; i++)
         {
             var param = command.Parameters[i];
-            var paramName = $"p{i}";
+            var paramName = $"p{i + 1}";
             paramNames.Add(paramName);
+
+            string paramAttr = param.Classification switch
+            {
+                ParameterClassification.Rest => "[Rest] ",
+                ParameterClassification.CommandName => "[CommandName] ",
+                _ => string.Empty
+            };
+
+            string paramArraySuffix = param.Classification == ParameterClassification.Array ? "[]" : string.Empty;
+            string paramDefault = param.HasExplicitDefault ? $" = {param.ExplicitDefaultSyntax}" : string.Empty;
+
+            sb.AppendLine();
+            sb.AppendLine($"        // {paramAttr}{param.ParameterType}{paramArraySuffix} {param.Name}{paramDefault}");
 
             // check for well-known things
             if (param.Classification == ParameterClassification.IContext)
             {
-                sb.AppendLine($"        var {paramName} = sender;");
+                sb.AppendLine($"        var {paramName} = sender as {param.ParameterType};");
             }
             else if (param.Classification == ParameterClassification.CancellationToken)
             {
@@ -78,7 +92,7 @@ public sealed class {generatedTypeName} : ICommandHandler<{resultType}>
             }
             else if (param.Classification == ParameterClassification.CommandName)
             {
-                sb.AppendLine($"        var {paramName} = {string.Format(param.ConversionTemplate, attr.Name)};");
+                sb.AppendLine($"        var {paramName} = {string.Format(param.ConversionTemplate, attr.NameSyntax)};");
             }
             else if (param.Classification == ParameterClassification.Rest)
             {
@@ -109,16 +123,15 @@ public sealed class {generatedTypeName} : ICommandHandler<{resultType}>
                 sb.AppendLine($"        {(param.ConversionTemplate != "{0}" ? "if (success) " : string.Empty)}haveArg = enumerator.MoveNext();");
             }
 
-            sb.Append($@"        var validationContext = sender.ValidationContextFactory?.Create(paramInfos[{i}]) ?? new ValidationContext(paramInfos[{i}]);
-            validationContext.MemberName = paramInfos[{i}].Name;
-            validationContext.DisplayName = paramInfos[{i}].GetCustomAttribute<DisplayAttribute>()?.GetName() ?? paramInfos[{i}].Name ?? ""_{i}"";
-
-            // throws ValidationException on validation failure
-            Validator.ValidateValue({paramName}, validationContext, paramInfos[{i}].GetCustomAttributes<ValidationAttribute>());
+            sb.Append($@"        validationContext = sender.ValidationContextFactory?.Create(paramInfos[{i}]) ?? new ValidationContext(paramInfos[{i}]);
+        validationContext.MemberName = paramInfos[{i}].Name;
+        validationContext.DisplayName = paramInfos[{i}].GetCustomAttribute<DisplayAttribute>()?.GetName() ?? paramInfos[{i}].Name ?? ""_{i + 1}"";
+        Validator.ValidateValue({paramName}, validationContext, paramInfos[{i}].GetCustomAttributes<ValidationAttribute>());
 ");
         }
 
         // run the command; we always populate the result variable to simplify later logic
+        sb.AppendLine();
         sb.Append("        ");
         if (!command.IsMethodVoid)
         {
@@ -127,6 +140,7 @@ public sealed class {generatedTypeName} : ICommandHandler<{resultType}>
         else
         {
             sb.AppendLine("object result = null;");
+            sb.Append("        ");
         }
 
         if (command.IsMethodAsync)
