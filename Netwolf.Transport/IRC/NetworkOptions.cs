@@ -85,7 +85,8 @@ public class NetworkOptions
 
     /// <summary>
     /// If true, disables certificate validation. This reduces security and should be used carefully. If true,
-    /// the <see cref="TrustedFingerprints"/> and <see cref="CheckOnlineRevocation"/> settings have no effect.
+    /// the <see cref="TrustedCertificateFingerprints"/>, <see cref="TrustedPublicKeyFingerprints"/>, and
+    /// <see cref="CheckOnlineRevocation"/> settings have no effect.
     /// </summary>
     public bool AcceptAllCertificates { get; set; }
 
@@ -93,15 +94,23 @@ public class NetworkOptions
     /// A list of trusted certificate fingerprints. If this is defined, CA validation will not be performed,
     /// and the server's certificate must be hash to one of the fingerprints listed here. The format of entries
     /// should be hexidecimal SHA-256 fingerprints of certificates, with or without <c>:</c> divider characters.
-    /// The strings are compared case-insensitively. If this list is not empty,
-    /// <see cref="CheckOnlineRevocation"/> will have no effect.
+    /// The strings are compared case-insensitively.
     /// </summary>
-    public string[] TrustedFingerprints { get; init; } = [];
+    public string[] TrustedCertificateFingerprints { get; init; } = [];
 
     /// <summary>
-    /// If true, checks the certificate's OCSP responder for revocation information before accepting a connection.
-    /// If the responder indicates that the certificate is revoked or the responder times out, the connection
-    /// will be aborted.
+    /// A list of trusted public key fingerprints (from the Subject Public Key Info field of a TLS certificate).
+    /// If this is defined, CA validation will not be performed, and the server certificate's SubjectPublicKeyInfo
+    /// field must hash to one of the ingerprints listed here. The format of entries should be hexidecimal SHA-256
+    /// fingerprints of public keys, with or without <c>:</c> divider characters. The strings are compared
+    /// case-insensitively.
+    /// </summary>
+    public string[] TrustedPublicKeyFingerprints { get; init; } = [];
+
+    /// <summary>
+    /// If true, checks the certificate's OCSP responder or online CRL for revocation information before accepting
+    /// a connection. If the responder indicates that the certificate is revoked or the responder times out, the
+    /// connection will be aborted. If false, no revocation checks are performed on the certificate.
     /// </summary>
     public bool CheckOnlineRevocation { get; set; }
 

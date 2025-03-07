@@ -41,7 +41,9 @@ public class IrcConnection : IConnection
 
     private bool AcceptAllCertificates { get; init; }
 
-    private List<string> TrustedFingerprints { get; init; } = [];
+    private List<string> TrustedCertificateFingerprints { get; init; } = [];
+
+    private List<string> TrustedPublicKeyFingerprints { get; init; } = [];
 
     private bool CheckOnlineRevocation { get; init; }
 
@@ -72,13 +74,12 @@ public class IrcConnection : IConnection
         Secure = server.SecureConnection;
         AcceptAllCertificates = options.AcceptAllCertificates;
         // normalize our trusted fingerprints to all-uppercase with no colon separators
-        TrustedFingerprints.AddRange(from fp in options.TrustedFingerprints
-                                     select fp.Replace(":", String.Empty).ToUpperInvariant());
-        // additionally disable online revocation checks if we're trusting everything or if we have a
-        // fingerprint list
-        CheckOnlineRevocation = options.CheckOnlineRevocation
-            || AcceptAllCertificates
-            || TrustedFingerprints.Count > 0;
+        TrustedCertificateFingerprints.AddRange(from fp in options.TrustedCertificateFingerprints
+                                     select fp.Replace(":", string.Empty).ToUpperInvariant());
+        TrustedPublicKeyFingerprints.AddRange(from fp in options.TrustedPublicKeyFingerprints
+                                              select fp.Replace(":", string.Empty).ToUpperInvariant());
+        // disable online revocation checks if we're trusting everything
+        CheckOnlineRevocation = options.CheckOnlineRevocation && !AcceptAllCertificates;
 
         // X509Certificate stuff isn't supported on browsers so skip it there
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Create("browser")) && !string.IsNullOrEmpty(options.AccountCertificateFile))
@@ -151,8 +152,7 @@ public class IrcConnection : IConnection
 
             if (ClientCertificate != null)
             {
-                sslOptions.ClientCertificates =
-                    new X509CertificateCollection(new X509Certificate[] { ClientCertificate });
+                sslOptions.ClientCertificates = [.. new X509Certificate[] { ClientCertificate }];
             }
 
             await sslStream.AuthenticateAsClientAsync(sslOptions, cancellationToken);
@@ -185,12 +185,29 @@ public class IrcConnection : IConnection
             return true;
         }
 
-        if (TrustedFingerprints.Count > 0)
+        // soft revocation check; if we're explicitly trusting certificates or public keys, reject the connection
+        // anyway if we have confirmation the certificate is revoked. If revocation status is unknown, then trusted
+        // certs/keys will be allowed. If we're doing full CA chaining validation, unknown revocation status when
+        // revocation checking is required is an error instead (handled below in the generic validation failed case)
+        if (chain?.ChainStatus.Any(s => s.Status.HasFlag(X509ChainStatusFlags.Revoked)) ?? false)
         {
-            // given an explicit list of fingerprints to trust
+            return false;
+        }
+
+        if (TrustedCertificateFingerprints.Count > 0)
+        {
+            // given an explicit list of certificate fingerprints to trust
             // fingerprints not on this list are not trusted, even if they are otherwise valid
             string fingerprint = certificate.GetCertHashString(HashAlgorithmName.SHA256);
-            return TrustedFingerprints.Contains(fingerprint);
+            return TrustedCertificateFingerprints.Contains(fingerprint);
+        }
+
+        if (TrustedPublicKeyFingerprints.Count > 0)
+        {
+            // given an explicit list of public key fingerprints to trust
+            // fingerprints not on this list are not trusted, even if they are otherwise valid
+            string fingerprint = Convert.ToHexString(SHA256.HashData(certificate.GetPublicKey()));
+            return TrustedPublicKeyFingerprints.Contains(fingerprint);
         }
 
         if (sslPolicyErrors == SslPolicyErrors.None)
