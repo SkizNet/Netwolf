@@ -1,5 +1,5 @@
 ﻿// SPDX-License-Identifier: MIT
-// From: https://github.com/dotnet/aspnetcore/blob/v8.0.10/src/Shared/ObjectMethodExecutor/AwaitableInfo.cs
+// From: https://github.com/dotnet/aspnetcore/blob/v9.0.3/src/Shared/ObjectMethodExecutor/AwaitableInfo.cs
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
@@ -13,6 +13,8 @@ namespace Microsoft.Extensions.Internal;
 
 internal readonly struct AwaitableInfo
 {
+    internal const string RequiresUnreferencedCodeMessage = "Uses unbounded reflection to determine awaitability of types.";
+
     private const BindingFlags Everything = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance;
     private static readonly MethodInfo INotifyCompletion_OnCompleted = typeof(INotifyCompletion).GetMethod(nameof(INotifyCompletion.OnCompleted), Everything, new[] { typeof(Action) })!;
     private static readonly MethodInfo ICriticalNotifyCompletion_UnsafeOnCompleted = typeof(ICriticalNotifyCompletion).GetMethod(nameof(ICriticalNotifyCompletion.UnsafeOnCompleted), Everything, new[] { typeof(Action) })!;
@@ -43,8 +45,7 @@ internal readonly struct AwaitableInfo
         GetAwaiterMethod = getAwaiterMethod;
     }
 
-    [UnconditionalSuppressMessage("Trimmer", "IL2070", Justification = "Reflecting over the async Task types contract")]
-    [UnconditionalSuppressMessage("Trimmer", "IL2075", Justification = "Reflecting over the async Task types contract")]
+    [RequiresUnreferencedCode(RequiresUnreferencedCodeMessage)]
     public static bool IsTypeAwaitable(
         Type type,
         out AwaitableInfo awaitableInfo)
