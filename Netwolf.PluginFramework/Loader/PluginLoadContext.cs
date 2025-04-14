@@ -12,8 +12,6 @@ internal class PluginLoadContext : AssemblyLoadContext
 {
     private AssemblyDependencyResolver Resolver { get; init; }
 
-    internal IPlugin Plugin { get; init; }
-
     internal string Path { get; init; }
 
     /// <summary>

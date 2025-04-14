@@ -18,6 +18,10 @@ public enum PluginLoadStatus
     /// </summary>
     FileNotFound,
     /// <summary>
+    /// A load operation failed because the file is not a valid assembly or it contains some other issue preventing it from being loaded
+    /// </summary>
+    InvalidAssembly,
+    /// <summary>
     /// An unload operation failed because no plugin with that ID is loaded
     /// </summary>
     NotLoaded,
@@ -29,4 +33,12 @@ public enum PluginLoadStatus
     /// The load operation failed because the plugin was built against an incompatible version of Netwolf
     /// </summary>
     VersionMismatch,
+    /// <summary>
+    /// The load operation failed because the assembly does not contain a PluginClassAttribute or the type that attribute directs to does not implement IPlugin
+    /// </summary>
+    NotAPlugin,
+    /// <summary>
+    /// The operation failed because of an unrecognized or unknown error
+    /// </summary>
+    UnknownError,
 }
