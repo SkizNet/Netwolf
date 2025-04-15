@@ -162,7 +162,7 @@ public sealed class {generatedTypeName} : ICommandHandler<{resultType}>
             sb.AppendLine($"        return Task.FromResult(new {resultType}(result));");
         }
 
-            sb.Append(@"
+        sb.Append(@"
     }
 }
 ");

@@ -24,11 +24,11 @@ namespace Netwolf.Transport.Internal
             internal nint pbKeyingMaterial;
         }
 
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-        internal struct SecPkgContext_KeyingMaterialInfo
+        [StructLayout(LayoutKind.Sequential)]
+        internal unsafe struct SecPkgContext_KeyingMaterialInfo
         {
             internal ushort cbLabel;
-            internal string pszLabel;
+            internal byte* pszLabel;
             internal ushort cbContextValue;
             internal nint pbContextValue;
             internal uint cbKeyingMaterial;
