@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
+﻿// Copyright (c) 2025 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 using Microsoft.Extensions.DependencyInjection;
@@ -64,25 +64,25 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
         AddCommand(typeof(TCommand));
     }
 
-    public void AddCommand(Type commandType)
+    public ICommandHandler? AddCommand(Type commandType)
     {
         if (!commandType.IsAssignableTo(typeof(ICommandHandler<TResult>)) || commandType.IsAbstract || commandType.IsInterface)
         {
             Logger.LogTrace(@"Skipping {Type}: is abstract, interface, or not assignable to command handler type", commandType.FullName);
-            return;
+            return null;
         }
 
         if (commandType.ContainsGenericParameters)
         {
             // warn on non-abstract open generics since this indicates a likely programmer mistake
             Logger.LogWarning(@"Skipping {Type}: open generic types are not supported", commandType.FullName);
-            return;
+            return null;
         }
 
         if (!Validator.ValidateCommandType(commandType))
         {
             Logger.LogDebug(@"Skipping {Type}: type validator returned false", commandType.FullName);
-            return;
+            return null;
         }
 
         // now that we've gotten this far, instantiate it
@@ -91,17 +91,18 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
         if (!CommandNameRegex().IsMatch(handler.Command))
         {
             Logger.LogWarning(@"Skipping {Underlying}: bad command name {Command}", handler.UnderlyingFullName, handler.Command);
-            return;
+            return null;
         }
 
         if (!Validator.ValidateCommandHandler(handler))
         {
             Logger.LogDebug(@"Skipping {Underlying}: handler validator returned false", handler.UnderlyingFullName);
-            return;
+            return null;
         }
 
         Commands.Add(handler.Command, handler);
         Logger.LogInformation("Found {Underlying} providing {Command}", handler.UnderlyingFullName, handler.Command);
+        return handler;
     }
 
     public void AddCommand(ICommandHandler<TResult> handler)
@@ -127,6 +128,11 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
 
         Commands.Add(handler.Command, handler);
         Logger.LogInformation("Found {Underlying} providing {Command}", handler.UnderlyingFullName, handler.Command);
+    }
+
+    public void RemoveCommand(ICommandHandler handler)
+    {
+
     }
 
     public Task<TResult?> DispatchAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
