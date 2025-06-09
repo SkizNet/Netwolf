@@ -80,8 +80,8 @@ internal sealed class PluginHost : IPluginHost, IDisposable
         // we need some way to pass the dispatcher to use to this method
         throw new NotImplementedException();
 
-        Hooks.Add(hook);
-        return hook;
+        //Hooks.Add(hook);
+        //return hook;
     }
 
     public IDisposable HookCommand<T>(string command, Func<PluginCommandEventArgs, T, Task<PluginResult>> callback, T pluginData)

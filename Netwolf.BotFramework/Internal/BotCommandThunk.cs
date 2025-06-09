@@ -6,8 +6,8 @@ using Microsoft.Extensions.Internal;
 using Netwolf.Attributes;
 using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
-using Netwolf.PluginFramework.Context;
 using Netwolf.PluginFramework.Util;
+using Netwolf.Transport.IRC;
 
 using System.ComponentModel.DataAnnotations;
 using System.Linq.Expressions;

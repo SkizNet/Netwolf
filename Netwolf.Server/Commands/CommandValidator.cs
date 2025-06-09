@@ -2,9 +2,9 @@
 using Microsoft.Extensions.Options;
 
 using Netwolf.PluginFramework.Commands;
-using Netwolf.PluginFramework.Context;
 using Netwolf.Server.Exceptions;
 using Netwolf.Server.Users;
+using Netwolf.Transport.IRC;
 
 using System;
 using System.Collections.Generic;

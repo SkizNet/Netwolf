@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 
-using Netwolf.PluginFramework.Commands;
 using Netwolf.Server;
 using Netwolf.Transport.IRC;
 

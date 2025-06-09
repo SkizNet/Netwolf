@@ -3,7 +3,7 @@
 
 using System.ComponentModel.DataAnnotations;
 
-namespace Netwolf.PluginFramework.Context;
+namespace Netwolf.Transport.IRC;
 
 internal sealed class ValidationContextFactory : IValidationContextFactory
 {

@@ -6,6 +6,8 @@ using Netwolf.PluginFramework.Context;
 using Netwolf.PluginFramework.Exceptions;
 using Netwolf.PluginFramework.Extensions.DependencyInjection;
 using Netwolf.PluginFramework.Permissions;
+using Netwolf.Transport.Extensions.DependencyInjection;
+using Netwolf.Transport.IRC;
 
 using System;
 using System.Collections.Generic;
@@ -102,6 +104,7 @@ public class CommandDispatcherTests
     {
         var collection = new ServiceCollection()
             .AddLogging(config => config.SetMinimumLevel(LogLevel.Debug).AddConsole())
+            .AddTransportServices()
             .AddPluginFrameworkServices();
 
         if (validatorType != null)

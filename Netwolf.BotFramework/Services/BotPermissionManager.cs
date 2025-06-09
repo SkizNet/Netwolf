@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using Netwolf.BotFramework.Exceptions;
-using Netwolf.PluginFramework.Context;
 using Netwolf.PluginFramework.Permissions;
+using Netwolf.Transport.IRC;
 
 namespace Netwolf.BotFramework.Services;
 

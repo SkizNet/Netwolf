@@ -3,7 +3,6 @@
 
 using Microsoft.Extensions.DependencyInjection;
 
-using Netwolf.PluginFramework.Commands;
 using Netwolf.Transport.Exceptions;
 using Netwolf.Transport.Extensions;
 

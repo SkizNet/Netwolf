@@ -3,7 +3,7 @@
 
 using System.ComponentModel.DataAnnotations;
 
-namespace Netwolf.PluginFramework.Context;
+namespace Netwolf.Transport.IRC;
 
 /// <summary>
 /// Interface for the creation of <see cref="ValidationContext"/> instances.

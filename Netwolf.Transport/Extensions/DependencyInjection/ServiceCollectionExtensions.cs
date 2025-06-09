@@ -4,6 +4,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
+using Netwolf.Transport.IRC;
 using Netwolf.Transport.Sasl;
 
 namespace Netwolf.Transport.Extensions.DependencyInjection;
@@ -17,10 +18,14 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddTransportServices(this IServiceCollection services)
     {
         // Client services
-        services.TryAddSingleton<IRC.INetworkFactory, IRC.NetworkFactory>();
-        services.TryAddSingleton<IRC.ICommandFactory, IRC.CommandFactory>();
-        services.TryAddSingleton<IRC.IConnectionFactory, IRC.ConnectionFactory>();
+        services.TryAddSingleton<INetworkFactory, NetworkFactory>();
+        services.TryAddSingleton<IConnectionFactory, ConnectionFactory>();
         services.TryAddSingleton<ISaslMechanismFactory, SaslMechanismFactory>();
+
+        // General services (used for both client and server)
+        services.TryAddSingleton<ICommandFactory, CommandFactory>();
+        services.TryAddSingleton(typeof(ICommandValidator<>), typeof(CommandValidator<>));
+        services.TryAddScoped<IValidationContextFactory, ValidationContextFactory>();
 
         return services;
     }

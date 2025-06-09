@@ -10,7 +10,6 @@ using Netwolf.BotFramework.Internal;
 using Netwolf.BotFramework.Permissions;
 using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
-using Netwolf.PluginFramework.Context;
 using Netwolf.PluginFramework.Extensions.DependencyInjection;
 using Netwolf.PluginFramework.Permissions;
 using Netwolf.Transport.Extensions.DependencyInjection;

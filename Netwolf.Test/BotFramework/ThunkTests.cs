@@ -5,7 +5,6 @@ using Microsoft.Extensions.Options;
 using Netwolf.BotFramework;
 using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
-using Netwolf.PluginFramework.Context;
 using Netwolf.Transport.IRC;
 
 using System.ComponentModel.DataAnnotations;

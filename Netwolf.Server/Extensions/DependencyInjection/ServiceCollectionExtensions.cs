@@ -2,7 +2,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
-using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Context;
 using Netwolf.PluginFramework.Extensions.DependencyInjection;
 using Netwolf.PluginFramework.Permissions;
@@ -10,6 +9,7 @@ using Netwolf.Server.Capabilities;
 using Netwolf.Server.Commands;
 using Netwolf.Server.ISupport;
 using Netwolf.Server.Users;
+using Netwolf.Transport.IRC;
 
 using System.Runtime.CompilerServices;
 

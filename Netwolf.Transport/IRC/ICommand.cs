@@ -4,7 +4,7 @@
 using System.Collections.Immutable;
 using System.Text;
 
-namespace Netwolf.PluginFramework.Commands;
+namespace Netwolf.Transport.IRC;
 
 /// <summary>
 /// General interface for a command sent to or received from the server.
@@ -154,7 +154,7 @@ public interface ICommand
     /// <summary>
     /// The full command to send to the remote IRC server, without trailing CRLF.
     /// </summary>
-    string FullCommand => (Source == null || CommandType == CommandType.Client)
+    string FullCommand => Source == null || CommandType == CommandType.Client
         ? $"{TagPart}{UnprefixedCommandPart}"
         : $"{TagPart}{PrefixedCommandPart}";
 }

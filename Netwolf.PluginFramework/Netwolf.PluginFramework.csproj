@@ -17,4 +17,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.2" />
     <PackageReference Include="System.Reactive" Version="6.0.1" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Netwolf.Transport\Netwolf.Transport.csproj" />
+  </ItemGroup>
 </Project>

@@ -1,7 +1,5 @@
 ﻿using Microsoft.Extensions.Options;
 
-using Netwolf.PluginFramework.Commands;
-using Netwolf.PluginFramework.Context;
 using Netwolf.Server.Capabilities.Vendor;
 using Netwolf.Server.ChannelModes;
 using Netwolf.Server.Internal;

@@ -1,6 +1,6 @@
-﻿using Netwolf.PluginFramework.Context;
-using Netwolf.PluginFramework.Permissions;
+﻿using Netwolf.PluginFramework.Permissions;
 using Netwolf.Server.Exceptions;
+using Netwolf.Transport.IRC;
 
 using System;
 using System.Collections.Generic;

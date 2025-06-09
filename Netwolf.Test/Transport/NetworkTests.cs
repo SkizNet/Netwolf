@@ -6,10 +6,10 @@ using Netwolf.Server.Commands;
 using Netwolf.Server.Extensions.DependencyInjection;
 using Netwolf.Transport.IRC;
 using Netwolf.Transport.Extensions.DependencyInjection;
-using Netwolf.PluginFramework.Commands;
 using Netwolf.Server;
 using Microsoft.Extensions.Options;
 using Netwolf.BotFramework;
+using Netwolf.PluginFramework.Commands;
 
 namespace Netwolf.Test.Transport;
 

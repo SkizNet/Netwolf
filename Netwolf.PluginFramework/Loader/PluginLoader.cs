@@ -1,7 +1,9 @@
 ﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Exceptions;
+using Netwolf.Transport.IRC;
 
 using System.Reflection;
 
@@ -94,6 +96,11 @@ internal class PluginLoader : IPluginLoader
     }
 
     public PluginLoadStatus Unload(int pluginId)
+    {
+        throw new NotImplementedException();
+    }
+
+    public IDisposable AddNetwork(IObservable<ICommand> commandStream, ICommandDispatcher commandDispatcher)
     {
         throw new NotImplementedException();
     }

@@ -1,6 +1,4 @@
-﻿using Netwolf.PluginFramework.Commands;
-using Netwolf.PluginFramework.Context;
-using Netwolf.Server.Users;
+﻿using Netwolf.Server.Users;
 using Netwolf.Transport.IRC;
 
 using System;

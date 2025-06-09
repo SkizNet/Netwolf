@@ -1,4 +1,5 @@
 ﻿using Netwolf.PluginFramework.Commands;
+using Netwolf.Transport.IRC;
 
 using System;
 using System.Collections.Generic;

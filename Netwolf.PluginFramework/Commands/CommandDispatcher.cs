@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Netwolf.PluginFramework.Context;
 using Netwolf.PluginFramework.Exceptions;
 using Netwolf.PluginFramework.Permissions;
+using Netwolf.Transport.IRC;
 
 using System.Collections.Immutable;
 using System.Reactive.Disposables;
