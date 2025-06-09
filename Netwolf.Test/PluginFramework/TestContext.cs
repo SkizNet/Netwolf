@@ -2,8 +2,7 @@
 
 namespace Netwolf.Test.PluginFramework;
 
-internal class TestContext : IContext
+internal class TestContext : ExtensibleContextBase
 {
-    public object Sender { get; set; } = null!;
-    public IValidationContextFactory? ValidationContextFactory => null;
+    public override object Sender => null!;
 }

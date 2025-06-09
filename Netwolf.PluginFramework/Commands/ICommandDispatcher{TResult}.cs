@@ -17,8 +17,8 @@ public interface ICommandDispatcher<TResult> : ICommandDispatcher
 
     Task<TResult?> DispatchAsync(ICommand command, IContext sender, CancellationToken cancellationToken);
 
-    void AddCommand<TCommand>()
+    ICommandHandler<TResult>? AddCommand<TCommand>()
         where TCommand : ICommandHandler<TResult>;
 
-    void AddCommand(ICommandHandler<TResult> handler);
+    bool AddCommand(ICommandHandler<TResult> handler);
 }

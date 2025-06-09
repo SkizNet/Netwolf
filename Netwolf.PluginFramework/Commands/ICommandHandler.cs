@@ -11,4 +11,6 @@ public interface ICommandHandler
     string Command { get; }
 
     string? Privilege => null;
+
+    string UnderlyingFullName => GetType().FullName ?? "<unknown>";
 }

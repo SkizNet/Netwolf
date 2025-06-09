@@ -9,6 +9,7 @@ using Netwolf.PluginFramework.Exceptions;
 using Netwolf.PluginFramework.Permissions;
 
 using System.Collections.Immutable;
+using System.Reactive.Disposables;
 using System.Reflection;
 using System.Text.RegularExpressions;
 
@@ -31,7 +32,10 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
 
     private Dictionary<string, ICommandHandler<TResult>> Commands { get; init; } = [];
 
-    ImmutableArray<string> ICommandDispatcher<TResult>.Commands => [.. Commands.Keys];
+    private Dictionary<string, List<ICommandHandler<PluginResult>>> CommandHooks { get; init; } = [];
+
+    ImmutableArray<string> ICommandDispatcher<TResult>.Commands =>
+        [.. Commands.Keys.Union(CommandHooks.Keys).Order()];
 
     public CommandDispatcher(
         IServiceProvider provider,
@@ -58,10 +62,10 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
         }
     }
 
-    public void AddCommand<TCommand>()
+    public ICommandHandler<TResult>? AddCommand<TCommand>()
         where TCommand : ICommandHandler<TResult>
     {
-        AddCommand(typeof(TCommand));
+        return AddCommand(typeof(TCommand)) as ICommandHandler<TResult>;
     }
 
     public ICommandHandler? AddCommand(Type commandType)
@@ -87,52 +91,119 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
 
         // now that we've gotten this far, instantiate it
         ICommandHandler<TResult> handler = (ICommandHandler<TResult>)ActivatorUtilities.CreateInstance(ServiceProvider, commandType);
-
-        if (!CommandNameRegex().IsMatch(handler.Command))
-        {
-            Logger.LogWarning(@"Skipping {Underlying}: bad command name {Command}", handler.UnderlyingFullName, handler.Command);
-            return null;
-        }
-
-        if (!Validator.ValidateCommandHandler(handler))
-        {
-            Logger.LogDebug(@"Skipping {Underlying}: handler validator returned false", handler.UnderlyingFullName);
-            return null;
-        }
-
-        Commands.Add(handler.Command, handler);
-        Logger.LogInformation("Found {Underlying} providing {Command}", handler.UnderlyingFullName, handler.Command);
-        return handler;
+        return AddCommand(handler) ? handler : null;
     }
 
-    public void AddCommand(ICommandHandler<TResult> handler)
+    public bool AddCommand(ICommandHandler<TResult> handler)
     {
         var commandType = handler.GetType();
         if (!Validator.ValidateCommandType(commandType))
         {
             Logger.LogDebug(@"Skipping {Type}: type validator returned false", commandType.FullName);
-            return;
+            return false;
         }
 
         if (!CommandNameRegex().IsMatch(handler.Command))
         {
             Logger.LogWarning(@"Skipping {Underlying}: bad command name {Command}", handler.UnderlyingFullName, handler.Command);
-            return;
+            return false;
         }
 
         if (!Validator.ValidateCommandHandler(handler))
         {
             Logger.LogDebug(@"Skipping {Underlying}: handler validator returned false", handler.UnderlyingFullName);
-            return;
+            return false;
         }
 
         Commands.Add(handler.Command, handler);
         Logger.LogInformation("Found {Underlying} providing {Command}", handler.UnderlyingFullName, handler.Command);
+        return true;
     }
 
-    public void RemoveCommand(ICommandHandler handler)
+    public bool RemoveCommand(ICommandHandler handler)
     {
+        if (!Commands.TryGetValue(handler.Command, out var existing))
+        {
+            // command doesn't exist, treat removal as successful (idempotency)
+            Logger.LogDebug("Attempting to remove handler for non-existent command {Command}", handler.Command);
+            return true;
+        }
 
+        if (ReferenceEquals(handler, existing))
+        {
+            Logger.LogDebug("Removed handler {Underlying} for command {Command}", handler.UnderlyingFullName, handler.Command);
+            Commands.Remove(handler.Command);
+            return true;
+        }
+        else
+        {
+            Logger.LogWarning(
+                "Attempted to remove handler {Underlying} for command {Command} but command is registered to {Existing} instead",
+                handler.UnderlyingFullName,
+                handler.Command,
+                existing.UnderlyingFullName);
+            return false;
+        }
+    }
+
+    public IDisposable AddCommandHook(ICommandHandler<PluginResult> handler)
+    {
+        if (!CommandNameRegex().IsMatch(handler.Command))
+        {
+            Logger.LogError(
+                "Attempted to add command hook {Underlying} for command {Command} but command name is invalid",
+                handler.UnderlyingFullName,
+                handler.Command);
+
+            throw new InvalidOperationException($"Cannot add command hook {handler.UnderlyingFullName}: bad command name {handler.Command}");
+        }
+
+        if (!CommandHooks.TryGetValue(handler.Command, out var hooks))
+        {
+            hooks = [];
+            CommandHooks[handler.Command] = hooks;
+        }
+
+        if (hooks.Contains(handler))
+        {
+            Logger.LogError(
+                "Attempted to add command {Underlying} for command {Command} but it is already registered",
+                handler.UnderlyingFullName,
+                handler.Command);
+
+            throw new InvalidOperationException($"Cannot add command hook {handler.UnderlyingFullName}: hook already registered");
+        }
+
+        hooks.Add(handler);
+        Logger.LogInformation("Added command hook {Underlying} for command {Command}", handler.UnderlyingFullName, handler.Command);
+        return Disposable.Create(() => RemoveCommandHook(handler));
+    }
+
+    private void RemoveCommandHook(ICommandHandler<PluginResult> handler)
+    {
+        if (CommandHooks.TryGetValue(handler.Command, out var hooks) && hooks.Remove(handler))
+        {
+            Logger.LogInformation("Removed command hook {Underlying} for command {Command}", handler.UnderlyingFullName, handler.Command);
+
+            if (hooks.Count == 0)
+            {
+                // we allow hooks to be registered to nonexistent commands, so the overall command list includes all keys of the hooks dictionary
+                // if no more hooks exist, we need to remove that key so we don't expose "ghost" commands that do literally nothing
+                Logger.LogDebug("No more hooks for command {Command}, performing cleanup", handler.Command);
+                CommandHooks.Remove(handler.Command);
+            }
+        }
+        else
+        {
+            // this should never happen since the only way to remove a hook is by disposing the returned IDisposable
+            // so getting here indicates some sort of bad state
+            Logger.LogError(
+                "Attempted to remove command hook {Underlying} for command {Command} but no such hook exists",
+                handler.UnderlyingFullName,
+                handler.Command);
+
+            throw new InvalidOperationException($"Cannot remove command hook {handler.UnderlyingFullName}: hook isn't registered");
+        }
     }
 
     public Task<TResult?> DispatchAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
@@ -147,9 +218,10 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
 
         foreach (var augmenter in Augmenters)
         {
-            sender = augmenter.AugmentForCommand(sender, command, handler);
+            augmenter.AugmentForCommand(sender, command, handler);
         }
 
+        sender.FreezeExtensionData();
         Validator.ValidateCommand(command, handler, sender);
 
         if (handler.Privilege != null)

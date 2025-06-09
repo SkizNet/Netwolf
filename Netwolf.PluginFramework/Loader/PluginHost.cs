@@ -67,19 +67,26 @@ internal sealed class PluginHost : IPluginHost, IDisposable
             .Subscribe();
     }
 
-    public IDisposable HookServer<T>(string command, Func<PluginCommandEventArgs, T, Task> callback, T pluginContext)
+    public IDisposable HookServer<T>(string command, Func<PluginCommandEventArgs, T, Task> callback, T pluginData)
     {
-        return HookServer(command, args => callback(args, pluginContext));
+        return HookServer(command, args => callback(args, pluginData));
     }
 
     public IDisposable HookCommand(string command, Func<PluginCommandEventArgs, Task<PluginResult>> callback)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        var handler = new PluginCommandHookHandler(this, command.ToUpperInvariant(), callback);
+        // FIXME: CommandDispatcher is a scoped service and PluginLoader is singleton
+        // we need some way to pass the dispatcher to use to this method
+        throw new NotImplementedException();
+
+        Hooks.Add(hook);
+        return hook;
     }
 
-    public IDisposable HookCommand<T>(string command, Func<PluginCommandEventArgs, T, Task<PluginResult>> callback, T pluginContext)
+    public IDisposable HookCommand<T>(string command, Func<PluginCommandEventArgs, T, Task<PluginResult>> callback, T pluginData)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        return HookCommand(command, args => callback(args, pluginData));
     }
 
     public IDisposable HookTimer(TimeSpan frequency, Func<PluginTimerEventArgs, Task> callback)
@@ -112,9 +119,9 @@ internal sealed class PluginHost : IPluginHost, IDisposable
         return subscription;
     }
 
-    public IDisposable HookTimer<T>(TimeSpan frequency, Func<PluginTimerEventArgs, T, Task> callback, T pluginContext)
+    public IDisposable HookTimer<T>(TimeSpan frequency, Func<PluginTimerEventArgs, T, Task> callback, T pluginData)
     {
-        return HookTimer(frequency, args => callback(args, pluginContext));
+        return HookTimer(frequency, args => callback(args, pluginData));
     }
 
     public void Dispose()

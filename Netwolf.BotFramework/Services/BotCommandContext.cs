@@ -7,11 +7,9 @@ using Netwolf.Transport.IRC;
 
 namespace Netwolf.BotFramework.Services;
 
-public class BotCommandContext : IContext
+public class BotCommandContext : ExtensibleContextBase
 {
-    object IContext.Sender => Bot;
-
-    public IValidationContextFactory? ValidationContextFactory { get; init; }
+    public override object Sender => Bot;
 
     /// <summary>
     /// Bot that received the command

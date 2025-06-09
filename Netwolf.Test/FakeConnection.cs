@@ -75,7 +75,7 @@ internal class FakeConnection : IConnection
         Logger.LogDebug("--> {Command}", command.FullCommand);
         try
         {
-            var context = new ServerContext() { Sender = Server, User = Server.State[Network][this] };
+            var context = new ServerContext() { Server = Server, User = Server.State[Network][this] };
             var result = await CommandDispatcher!.DispatchAsync(command, context, cancellationToken);
             (result ?? new NumericResponse(Server.State[Network][this], Numeric.ERR_UNKNOWNCOMMAND)).Send();
         }

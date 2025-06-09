@@ -15,5 +15,5 @@ namespace Netwolf.PluginFramework.Commands;
 public record PluginCommandEventArgs(
     ICommand Command,
     IPluginHost PluginHost,
-    IContext Context,
+    IPluginCommandContext Context,
     CancellationToken CancellationToken);

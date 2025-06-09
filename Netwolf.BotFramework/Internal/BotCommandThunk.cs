@@ -33,7 +33,7 @@ internal sealed class BotCommandThunk : ICommandHandler<BotCommandResult>
 
     private record ParameterConverter(ParameterInfo Parameter, Converter Converter);
 
-    string ICommandHandler<BotCommandResult>.UnderlyingFullName => $"{Executor.MethodInfo.DeclaringType!.FullName}.{Executor.MethodInfo.Name}";
+    string ICommandHandler.UnderlyingFullName => $"{Executor.MethodInfo.DeclaringType!.FullName}.{Executor.MethodInfo.Name}";
 
     internal BotCommandThunk(Bot bot, MethodInfo method, CommandAttribute attr)
     {

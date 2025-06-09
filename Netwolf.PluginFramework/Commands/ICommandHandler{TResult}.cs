@@ -14,7 +14,5 @@ namespace Netwolf.PluginFramework.Commands;
 /// <typeparam name="TResult"></typeparam>
 public interface ICommandHandler<TResult> : ICommandHandler
 {
-    string UnderlyingFullName => GetType().FullName ?? "<unknown>";
-
     Task<TResult> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken);
 }

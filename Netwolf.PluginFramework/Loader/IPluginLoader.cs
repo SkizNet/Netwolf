@@ -1,6 +1,8 @@
 ﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+using Netwolf.PluginFramework.Commands;
+
 namespace Netwolf.PluginFramework.Loader;
 
 /// <summary>
@@ -38,4 +40,8 @@ public interface IPluginLoader
     /// <param name="pluginId">The ID of the plugin to unload</param>
     /// <returns>Status of the unload attempt</returns>
     PluginLoadStatus Unload(int pluginId);
+
+    // TODO: take in some sort of limited INetwork which contains all the info we need
+    // the real INetwork has stuff we can't just move over to PluginFramework
+    IDisposable AddNetwork(IObservable<ICommand> commandStream, ICommandDispatcher commandDispatcher);
 }
