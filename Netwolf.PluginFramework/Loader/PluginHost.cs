@@ -5,7 +5,6 @@ using Netwolf.PluginFramework.Commands;
 
 using System.Collections.Concurrent;
 using System.Reactive;
-using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 
@@ -23,6 +22,8 @@ internal sealed class PluginHost : IPluginHost, IDisposable
 
     private bool _disposed = false;
 
+    public event EventHandler? Unloading;
+
     private IPluginLoader PluginLoader { get; init; }
 
     private ICommandHookRegistry HookRegistry { get; init; }
@@ -38,12 +39,12 @@ internal sealed class PluginHost : IPluginHost, IDisposable
     /// also gain the ability to call Subject.Dispose during unload to force-unload all plugin subscriptions
     /// without requiring cooperation from third-party plugin code.
     /// </summary>
-    internal Subject<PluginCommandEventArgs> PluginCommandStream { get; init; } = new();
+    private Subject<PluginCommandEventArgs> PluginCommandStream { get; init; } = new();
 
     /// <summary>
     /// CTS used to cancel pending plugin operations when an unload is requested.
     /// </summary>
-    internal CancellationTokenSource CancellationSource { get; init; } = new();
+    private CancellationTokenSource CancellationSource { get; init; } = new();
 
     public IObservable<PluginCommandEventArgs> ServerCommandStream
     {
@@ -138,6 +139,7 @@ internal sealed class PluginHost : IPluginHost, IDisposable
 
             PluginCommandStream.Dispose();
             CancellationSource.Dispose();
+            Unloading?.Invoke(this, EventArgs.Empty);
         }
     }
 }

@@ -23,6 +23,19 @@ public interface IPluginHost
     IObservable<PluginCommandEventArgs> ServerCommandStream { get; }
 
     /// <summary>
+    /// Event that is raised when the plugin is being unloaded, either due to a reload or an unload.
+    /// Unloading events cannot be blocked or stopped by a plugin; they are purely advisory. The <c>sender</c>
+    /// object sent to listeners is this plugin host instance, and the event args are always <see cref="EventArgs.Empty"/>.
+    /// </summary>
+    /// <remarks>
+    /// If the plugin holds unmanaged resources, it should clean them up here. The AssemblyLoadContext
+    /// for the plugin is expected to be collected after this event completes; plugins need to ensure
+    /// they are not doing things that keep the ALC loaded as this will cause memory leaks in
+    /// long-running processes.
+    /// </remarks>
+    event EventHandler? Unloading;
+
+    /// <summary>
     /// Hook into a particular server command by running the specified callback when
     /// such a command is received.
     /// </summary>

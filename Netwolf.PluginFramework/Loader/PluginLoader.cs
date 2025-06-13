@@ -56,6 +56,7 @@ internal class PluginLoader : IPluginLoader
 
         var pluginId = Interlocked.Increment(ref _nextPluginId);
         var context = new PluginLoadContext($"Netwolf.Plugin{pluginId} [{fileName}]", path);
+        PluginHost? pluginHost = null;
 
         try
         {
@@ -77,7 +78,7 @@ internal class PluginLoader : IPluginLoader
             // we have a plugin! grab metadata and initialize it
             // Activator.CreateInstance returns null only for Nullable<T> types, which the plugin is guaranteed not to be
             var pluginRef = (IPlugin)Activator.CreateInstance(pluginClass.PluginType)!;
-            var pluginHost = new PluginHost(this, HookRegistry, pluginId);
+            pluginHost = new PluginHost(this, HookRegistry, pluginId);
             _loadedPlugins[pluginId] = new(pluginRef, context, pluginHost);
             metadata = new(pluginId, pluginRef.Name, pluginRef.Description, pluginRef.Version, context.Path);
             pluginRef.Initialize(pluginHost);
@@ -87,6 +88,7 @@ internal class PluginLoader : IPluginLoader
         catch (Exception ex)
         {
             Logger.LogError(ex, "Encountered an exception when loading plugin at {Path}", path);
+            pluginHost?.Dispose();
             context.Unload();
 
             return ex switch
@@ -100,13 +102,40 @@ internal class PluginLoader : IPluginLoader
         }
     }
 
-    public PluginLoadStatus Reload(int pluginId)
+    public PluginLoadStatus Reload(int pluginId, out PluginMetadata? metadata)
     {
-        throw new NotImplementedException();
+        metadata = null;
+
+        if (!_loadedPlugins.TryGetValue(pluginId, out var info))
+        {
+            Logger.LogWarning("Attempted to reload plugin ID {PluginId}, but no such plugin is loaded", pluginId);
+            return PluginLoadStatus.NotLoaded;
+        }
+
+        var path = info.Context.Path;
+        var status = Unload(pluginId);
+        if (status != PluginLoadStatus.Success)
+        {
+            return status;
+        }
+
+        return Load(path, out metadata);
     }
 
     public PluginLoadStatus Unload(int pluginId)
     {
-        throw new NotImplementedException();
+        if (!_loadedPlugins.TryGetValue(pluginId, out var info))
+        {
+            Logger.LogWarning("Attempted to unload plugin ID {PluginId}, but no such plugin is loaded", pluginId);
+            return PluginLoadStatus.NotLoaded;
+        }
+
+        // unregister all hooks, etc.
+        info.Host.Dispose();
+
+        // remove refs to assembly load context so it can be collected
+        _loadedPlugins.Remove(pluginId);
+        info.Context.Unload();
+        return PluginLoadStatus.Success;
     }
 }

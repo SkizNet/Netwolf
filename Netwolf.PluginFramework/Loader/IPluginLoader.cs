@@ -31,8 +31,12 @@ public interface IPluginLoader
     /// Attempt to unload and then reload a plugin.
     /// </summary>
     /// <param name="pluginId">The ID of the plugin to reload</param>
+    /// /// <param name="metadata">
+    /// The reloaded plugin's metadata, or null if the plugin cannot be reloaded.
+    /// This will be null if the reload operation fails for any reason, even if unloading fails.
+    /// </param>
     /// <returns>Status of the reload attempt. If the reload fails, the plugin may be in either a loaded or unloaded state.</returns>
-    PluginLoadStatus Reload(int pluginId);
+    PluginLoadStatus Reload(int pluginId, out PluginMetadata? metadata);
 
     /// <summary>
     /// Attempt to unload a plugin.

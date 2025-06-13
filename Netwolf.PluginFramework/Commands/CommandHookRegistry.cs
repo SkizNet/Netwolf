@@ -17,10 +17,6 @@ internal sealed class CommandHookRegistry : ICommandHookRegistry
     private int _discriminator = 0;
     private readonly ConcurrentDictionary<int, CommandHookRecord> _hooks = [];
 
-    // We maintain a computed set of command names since this is very frequently accessed and needs to be fast
-    // Reference assignment is atomic so recalculation is thread-safe
-    private HashSet<string> _commands = [];
-
     private ILogger<ICommandHookRegistry> Logger { get; init; }
 
     public CommandHookRegistry(ILogger<ICommandHookRegistry> logger)
@@ -40,8 +36,6 @@ internal sealed class CommandHookRegistry : ICommandHookRegistry
         }
 
         Logger.LogDebug("Added hook {FullName} for command {Command} at priority {Priority}", handler.UnderlyingFullName, handler.Command, priority);
-
-        _commands = [.. _hooks.Values.Select(entry => entry.Handler.Command)];
         return Disposable.Create(() => RemoveCommandHook(calculatedPriority));
     }
 
@@ -50,7 +44,6 @@ internal sealed class CommandHookRegistry : ICommandHookRegistry
         if (_hooks.TryRemove(priority, out var entry))
         {
             Logger.LogDebug("Removed hook {FullName} for command {Command}", entry.Handler.UnderlyingFullName, entry.Handler.Command);
-            _commands = [.. _hooks.Values.Select(entry => entry.Handler.Command)];
         }
     }
 
@@ -68,6 +61,10 @@ internal sealed class CommandHookRegistry : ICommandHookRegistry
 
     public IEnumerable<string> GetHookedCommandNames()
     {
-        return _commands;
+        // Ensure the snapshot represents the point in time that this method is called,
+        // rather than when the caller starts to enumerate over the results.
+        var valuesSnapshot = _hooks.Values;
+
+        return valuesSnapshot.Select(entry => entry.Handler.Command).Distinct();
     }
 }

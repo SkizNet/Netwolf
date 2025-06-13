@@ -34,6 +34,7 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
 
     private Dictionary<string, ICommandHandler<TResult>> Commands { get; init; } = [];
 
+    // FIXME: once we're on .NET 10, make use of CompareOptions.NumericOrdering for natural sort order
     ImmutableArray<string> ICommandDispatcher<TResult>.Commands =>
         [.. Commands.Keys.Union(HookRegistry.GetHookedCommandNames()).Order()];
 
