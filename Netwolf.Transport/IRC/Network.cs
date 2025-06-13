@@ -47,6 +47,8 @@ public partial class Network : INetwork
 
     protected ISaslMechanismFactory SaslMechanismFactory { get; init; }
 
+    protected NetworkEvents NetworkEvents { get; set; }
+
     /// <summary>
     /// Cancellation token for <see cref="_messageLoop"/>, used when disposing this <see cref="Network"/> instance.
     /// </summary>
@@ -236,9 +238,6 @@ public partial class Network : INetwork
     /// <inheritdoc />
     public IObservable<CommandEventArgs> CommandReceived => _commandEventStream.AsObservable();
 
-    /// <inheritdoc />
-    public event EventHandler<NetworkEventArgs>? Disconnected;
-
     /// <summary>
     /// Internal event stream for CAP events
     /// </summary>
@@ -308,13 +307,15 @@ public partial class Network : INetwork
     /// <param name="commandFactory"></param>
     /// <param name="connectionFactory"></param>
     /// <param name="saslMechanismFactory"></param>
+    /// <param name="networkEvents"></param>
     public Network(
         string name,
         NetworkOptions options,
         ILogger<INetwork> logger,
         ICommandFactory commandFactory,
         IConnectionFactory connectionFactory,
-        ISaslMechanismFactory saslMechanismFactory)
+        ISaslMechanismFactory saslMechanismFactory,
+        NetworkEvents networkEvents)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(options);
@@ -325,6 +326,7 @@ public partial class Network : INetwork
         CommandFactory = commandFactory;
         ConnectionFactory = connectionFactory;
         SaslMechanismFactory = saslMechanismFactory;
+        NetworkEvents = networkEvents;
 
         ResetState();
 
@@ -482,7 +484,8 @@ public partial class Network : INetwork
                         _connection.DisconnectAsync().Wait();
                         _connection = null;
 
-                        Disconnected?.Invoke(this, new(this, tasks[index].Exception));
+                        AbortUserRegistration(tasks[index].Exception);
+                        NetworkEvents.OnDisconnected(this, tasks[index].Exception);
                     }
                     break;
             }
@@ -560,11 +563,10 @@ public partial class Network : INetwork
                 // don't exit the loop until registration succeeds
                 // (we want to bounce/reconnect if that fails for whatever reason)
                 Logger.LogInformation("Connected to {server}.", server);
+                NetworkEvents.OnConnecting(this);
 
-                // set up disconnection handler for user registration (ensuring it is only registered once)
+                // set up completion source for user registration
                 _userRegistrationCompletionSource = new TaskCompletionSource();
-                Disconnected -= AbortUserRegistration;
-                Disconnected += AbortUserRegistration;
 
                 // alert the message loop to start processing incoming commands
                 _messageLoopCompletionSource.SetResult();
@@ -615,8 +617,8 @@ public partial class Network : INetwork
                 if (_userRegistrationCompletionSource.Task.IsCompletedSuccessfully)
                 {
                     // user registration succeeded, exit out of the connect loop
-                    Disconnected -= AbortUserRegistration;
                     _userRegistrationCompletionSource = null;
+                    NetworkEvents.OnConnected(this);
                     return;
                 }
                 else if (!registrationComplete)
@@ -658,7 +660,8 @@ public partial class Network : INetwork
             _messageLoopCompletionSource.SetResult();
         }
 
-        Disconnected?.Invoke(this, new(this, default));
+        AbortUserRegistration(null);
+        NetworkEvents.OnDisconnected(this);
     }
 
     /// <inheritdoc />
@@ -1875,15 +1878,24 @@ public partial class Network : INetwork
     }
     #endregion
 
-    private void AbortUserRegistration(object? sender, NetworkEventArgs e)
+    /// <summary>
+    /// Abort user registration if it is currently underway.
+    /// If user registration has already completed or has already been aborted, this call is a no-op.
+    /// </summary>
+    /// <param name="ex"></paaaram>
+    private void AbortUserRegistration(Exception? ex)
     {
-        if (e.Exception != null)
+        if (_userRegistrationCompletionSource == null || _userRegistrationCompletionSource.Task.IsCompleted)
         {
-            _userRegistrationCompletionSource?.SetException(e.Exception);
+            return;
+        }
+        else if (ex != null)
+        {
+            _userRegistrationCompletionSource.SetException(ex);
         }
         else
         {
-            _userRegistrationCompletionSource?.SetCanceled();
+            _userRegistrationCompletionSource.SetCanceled();
         }
     }
 

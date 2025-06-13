@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 
 using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
+using Netwolf.Transport.Events;
 using Netwolf.Transport.IRC;
 
 namespace Netwolf.BotFramework;
@@ -26,6 +27,7 @@ public sealed class BotCreationData
     internal ILogger<Bot> Logger { get; init; }
     internal IOptionsMonitor<BotOptions> OptionsMonitor { get; init; }
     internal INetworkFactory NetworkFactory { get; init; }
+    internal NetworkEvents NetworkEvents { get; init; }
     internal ICommandDispatcher<BotCommandResult> CommandDispatcher { get; init; }
     internal ICommandFactory CommandFactory { get; init; }
     internal BotCommandContextFactory BotCommandContextFactory { get; init; }
@@ -39,6 +41,7 @@ public sealed class BotCreationData
         ILogger<Bot> logger,
         IOptionsMonitor<BotOptions> options,
         INetworkFactory networkFactory,
+        NetworkEvents networkEvents,
         ICommandDispatcher<BotCommandResult> commandDispatcher,
         ICommandFactory commandFactory,
         BotCommandContextFactory botCommandContextFactory,
@@ -49,6 +52,7 @@ public sealed class BotCreationData
         BotName = botName;
         Logger = logger;
         OptionsMonitor = options;
+        NetworkEvents = networkEvents;
         NetworkFactory = networkFactory;
         CommandDispatcher = commandDispatcher;
         CommandFactory = commandFactory;

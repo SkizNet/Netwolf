@@ -10,7 +10,6 @@ using Netwolf.PluginFramework.Permissions;
 using Netwolf.Transport.IRC;
 
 using System.Collections.Immutable;
-using System.Reactive.Disposables;
 using System.Reflection;
 using System.Text.RegularExpressions;
 
@@ -25,6 +24,8 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
 
     private IServiceProvider ServiceProvider { get; init; }
 
+    private ICommandHookRegistry HookRegistry { get; init; }
+
     private ICommandValidator<TResult> Validator { get; init; }
 
     private IEnumerable<IPermissionManager> PermissionManagers { get; init; }
@@ -33,14 +34,13 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
 
     private Dictionary<string, ICommandHandler<TResult>> Commands { get; init; } = [];
 
-    private Dictionary<string, List<ICommandHandler<PluginResult>>> CommandHooks { get; init; } = [];
-
     ImmutableArray<string> ICommandDispatcher<TResult>.Commands =>
-        [.. Commands.Keys.Union(CommandHooks.Keys).Order()];
+        [.. Commands.Keys.Union(HookRegistry.GetHookedCommandNames()).Order()];
 
     public CommandDispatcher(
         IServiceProvider provider,
         ILogger<ICommandDispatcher<TResult>> logger,
+        ICommandHookRegistry hookRegistry,
         ICommandValidator<TResult> validator,
         IEnumerable<IPermissionManager> permissionManagers,
         IEnumerable<IContextAugmenter> augmenters
@@ -48,6 +48,7 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
     {
         ServiceProvider = provider;
         Logger = logger;
+        HookRegistry = hookRegistry;
         Validator = validator;
         PermissionManagers = permissionManagers;
         Augmenters = augmenters;
@@ -147,75 +148,19 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
         }
     }
 
-    public IDisposable AddCommandHook(ICommandHandler<PluginResult> handler)
-    {
-        if (!CommandNameRegex().IsMatch(handler.Command))
-        {
-            Logger.LogError(
-                "Attempted to add command hook {Underlying} for command {Command} but command name is invalid",
-                handler.UnderlyingFullName,
-                handler.Command);
-
-            throw new InvalidOperationException($"Cannot add command hook {handler.UnderlyingFullName}: bad command name {handler.Command}");
-        }
-
-        if (!CommandHooks.TryGetValue(handler.Command, out var hooks))
-        {
-            hooks = [];
-            CommandHooks[handler.Command] = hooks;
-        }
-
-        if (hooks.Contains(handler))
-        {
-            Logger.LogError(
-                "Attempted to add command {Underlying} for command {Command} but it is already registered",
-                handler.UnderlyingFullName,
-                handler.Command);
-
-            throw new InvalidOperationException($"Cannot add command hook {handler.UnderlyingFullName}: hook already registered");
-        }
-
-        hooks.Add(handler);
-        Logger.LogInformation("Added command hook {Underlying} for command {Command}", handler.UnderlyingFullName, handler.Command);
-        return Disposable.Create(() => RemoveCommandHook(handler));
-    }
-
-    private void RemoveCommandHook(ICommandHandler<PluginResult> handler)
-    {
-        if (CommandHooks.TryGetValue(handler.Command, out var hooks) && hooks.Remove(handler))
-        {
-            Logger.LogInformation("Removed command hook {Underlying} for command {Command}", handler.UnderlyingFullName, handler.Command);
-
-            if (hooks.Count == 0)
-            {
-                // we allow hooks to be registered to nonexistent commands, so the overall command list includes all keys of the hooks dictionary
-                // if no more hooks exist, we need to remove that key so we don't expose "ghost" commands that do literally nothing
-                Logger.LogDebug("No more hooks for command {Command}, performing cleanup", handler.Command);
-                CommandHooks.Remove(handler.Command);
-            }
-        }
-        else
-        {
-            // this should never happen since the only way to remove a hook is by disposing the returned IDisposable
-            // so getting here indicates some sort of bad state
-            Logger.LogError(
-                "Attempted to remove command hook {Underlying} for command {Command} but no such hook exists",
-                handler.UnderlyingFullName,
-                handler.Command);
-
-            throw new InvalidOperationException($"Cannot remove command hook {handler.UnderlyingFullName}: hook isn't registered");
-        }
-    }
-
-    public Task<TResult?> DispatchAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
+    public async Task<TResult?> DispatchAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!Commands.TryGetValue(command.Verb, out var handler))
+        var hooks = HookRegistry.GetCommandHooks(command.Verb).ToList();
+
+        if (!Commands.TryGetValue(command.Verb, out var handler) && hooks.Count == 0)
         {
             Logger.LogDebug("Received unknown command {Command}", command.UnprefixedCommandPart);
-            return Task.FromResult<TResult?>(default);
+            return default;
         }
+
+        handler ??= new DummyHandler<TResult>(command.Verb, Logger);
 
         foreach (var augmenter in Augmenters)
         {
@@ -232,6 +177,12 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
 
             foreach (var manager in PermissionManagers)
             {
+                Logger.LogTrace("Querying {Manager} to see if context {Type} has permission {Permission} for {Command}",
+                    manager.GetType().FullName,
+                    sender.GetType().FullName,
+                    handler.Privilege,
+                    command.Verb);
+
                 try
                 {
                     hasPermission = manager.HasPermission(sender, handler.Privilege);
@@ -259,6 +210,23 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
             }
         }
 
-        return handler.ExecuteAsync(command, sender, cancellationToken)!;
+        foreach (var hook in hooks)
+        {
+            Logger.LogTrace("Executing hook {Hook} for command {Command}", hook.UnderlyingFullName, command.Verb);
+            var result = await hook.ExecuteAsync(command, sender, cancellationToken);
+            if (result.HasFlag(PluginResult.SuppressDefault))
+            {
+                Logger.LogTrace("Hook {Hook} requested default command suppression for {Command}", hook.UnderlyingFullName, command.Verb);
+                handler = new DummyHandler<TResult>(command.Verb, null);
+            }
+
+            if (result.HasFlag(PluginResult.SuppressPlugins))
+            {
+                Logger.LogTrace("Hook {Hook} requested plugin suppression for {Command}", hook.UnderlyingFullName, command.Verb);
+                break;
+            }
+        }
+
+        return await handler.ExecuteAsync(command, sender, cancellationToken)!;
     }
 }

@@ -3,6 +3,7 @@
 
 using Microsoft.Extensions.Logging;
 
+using Netwolf.Transport.Events;
 using Netwolf.Transport.Sasl;
 
 namespace Netwolf.Transport.IRC;
@@ -17,16 +18,24 @@ public class NetworkFactory : INetworkFactory
 
     protected ISaslMechanismFactory SaslMechanismFactory { get; set; }
 
-    public NetworkFactory(ILogger<INetwork> logger, ICommandFactory commandFactory, IConnectionFactory connectionFactory, ISaslMechanismFactory saslMechanismFactory)
+    protected NetworkEvents NetworkEvents { get; set; }
+
+    public NetworkFactory(
+        ILogger<INetwork> logger,
+        ICommandFactory commandFactory,
+        IConnectionFactory connectionFactory,
+        ISaslMechanismFactory saslMechanismFactory,
+        NetworkEvents networkEvents)
     {
         Logger = logger;
         CommandFactory = commandFactory;
         ConnectionFactory = connectionFactory;
         SaslMechanismFactory = saslMechanismFactory;
+        NetworkEvents = networkEvents;
     }
 
     public INetwork Create(string name, NetworkOptions options)
     {
-        return new Network(name, options, Logger, CommandFactory, ConnectionFactory, SaslMechanismFactory);
+        return new Network(name, options, Logger, CommandFactory, ConnectionFactory, SaslMechanismFactory, NetworkEvents);
     }
 }

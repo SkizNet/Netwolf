@@ -1,9 +1,10 @@
-﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
+﻿// Copyright (c) 2025 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: LGPL-3.0-or-later
+
+using Microsoft.Extensions.Logging;
 
 using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Exceptions;
-using Netwolf.Transport.IRC;
 
 using System.Reflection;
 
@@ -12,6 +13,9 @@ namespace Netwolf.PluginFramework.Loader;
 internal class PluginLoader : IPluginLoader
 {
     private record PluginInfo(IPlugin Plugin, PluginLoadContext Context, PluginHost Host);
+
+    private ILogger<IPluginLoader> Logger { get; init; }
+    private ICommandHookRegistry HookRegistry { get; init; }
 
     private int _nextPluginId = 0;
     private readonly Dictionary<int, PluginInfo> _loadedPlugins = [];
@@ -23,6 +27,12 @@ internal class PluginLoader : IPluginLoader
                                                             kvp.Value.Plugin.Description,
                                                             kvp.Value.Plugin.Version,
                                                             kvp.Value.Context.Path);
+
+    public PluginLoader(ILogger<IPluginLoader> logger, ICommandHookRegistry hookRegistry)
+    {
+        Logger = logger;
+        HookRegistry = hookRegistry;
+    }
 
     public PluginLoadStatus Load(string path, out PluginMetadata? metadata)
     {
@@ -52,14 +62,14 @@ internal class PluginLoader : IPluginLoader
             var assembly = context.LoadFromAssemblyPath(path);
             if (assembly.GetCustomAttribute<PluginClassAttribute>() is not PluginClassAttribute pluginClass)
             {
-                // TODO: log message
+                Logger.LogWarning("The plugin path {Path} does not contain a valid plugin (missing PluginClassAttribute on assembly)", path);
                 context.Unload();
                 return PluginLoadStatus.NotAPlugin;
             }
 
             if (!pluginClass.PluginType.IsAssignableTo(typeof(IPlugin)))
             {
-                // TODO: log message
+                Logger.LogWarning("The plugin path {Path} does not contain a valid plugin (plugin class does not implement IPlugin)", path);
                 context.Unload();
                 return PluginLoadStatus.NotAPlugin;
             }
@@ -67,7 +77,7 @@ internal class PluginLoader : IPluginLoader
             // we have a plugin! grab metadata and initialize it
             // Activator.CreateInstance returns null only for Nullable<T> types, which the plugin is guaranteed not to be
             var pluginRef = (IPlugin)Activator.CreateInstance(pluginClass.PluginType)!;
-            var pluginHost = new PluginHost(this, pluginId);
+            var pluginHost = new PluginHost(this, HookRegistry, pluginId);
             _loadedPlugins[pluginId] = new(pluginRef, context, pluginHost);
             metadata = new(pluginId, pluginRef.Name, pluginRef.Description, pluginRef.Version, context.Path);
             pluginRef.Initialize(pluginHost);
@@ -76,7 +86,7 @@ internal class PluginLoader : IPluginLoader
         }
         catch (Exception ex)
         {
-            // TODO: log exception details (take an ILogger in the constructor since this is a DI service)
+            Logger.LogError(ex, "Encountered an exception when loading plugin at {Path}", path);
             context.Unload();
 
             return ex switch
@@ -96,11 +106,6 @@ internal class PluginLoader : IPluginLoader
     }
 
     public PluginLoadStatus Unload(int pluginId)
-    {
-        throw new NotImplementedException();
-    }
-
-    public IDisposable AddNetwork(IObservable<ICommand> commandStream, ICommandDispatcher commandDispatcher)
     {
         throw new NotImplementedException();
     }

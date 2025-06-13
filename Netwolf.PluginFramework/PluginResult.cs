@@ -6,6 +6,7 @@ namespace Netwolf.PluginFramework;
 /// <summary>
 /// Represents the result of a plugin operation
 /// </summary>
+[Flags]
 public enum PluginResult: int
 {
     /// <summary>
@@ -13,8 +14,19 @@ public enum PluginResult: int
     /// </summary>
     Continue = 0,
     /// <summary>
-    /// Halts further processing of this hook by other plugins and prevents the default logic from running.
+    /// Halts further processing of this command by other plugins, but still runs the default logic.
     /// Not all hook APIs support suppression.
     /// </summary>
-    Suppress = 1
+    SuppressPlugins = 1,
+    /// <summary>
+    /// Continues processing of this command by other plugins, but prevents the default logic from running.
+    /// Default logic will not run regardless of the return value from later plugin hooks.
+    /// Not all hook APIs support suppression.
+    /// </summary>
+    SuppressDefault = 2,
+    /// <summary>
+    /// Halts further processing of this command by other plugins and prevents the default logic from running.
+    /// Not all hook APIs support suppression.
+    /// </summary>
+    SuppressAll = 3,
 }

@@ -5,6 +5,7 @@ using Netwolf.PluginFramework.Commands;
 
 using System.Collections.Concurrent;
 using System.Reactive;
+using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 
@@ -22,7 +23,9 @@ internal sealed class PluginHost : IPluginHost, IDisposable
 
     private bool _disposed = false;
 
-    private PluginLoader PluginLoader { get; init; }
+    private IPluginLoader PluginLoader { get; init; }
+
+    private ICommandHookRegistry HookRegistry { get; init; }
 
     private int PluginId { get; init; }
 
@@ -51,9 +54,10 @@ internal sealed class PluginHost : IPluginHost, IDisposable
         }
     }
 
-    public PluginHost(PluginLoader pluginLoader, int pluginId)
+    public PluginHost(IPluginLoader pluginLoader, ICommandHookRegistry hookRegistry, int pluginId)
     {
         PluginLoader = pluginLoader;
+        HookRegistry = hookRegistry;
         PluginId = pluginId;
     }
 
@@ -76,12 +80,9 @@ internal sealed class PluginHost : IPluginHost, IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var handler = new PluginCommandHookHandler(this, command.ToUpperInvariant(), callback);
-        // FIXME: CommandDispatcher is a scoped service and PluginLoader is singleton
-        // we need some way to pass the dispatcher to use to this method
-        throw new NotImplementedException();
-
-        //Hooks.Add(hook);
-        //return hook;
+        var hook = HookRegistry.AddCommandHook(handler);
+        Hooks.Add(hook);
+        return hook;
     }
 
     public IDisposable HookCommand<T>(string command, Func<PluginCommandEventArgs, T, Task<PluginResult>> callback, T pluginData)

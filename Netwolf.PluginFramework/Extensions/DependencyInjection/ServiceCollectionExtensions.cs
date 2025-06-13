@@ -14,6 +14,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddPluginFrameworkServices(this IServiceCollection services)
     {
         services.TryAddSingleton<IPluginLoader, PluginLoader>();
+        services.TryAddSingleton<ICommandHookRegistry, CommandHookRegistry>();
         services.TryAddScoped(typeof(ICommandDispatcher<>), typeof(CommandDispatcher<>));
 
         return services;

@@ -61,6 +61,11 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// The network's underlying command stream
     /// </summary>
     protected internal IObservable<ICommand> CommandStream => Network.CommandReceived.Select(e => e.Command);
+
+    /// <summary>
+    /// Service that exposes network-level events
+    /// </summary>
+    protected NetworkEvents NetworkEvents { get; private init; }
     #endregion
 
     #region Private properties and fields
@@ -139,6 +144,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         Logger = data.Logger;
         OptionsMonitor = data.OptionsMonitor;
         Network = data.NetworkFactory.Create(BotName, Options);
+        NetworkEvents = data.NetworkEvents;
         CommandDispatcher = data.CommandDispatcher;
         CommandFactory = data.CommandFactory;
         BotCommandContextFactory = data.BotCommandContextFactory;
@@ -268,7 +274,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         // Register our network events
         Network.ShouldEnableCap += ShouldEnableCap;
         CommandSubscriptions.Add(Network.CommandReceived.Subscribe(OnCommandReceived));
-        Network.Disconnected += OnDisconnected;
+        NetworkEvents.NetworkDisconnected += OnDisconnected;
 
         // Wire up bot commands
         // There is a reflection-based slow path and a source generator fast path; detect which was used
@@ -598,7 +604,12 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
     private void OnDisconnected(object? sender, NetworkEventArgs e)
     {
-        if (e.Exception != null)
+        if (!ReferenceEquals(e.Network, Network))
+        {
+            // wrong network
+            return;
+        }
+        else if (e.Exception != null)
         {
             DisconnectionSource.SetException(e.Exception);
         }

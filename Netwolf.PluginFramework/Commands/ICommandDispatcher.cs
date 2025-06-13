@@ -18,7 +18,5 @@ public interface ICommandDispatcher
 
     ICommandHandler? AddCommand(Type commandType);
 
-    IDisposable AddCommandHook(ICommandHandler<PluginResult> handler);
-
     bool RemoveCommand(ICommandHandler handler);
 }

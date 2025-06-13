@@ -4,6 +4,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
+using Netwolf.Transport.Events;
 using Netwolf.Transport.IRC;
 using Netwolf.Transport.Sasl;
 
@@ -21,6 +22,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<INetworkFactory, NetworkFactory>();
         services.TryAddSingleton<IConnectionFactory, ConnectionFactory>();
         services.TryAddSingleton<ISaslMechanismFactory, SaslMechanismFactory>();
+        services.TryAddSingleton<NetworkEvents>();
 
         // General services (used for both client and server)
         services.TryAddSingleton<ICommandFactory, CommandFactory>();

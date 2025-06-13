@@ -12,6 +12,7 @@ using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Extensions.DependencyInjection;
 using Netwolf.PluginFramework.Permissions;
+using Netwolf.Transport.Events;
 using Netwolf.Transport.Extensions.DependencyInjection;
 using Netwolf.Transport.IRC;
 
@@ -111,6 +112,7 @@ public static class BotFrameworkExtensions
                 provider.GetRequiredService<ILogger<Bot>>(),
                 provider.GetRequiredService<IOptionsMonitor<BotOptions>>(),
                 provider.GetRequiredService<INetworkFactory>(),
+                provider.GetRequiredService<NetworkEvents>(),
                 provider.GetRequiredService<ICommandDispatcher<BotCommandResult>>(),
                 provider.GetRequiredService<ICommandFactory>(),
                 provider.GetRequiredKeyedService<BotCommandContextFactory>(key),

@@ -29,12 +29,6 @@ public interface INetwork : INetworkInfo, IDisposable, IAsyncDisposable
     INetworkInfo AsNetworkInfo();
 
     /// <summary>
-    /// Event raised whenever we become disconnected for any reason. The
-    /// <c>sender</c> parameter will be the exception(s) thrown, if any.
-    /// </summary>
-    event EventHandler<NetworkEventArgs>? Disconnected;
-
-    /// <summary>
     /// Delegate type for <see cref="ShouldEnableCap"/>.
     /// </summary>
     /// <param name="args">Arguments for the filter</param>
