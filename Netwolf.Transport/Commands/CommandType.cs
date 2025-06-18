@@ -1,7 +1,11 @@
 ﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-namespace Netwolf.Transport.IRC;
+
+// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
+namespace Netwolf.Transport.Commands;
 
 /// <summary>
 /// Type (direction) of an <see cref="ICommand"/>

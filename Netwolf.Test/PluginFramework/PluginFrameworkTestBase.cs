@@ -1,11 +1,11 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-using Netwolf.PluginFramework.Context;
 using Netwolf.PluginFramework.Extensions.DependencyInjection;
 using Netwolf.PluginFramework.Permissions;
+using Netwolf.Transport.Commands;
+using Netwolf.Transport.Context;
 using Netwolf.Transport.Extensions.DependencyInjection;
-using Netwolf.Transport.IRC;
 
 namespace Netwolf.Test.PluginFramework;
 

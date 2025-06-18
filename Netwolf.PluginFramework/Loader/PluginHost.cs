@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 using Netwolf.PluginFramework.Commands;
+using Netwolf.PluginFramework.Context;
+using Netwolf.Transport.Context;
+using Netwolf.Transport.Events;
+using Netwolf.Transport.IRC;
 
 using System.Collections.Concurrent;
 using System.Reactive;
@@ -28,9 +32,13 @@ internal sealed class PluginHost : IPluginHost, IDisposable
 
     private ICommandHookRegistry HookRegistry { get; init; }
 
+    private NetworkEvents NetworkEvents { get; init; }
+
     private int PluginId { get; init; }
 
     private ConcurrentBag<IDisposable> Hooks { get; init; } = [];
+
+    private Dictionary<INetwork, IDisposable> Subscriptions { get; init; } = [];
 
     /// <summary>
     /// Subject that plugin hooks will subscribe to. This Subject will itself be subscribed to the
@@ -55,21 +63,32 @@ internal sealed class PluginHost : IPluginHost, IDisposable
         }
     }
 
-    public PluginHost(IPluginLoader pluginLoader, ICommandHookRegistry hookRegistry, int pluginId)
+    public PluginHost(
+        IPluginLoader pluginLoader,
+        ICommandHookRegistry hookRegistry,
+        NetworkEvents networkEvents,
+        int pluginId)
     {
         PluginLoader = pluginLoader;
         HookRegistry = hookRegistry;
+        NetworkEvents = networkEvents;
         PluginId = pluginId;
+
+        NetworkEvents.NetworkConnected += OnNetworkConnected;
+        NetworkEvents.NetworkDisconnected += OnNetworkDisconnected;
     }
 
     public IDisposable HookServer(string command, Func<PluginCommandEventArgs, Task> callback)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return ServerCommandStream
+        var hook = ServerCommandStream
             .Where(args => args.Command.Verb.Equals(command, StringComparison.OrdinalIgnoreCase))
             .Select(args => Observable.FromAsync(() => callback(args)))
             .Concat()
             .Subscribe();
+
+        Hooks.Add(hook);
+        return hook;
     }
 
     public IDisposable HookServer<T>(string command, Func<PluginCommandEventArgs, T, Task> callback, T pluginData)
@@ -124,6 +143,29 @@ internal sealed class PluginHost : IPluginHost, IDisposable
     public IDisposable HookTimer<T>(TimeSpan frequency, Func<PluginTimerEventArgs, T, Task> callback, T pluginData)
     {
         return HookTimer(frequency, args => callback(args, pluginData));
+    }
+
+    private void OnNetworkConnected(object? sender, NetworkEventArgs e)
+    {
+        // only emit OnNext, we don't want to send OnError/OnCompleted along to plugin listeners
+        var subscription = e.Network.CommandReceived
+            .Select(c => new PluginCommandEventArgs(
+                c.Command,
+                this,
+                new PluginCommandContext(new ServerCommandContext(c.Network, c.Command)),
+                c.Token))
+            .Subscribe(PluginCommandStream.OnNext);
+
+        Subscriptions[e.Network] = subscription;
+    }
+
+    private void OnNetworkDisconnected(object? sender, NetworkEventArgs e)
+    {
+        if (Subscriptions.TryGetValue(e.Network, out var subscription))
+        {
+            subscription.Dispose();
+            Subscriptions.Remove(e.Network);
+        }
     }
 
     public void Dispose()

@@ -4,6 +4,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
+using Netwolf.Transport.Commands;
 using Netwolf.Transport.Events;
 using Netwolf.Transport.IRC;
 using Netwolf.Transport.Sasl;

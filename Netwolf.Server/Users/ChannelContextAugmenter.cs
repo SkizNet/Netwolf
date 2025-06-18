@@ -1,6 +1,7 @@
 ﻿using Netwolf.PluginFramework.Context;
 using Netwolf.Server.Commands;
-using Netwolf.Transport.IRC;
+using Netwolf.Transport.Commands;
+using Netwolf.Transport.Context;
 
 namespace Netwolf.Server.Users;
 

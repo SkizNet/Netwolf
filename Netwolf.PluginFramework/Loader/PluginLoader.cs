@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 
 using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Exceptions;
+using Netwolf.Transport.Events;
 
 using System.Reflection;
 
@@ -16,6 +17,7 @@ internal class PluginLoader : IPluginLoader
 
     private ILogger<IPluginLoader> Logger { get; init; }
     private ICommandHookRegistry HookRegistry { get; init; }
+    private NetworkEvents NetworkEvents { get; init; }
 
     private int _nextPluginId = 0;
     private readonly Dictionary<int, PluginInfo> _loadedPlugins = [];
@@ -28,10 +30,11 @@ internal class PluginLoader : IPluginLoader
                                                             kvp.Value.Plugin.Version,
                                                             kvp.Value.Context.Path);
 
-    public PluginLoader(ILogger<IPluginLoader> logger, ICommandHookRegistry hookRegistry)
+    public PluginLoader(ILogger<IPluginLoader> logger, ICommandHookRegistry hookRegistry, NetworkEvents networkEvents)
     {
         Logger = logger;
         HookRegistry = hookRegistry;
+        NetworkEvents = networkEvents;
     }
 
     public PluginLoadStatus Load(string path, out PluginMetadata? metadata)
@@ -78,7 +81,7 @@ internal class PluginLoader : IPluginLoader
             // we have a plugin! grab metadata and initialize it
             // Activator.CreateInstance returns null only for Nullable<T> types, which the plugin is guaranteed not to be
             var pluginRef = (IPlugin)Activator.CreateInstance(pluginClass.PluginType)!;
-            pluginHost = new PluginHost(this, HookRegistry, pluginId);
+            pluginHost = new PluginHost(this, HookRegistry, NetworkEvents, pluginId);
             _loadedPlugins[pluginId] = new(pluginRef, context, pluginHost);
             metadata = new(pluginId, pluginRef.Name, pluginRef.Description, pluginRef.Version, context.Path);
             pluginRef.Initialize(pluginHost);

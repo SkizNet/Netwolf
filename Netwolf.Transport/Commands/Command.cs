@@ -3,7 +3,7 @@
 
 using System.Collections.Immutable;
 
-namespace Netwolf.Transport.IRC;
+namespace Netwolf.Transport.Commands;
 
 /// <summary>
 /// Represents a command that can be sent to or received from a network

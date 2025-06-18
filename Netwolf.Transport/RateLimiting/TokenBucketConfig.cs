@@ -1,7 +1,7 @@
-﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
-// SPDX-License-Identifier: GPL-3.0-or-later
+﻿// Copyright (c) 2025 Ryan Schmidt <skizzerz@skizzerz.net>
+// SPDX-License-Identifier: LGPL-3.0-or-later
 
-namespace Netwolf.BotFramework.RateLimiting;
+namespace Netwolf.Transport.RateLimiting;
 
 public class TokenBucketConfig
 {
@@ -17,7 +17,7 @@ public class TokenBucketConfig
     public int MaxTokens { get; set; }
 
     /// <summary>
-    /// The time (in milliseconds) it takes to regenerate <see cref="ReplenismentAmount"/> tokens,
+    /// The time (in milliseconds) it takes to regenerate <see cref="ReplenishmentAmount"/> tokens,
     /// up to a maximum of <see cref="MaxTokens"/> tokens.
     /// </summary>
     public int ReplenishmentRate { get; set; }
@@ -25,5 +25,5 @@ public class TokenBucketConfig
     /// <summary>
     /// The number of tokens to regenerate per <see cref="ReplenishmentRate"/>.
     /// </summary>
-    public int ReplenismentAmount { get; set; } = 1;
+    public int ReplenishmentAmount { get; set; } = 1;
 }

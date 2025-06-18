@@ -5,6 +5,8 @@ using Netwolf.Server.ChannelModes;
 using Netwolf.Server.Internal;
 using Netwolf.Server.ISupport;
 using Netwolf.Server.Users;
+using Netwolf.Transport.Commands;
+using Netwolf.Transport.Context;
 using Netwolf.Transport.IRC;
 
 using System.Net;

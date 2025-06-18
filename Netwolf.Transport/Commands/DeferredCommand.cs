@@ -1,12 +1,10 @@
-﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
-// SPDX-License-Identifier: GPL-3.0-or-later
-
-using Netwolf.Transport.IRC;
+﻿// Copyright (c) 2025 Ryan Schmidt <skizzerz@skizzerz.net>
+// SPDX-License-Identifier: LGPL-3.0-or-later
 
 using System.Reactive.Linq;
 using System.Runtime.CompilerServices;
 
-namespace Netwolf.BotFramework;
+namespace Netwolf.Transport.Commands;
 
 /// <summary>
 /// Represents a command that will be sent to the server once this object is awaited.
@@ -24,25 +22,30 @@ public class DeferredCommand
     private static readonly string ALREADY_CONFIGURED
         = "This DeferredCommand has already been configured with a call to WithReply() or WithReplies() and cannot be configured again.";
 
-    private Bot? Bot { get; set; }
+    private Func<ICommand, CancellationToken, Task> SendCallback { get; init; }
+
+    private IObservable<ICommand> CommandStream { get; init; }
 
     private ICommand Command { get; init; }
 
+    private bool _configured = false;
+
     private Task? _task;
-    private Task? SendTask
+    private Task SendTask
     {
         get
         {
-            _task ??= Bot?.InternalSendAsync(Command, Token);
+            _task ??= SendCallback(Command, Token);
             return _task;
         }
     }
 
     private CancellationToken Token { get; init; }
 
-    internal DeferredCommand(Bot bot, ICommand command, CancellationToken cancellationToken)
+    internal DeferredCommand(Func<ICommand, CancellationToken, Task> sendCallback, IObservable<ICommand> commandStream, ICommand command, CancellationToken cancellationToken)
     {
-        Bot = bot;
+        SendCallback = sendCallback;
+        CommandStream = commandStream;
         Command = command;
         Token = cancellationToken;
     }
@@ -54,13 +57,13 @@ public class DeferredCommand
             throw new InvalidOperationException(NO_CONFIGURE_AWAITED);
         }
 
-        if (Bot == null)
+        if (_configured)
         {
             throw new InvalidOperationException(ALREADY_CONFIGURED);
         }
 
-        var result = new ConfiguredDeferredCommand(Bot, Command, Bot.CommandStream.FirstAsync(predicate), Token);
-        Bot = null;
+        var result = new ConfiguredDeferredCommand(SendCallback, Command, CommandStream.FirstAsync(predicate), Token);
+        _configured = true;
         return result;
     }
 
@@ -71,13 +74,13 @@ public class DeferredCommand
             throw new InvalidOperationException(NO_CONFIGURE_AWAITED);
         }
 
-        if (Bot == null)
+        if (_configured)
         {
             throw new InvalidOperationException(ALREADY_CONFIGURED);
         }
 
-        var result = new ConfiguredDeferredCommand(Bot, Command, Bot.CommandStream.TakeUntil(endPredicate).Where(includePredicate), Token);
-        Bot = null;
+        var result = new ConfiguredDeferredCommand(SendCallback, Command, CommandStream.TakeUntil(endPredicate).Where(includePredicate), Token);
+        _configured = true;
         return result;
     }
 
@@ -87,11 +90,32 @@ public class DeferredCommand
     /// </summary>
     /// <returns></returns>
     public TaskAwaiter GetAwaiter()
-        => SendTask?.GetAwaiter() ?? throw new InvalidOperationException(NO_AWAIT_CONFIGURED);
+    {
+        if (_configured)
+        {
+            throw new InvalidOperationException(NO_AWAIT_CONFIGURED);
+        }
+
+        return SendTask.GetAwaiter();
+    }
 
     public ConfiguredTaskAwaitable ConfigureAwait(bool continueOnCapturedContext)
-        => SendTask?.ConfigureAwait(continueOnCapturedContext) ?? throw new InvalidOperationException(NO_AWAIT_CONFIGURED);
+    {
+        if (_configured)
+        {
+            throw new InvalidOperationException(NO_AWAIT_CONFIGURED);
+        }
+
+        return SendTask.ConfigureAwait(continueOnCapturedContext);
+    }
 
     public ConfiguredTaskAwaitable ConfigureAwait(ConfigureAwaitOptions options)
-        => SendTask?.ConfigureAwait(options) ?? throw new InvalidOperationException(NO_AWAIT_CONFIGURED);
+    {
+        if (_configured)
+        {
+            throw new InvalidOperationException(NO_AWAIT_CONFIGURED);
+        }
+
+        return SendTask.ConfigureAwait(options);
+    }
 }

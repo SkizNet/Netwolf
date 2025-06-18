@@ -5,7 +5,7 @@ using Netwolf.Transport.IRC;
 
 using System.Collections.Immutable;
 
-namespace Netwolf.PluginFramework.Context;
+namespace Netwolf.Transport.Context;
 
 /// <summary>
 /// Partial implemenation of <see cref="IContext"/> that provides extension data storage and management.

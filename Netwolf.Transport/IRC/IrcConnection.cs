@@ -3,6 +3,7 @@
 
 using Microsoft.Extensions.Logging;
 
+using Netwolf.Transport.Commands;
 using Netwolf.Transport.Extensions;
 using Netwolf.Transport.Internal;
 using Netwolf.Transport.State;

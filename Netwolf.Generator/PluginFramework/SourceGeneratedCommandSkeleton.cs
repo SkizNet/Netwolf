@@ -32,6 +32,8 @@ using Netwolf.Attributes;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Context;
 using Netwolf.PluginFramework.Util;
+using Netwolf.Transport.Commands;
+using Netwolf.Transport.Context;
 using Netwolf.Transport.IRC;
 
 [assembly: SourceGeneratedCommand(typeof({command.ContainerType}), typeof(Netwolf.Generated.{generatedTypeName}), typeof({resultType}))]

@@ -9,7 +9,9 @@ using Netwolf.BotFramework.Exceptions;
 using Netwolf.BotFramework.Internal;
 using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
+using Netwolf.Transport.Commands;
 using Netwolf.Transport.Events;
+using Netwolf.Transport.Exceptions;
 using Netwolf.Transport.IRC;
 using Netwolf.Transport.State;
 
@@ -151,126 +153,6 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         CapProviders = data.CapProviders;
         DisconnectionSource = new();
 
-        // Initialize rate limiters with a cached options so it can't change on us
-        var cachedOptions = Options;
-        List<PartitionedRateLimiter<ICommand>> limiters = [];
-
-        // Per-target limiters (PRIVMSG/NOTICE/TAGMSG)
-        if (cachedOptions.DefaultPerTargetLimiter.Enabled || cachedOptions.PerTargetLimiter.Any(o => o.Value.Enabled))
-        {
-            limiters.Add(PartitionedRateLimiter.Create<ICommand, string>(cmd =>
-            {
-                var target = cmd.GetMessageTarget();
-                if (target == null)
-                {
-                    return RateLimitPartition.GetNoLimiter(string.Empty);
-                }
-
-                var config = cachedOptions.PerTargetLimiter.GetValueOrDefault(target, cachedOptions.DefaultPerTargetLimiter);
-                if (!config.Enabled)
-                {
-                    return RateLimitPartition.GetNoLimiter(string.Empty);
-                }
-
-                return RateLimitPartition.GetTokenBucketLimiter(target, _ => new()
-                {
-                    AutoReplenishment = false,
-                    QueueLimit = cachedOptions.RateLimiterMaxCommands,
-                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    ReplenishmentPeriod = TimeSpan.FromMilliseconds(config.ReplenishmentRate),
-                    TokensPerPeriod = config.ReplenismentAmount,
-                    TokenLimit = config.MaxTokens,
-                });
-            }));
-        }
-
-        // Per-command limiters
-        if (cachedOptions.PerCommandLimiter.Any(o => o.Value.Enabled))
-        {
-            limiters.Add(PartitionedRateLimiter.Create<ICommand, string>(cmd =>
-            {
-                string? key = null;
-                string withArity = $"{cmd.Verb}`{cmd.Args.Count}";
-
-                if (cachedOptions.PerCommandLimiter.TryGetValue(withArity, out var config))
-                {
-                    key = withArity;
-                }
-                else if (cachedOptions.PerCommandLimiter.TryGetValue(cmd.Verb, out config))
-                {
-                    key = cmd.Verb;
-                }
-
-
-                if (key == null || !(config?.Enabled ?? false))
-                {
-                    return RateLimitPartition.GetNoLimiter(string.Empty);
-                }
-
-                return RateLimitPartition.GetSlidingWindowLimiter(key, _ => new()
-                {
-                    AutoReplenishment = false,
-                    QueueLimit = cachedOptions.RateLimiterMaxCommands,
-                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    Window = TimeSpan.FromMilliseconds(config.Duration),
-                    PermitLimit = config.Limit,
-                    SegmentsPerWindow = config.Segments,
-                });
-            }));
-        }
-
-        // Global command limiter
-        if (cachedOptions.GlobalCommandLimiter.Enabled)
-        {
-            limiters.Add(PartitionedRateLimiter.Create<ICommand, string>(_ =>
-            {
-                return RateLimitPartition.GetTokenBucketLimiter(string.Empty, _ => new()
-                {
-                    AutoReplenishment = false,
-                    QueueLimit = cachedOptions.RateLimiterMaxCommands,
-                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    ReplenishmentPeriod = TimeSpan.FromMilliseconds(cachedOptions.GlobalCommandLimiter.ReplenishmentRate),
-                    TokensPerPeriod = cachedOptions.GlobalCommandLimiter.ReplenismentAmount,
-                    TokenLimit = cachedOptions.GlobalCommandLimiter.MaxTokens,
-                });
-            }));
-        }
-
-        // If no limiters are enabled, present a dummy one as CreateChained() requires the collection to have at least 1 element
-        if (limiters.Count == 0)
-        {
-            limiters.Add(PartitionedRateLimiter.Create<ICommand, string>(_ =>
-            {
-                return RateLimitPartition.GetNoLimiter(string.Empty);
-            }));
-        }
-
-        CommandRateLimiter = PartitionedRateLimiter.CreateChained([.. limiters]);
-
-        // Global bytes limiter
-        if (cachedOptions.GlobalByteLimiter.Enabled)
-        {
-            ByteRateLimiter = PartitionedRateLimiter.Create<ICommand, string>(_ =>
-            {
-                return RateLimitPartition.GetSlidingWindowLimiter(string.Empty, _ => new()
-                {
-                    AutoReplenishment = false,
-                    QueueLimit = cachedOptions.RateLimiterMaxBytes,
-                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    Window = TimeSpan.FromMilliseconds(cachedOptions.GlobalByteLimiter.Duration),
-                    PermitLimit = cachedOptions.GlobalByteLimiter.Limit,
-                    SegmentsPerWindow = cachedOptions.GlobalByteLimiter.Segments,
-                });
-            });
-        }
-        else
-        {
-            ByteRateLimiter = PartitionedRateLimiter.Create<ICommand, string>(_ =>
-            {
-                return RateLimitPartition.GetNoLimiter(string.Empty);
-            });
-        }
-
         // Register our network events
         Network.ShouldEnableCap += ShouldEnableCap;
         CommandSubscriptions.Add(Network.CommandReceived.Subscribe(OnCommandReceived));
@@ -289,7 +171,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             // fast path
             generatedTypes.ForEach(attr => CommandDispatcher.AddCommand(attr.GeneratedType));
         }
-        else
+        else if (!data.ForceCommandOptimization)
         {
             // slow path
             var commands = GetType()
@@ -302,6 +184,12 @@ public abstract class Bot : IDisposable, IAsyncDisposable
             {
                 CommandDispatcher.AddCommand(command);
             }
+        }
+        else
+        {
+            // for unit testing only; optimization has been forced but doesn't exist for this command
+            // throw an error instead of generating a thunk
+            throw new InvalidOperationException($"Optimization forced but was either not enabled or we found no generated types (discovered {generatedTypes.Count}).");
         }
     }
     #endregion
@@ -336,10 +224,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
-
-        var parsed = CommandFactory.Parse(CommandType.Client, rawLine);
-        var command = Network.PrepareCommand(parsed.Verb, parsed.Args, parsed.Tags);
-        return new(this, command, cancellationToken);
+        return Network.SendRawAsync(rawLine, cancellationToken);
     }
 
     /// <summary>
@@ -373,7 +258,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
 
         var command = Network.PrepareCommand(verb, args, tags);
-        return new(this, command, cancellationToken);
+        return Network.SendAsync(command, cancellationToken);
     }
 
     /// <summary>
@@ -410,7 +295,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
         foreach (var command in Network.PrepareMessage(MessageType.Message, target, message, tags, sharedChannel))
         {
-            await InternalSendAsync(command, cancellationToken).ConfigureAwait(false);
+            await Network.SendAsync(command, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -448,41 +333,8 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
         foreach (var command in Network.PrepareMessage(MessageType.Notice, target, message, tags, sharedChannel))
         {
-            await InternalSendAsync(command, cancellationToken).ConfigureAwait(false);
+            await Network.SendAsync(command, cancellationToken).ConfigureAwait(false);
         }
-    }
-
-    /// <summary>
-    /// Send a rate-limited command to the network
-    /// </summary>
-    /// <param name="command">Command to send</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns></returns>
-    /// <exception cref="RateLimitLeaseAcquisitionException">If we're unable to acquire a rate limit lease (e.g. queue is full)</exception>
-    internal async Task InternalSendAsync(ICommand command, CancellationToken cancellationToken)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        using var commandLease = await CommandRateLimiter.AcquireAsync(command, 1, cancellationToken).ConfigureAwait(false);
-        if (!commandLease.IsAcquired)
-        {
-            commandLease.TryGetMetadata(MetadataName.ReasonPhrase, out var reason);
-            Logger.LogError("Unable to send {Command}: {Reason}", command.Verb, reason ?? "Unknown error.");
-            throw new RateLimitLeaseAcquisitionException(command, commandLease.GetAllMetadata().ToDictionary());
-        }
-
-        // command.FullCommand omits the trailing CRLF, so add another 2 bytes to account for it
-        var byteCount = Encoding.UTF8.GetByteCount(command.FullCommand) + 2;
-        using var byteLease = await ByteRateLimiter.AcquireAsync(command, byteCount, cancellationToken).ConfigureAwait(false);
-        if (!byteLease.IsAcquired)
-        {
-            byteLease.TryGetMetadata(MetadataName.ReasonPhrase, out var reason);
-            Logger.LogError("Unable to send {Command}: {Reason}", command.Verb, reason ?? "Unknown error.");
-            throw new RateLimitLeaseAcquisitionException(command, byteLease.GetAllMetadata().ToDictionary());
-        }
-
-        await Network.SendAsync(command, cancellationToken).ConfigureAwait(false);
     }
     #endregion
 

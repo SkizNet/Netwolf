@@ -1,7 +1,8 @@
 ﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-using Netwolf.PluginFramework.Context;
+using Netwolf.Transport.Commands;
+using Netwolf.Transport.Context;
 using Netwolf.Transport.IRC;
 
 namespace Netwolf.BotFramework.Services;

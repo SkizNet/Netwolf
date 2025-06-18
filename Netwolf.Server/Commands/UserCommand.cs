@@ -1,7 +1,8 @@
 ﻿using Netwolf.Server.Extensions.Internal;
 using Netwolf.Server.Internal;
 using Netwolf.Server.Users;
-using Netwolf.Transport.IRC;
+using Netwolf.Transport.Commands;
+using Netwolf.Transport.Context;
 
 using System;
 using System.Collections.Generic;

@@ -4,7 +4,7 @@
 using System.Collections.Immutable;
 using System.Text;
 
-namespace Netwolf.Transport.IRC;
+namespace Netwolf.Transport.Commands;
 
 /// <summary>
 /// General interface for a command sent to or received from the server.

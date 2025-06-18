@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 
 using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
+using Netwolf.Transport.Commands;
 using Netwolf.Transport.Events;
 using Netwolf.Transport.IRC;
 
@@ -35,6 +36,7 @@ public sealed class BotCreationData
 
     // for unit testing
     internal bool EnableCommandOptimization { get; set; } = true;
+    internal bool ForceCommandOptimization { get; set; } = false;
 
     internal BotCreationData(
         string botName,

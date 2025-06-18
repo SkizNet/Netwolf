@@ -14,13 +14,13 @@ namespace Netwolf.Test.BotFramework;
 
 // These tests do not attempt to test Bot.ParseCommandAndArgs, so generated ICommands in the context must be correctly defined
 [TestClass]
-public class ThunkTests
+public class GeneratorTests
 {
     private const string BOT_NAME = "test";
 
     private ServiceProvider Container { get; init; }
 
-    public ThunkTests()
+    public GeneratorTests()
     {
         var services = new ServiceCollection();
         services.AddLogging(config => config.SetMinimumLevel(LogLevel.Debug).AddConsole());
@@ -34,8 +34,8 @@ public class ThunkTests
         using var scope = Container.CreateScope();
         var data = scope.ServiceProvider.GetRequiredKeyedService<BotCreationData>(BOT_NAME);
 
-        // we want to generate thunks for this test
-        data.EnableCommandOptimization = false;
+        // we want to ensure source generated commands are used for this test
+        data.ForceCommandOptimization = true;
         var bot = new TestBot(data);
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<BotCommandResult>>();
         var commandFactory = scope.ServiceProvider.GetRequiredService<ICommandFactory>();
@@ -48,15 +48,15 @@ public class ThunkTests
     }
 
     [TestMethod]
-    public void Successfully_make_thunks()
+    public void Successfully_find_generated_commands()
     {
         List<string> expected = ["SYNCVOID0", "SYNCINT0", "ASYNCTASK0", "ASYNCTASKINT0", "SYNCINT1", "COMPLEX"];
 
         using var scope = Container.CreateScope();
         var data = scope.ServiceProvider.GetRequiredKeyedService<BotCreationData>(BOT_NAME);
 
-        // we want to generate thunks for this test
-        data.EnableCommandOptimization = false;
+        // we want to ensure source generated commands are used for this test
+        data.ForceCommandOptimization = true;
         var bot = new TestBot(data);
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<BotCommandResult>>();
 
@@ -64,7 +64,7 @@ public class ThunkTests
     }
 
     [TestMethod]
-    public async Task Successfully_call_thunk_sync_void_0()
+    public async Task Successfully_call_generated_sync_void_0()
     {
         var result = await RunTest("syncvoid0");
         Assert.IsNotNull(result);
@@ -72,7 +72,7 @@ public class ThunkTests
     }
 
     [TestMethod]
-    public async Task Successfully_call_thunk_sync_int_0()
+    public async Task Successfully_call_generated_sync_int_0()
     {
         var result = await RunTest("syncint0");
         Assert.IsNotNull(result);
@@ -84,7 +84,7 @@ public class ThunkTests
     [DataRow("-42", -42, DisplayName = "negative int")]
     [DataRow("", 0, DisplayName = "missing param")]
     [DataRow("123 456", 123, DisplayName = "extra param")]
-    public async Task Successfully_call_thunk_sync_int_1(string param, int expected)
+    public async Task Successfully_call_generated_sync_int_1(string param, int expected)
     {
         var result = await RunTest("syncint1", param);
         Assert.IsNotNull(result);
@@ -92,7 +92,7 @@ public class ThunkTests
     }
 
     [TestMethod]
-    public async Task Successfully_call_thunk_async_task_0()
+    public async Task Successfully_call_generated_async_task_0()
     {
         var result = await RunTest("asynctask0");
         Assert.IsNotNull(result);
@@ -100,7 +100,7 @@ public class ThunkTests
     }
 
     [TestMethod]
-    public async Task Successfully_call_thunk_async_task_int_0()
+    public async Task Successfully_call_generated_async_task_int_0()
     {
         var result = await RunTest("asynctaskint0");
         Assert.IsNotNull(result);
@@ -123,7 +123,7 @@ public class ThunkTests
     [DataRow("Rest 99 1.2 2.3", "")]
     [DataRow("Rest 99 1.2 qq 2.3", "qq 2.3")]
     [DataRow("Rest 0 0.1 0.2  foo   bar baz  ", "foo   bar baz  ")]
-    public async Task Successfully_call_thunk_complex(string param, string expected)
+    public async Task Successfully_call_generated_complex(string param, string expected)
     {
         var result = await RunTest("complex", param);
         Assert.IsNotNull(result);

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 using Netwolf.PluginFramework.Context;
-using Netwolf.Transport.IRC;
+using Netwolf.Transport.Commands;
+using Netwolf.Transport.Context;
 
 namespace Netwolf.PluginFramework.Commands;
 

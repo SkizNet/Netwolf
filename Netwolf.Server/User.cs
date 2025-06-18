@@ -13,6 +13,7 @@ using Netwolf.Server.Capabilities;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Context;
 using Microsoft.Extensions.Options;
+using Netwolf.Transport.Commands;
 
 namespace Netwolf.Server;
 

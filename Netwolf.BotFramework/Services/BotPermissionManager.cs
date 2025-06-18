@@ -3,7 +3,7 @@
 
 using Netwolf.BotFramework.Exceptions;
 using Netwolf.PluginFramework.Permissions;
-using Netwolf.Transport.IRC;
+using Netwolf.Transport.Context;
 
 namespace Netwolf.BotFramework.Services;
 

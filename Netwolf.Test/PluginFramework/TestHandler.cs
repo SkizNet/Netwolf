@@ -1,4 +1,5 @@
-﻿using Netwolf.Transport.IRC;
+﻿using Netwolf.Transport.Commands;
+using Netwolf.Transport.Context;
 
 namespace Netwolf.Test.PluginFramework;
 

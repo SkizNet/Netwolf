@@ -3,7 +3,7 @@
 
 using Microsoft.Extensions.Logging;
 
-using Netwolf.Transport.IRC;
+using Netwolf.Transport.Commands;
 
 using System.Collections.Concurrent;
 using System.Reactive.Disposables;

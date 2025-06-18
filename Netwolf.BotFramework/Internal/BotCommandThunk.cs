@@ -7,7 +7,8 @@ using Netwolf.Attributes;
 using Netwolf.BotFramework.Services;
 using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Util;
-using Netwolf.Transport.IRC;
+using Netwolf.Transport.Commands;
+using Netwolf.Transport.Context;
 
 using System.ComponentModel.DataAnnotations;
 using System.Linq.Expressions;

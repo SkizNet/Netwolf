@@ -5,6 +5,7 @@ using Netwolf.Server;
 using Netwolf.Server.Commands;
 using Netwolf.Server.Exceptions;
 using Netwolf.Server.Users;
+using Netwolf.Transport.Commands;
 using Netwolf.Transport.IRC;
 
 using System.Security.Authentication.ExtendedProtection;

@@ -17,9 +17,9 @@ public sealed class CommandStringEnumerator : ICommandEnumerator
 
     object IEnumerator.Current => Current;
 
-    public CommandStringEnumerator(string args)
+    public CommandStringEnumerator(string? args)
     {
-        _args = args;
+        _args = args ?? string.Empty;
     }
 
     public void Dispose() { /* no-op */ }

@@ -3,8 +3,10 @@
 
 using Microsoft.Extensions.Logging;
 
+using Netwolf.Transport.Commands;
 using Netwolf.Transport.Events;
 using Netwolf.Transport.Exceptions;
+using Netwolf.Transport.Extensions;
 using Netwolf.Transport.Internal;
 using Netwolf.Transport.Sasl;
 using Netwolf.Transport.State;
@@ -16,6 +18,7 @@ using System.Reactive.Subjects;
 using System.Security.Authentication.ExtendedProtection;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.RateLimiting;
 
 using static Netwolf.Transport.IRC.INetwork;
 
@@ -46,6 +49,16 @@ public partial class Network : INetwork
     protected IConnectionFactory ConnectionFactory { get; init; }
 
     protected ISaslMechanismFactory SaslMechanismFactory { get; init; }
+
+    /// <summary>
+    /// Rate limiter where each permit/token represents a single command being sent
+    /// </summary>
+    protected PartitionedRateLimiter<ICommand> CommandRateLimiter { get; init; }
+
+    /// <summary>
+    /// Rate limiter where each permit/token represents a single byte being sent
+    /// </summary>
+    protected PartitionedRateLimiter<ICommand> ByteRateLimiter { get; init; }
 
     protected NetworkEvents NetworkEvents { get; set; }
 
@@ -330,6 +343,126 @@ public partial class Network : INetwork
 
         ResetState();
 
+        // Initialize rate limiters with a cached options so it can't change on us
+        var cachedOptions = Options;
+        List<PartitionedRateLimiter<ICommand>> limiters = [];
+
+        // Per-target limiters (PRIVMSG/NOTICE/TAGMSG)
+        if (cachedOptions.DefaultPerTargetLimiter.Enabled || cachedOptions.PerTargetLimiter.Any(o => o.Value.Enabled))
+        {
+            limiters.Add(PartitionedRateLimiter.Create<ICommand, string>(cmd =>
+            {
+                var target = cmd.GetMessageTarget();
+                if (target == null)
+                {
+                    return RateLimitPartition.GetNoLimiter(string.Empty);
+                }
+
+                var config = cachedOptions.PerTargetLimiter.GetValueOrDefault(target, cachedOptions.DefaultPerTargetLimiter);
+                if (!config.Enabled)
+                {
+                    return RateLimitPartition.GetNoLimiter(string.Empty);
+                }
+
+                return RateLimitPartition.GetTokenBucketLimiter(target, _ => new()
+                {
+                    AutoReplenishment = false,
+                    QueueLimit = cachedOptions.RateLimiterMaxCommands,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    ReplenishmentPeriod = TimeSpan.FromMilliseconds(config.ReplenishmentRate),
+                    TokensPerPeriod = config.ReplenishmentAmount,
+                    TokenLimit = config.MaxTokens,
+                });
+            }));
+        }
+
+        // Per-command limiters
+        if (cachedOptions.PerCommandLimiter.Any(o => o.Value.Enabled))
+        {
+            limiters.Add(PartitionedRateLimiter.Create<ICommand, string>(cmd =>
+            {
+                string? key = null;
+                string withArity = $"{cmd.Verb}`{cmd.Args.Count}";
+
+                if (cachedOptions.PerCommandLimiter.TryGetValue(withArity, out var config))
+                {
+                    key = withArity;
+                }
+                else if (cachedOptions.PerCommandLimiter.TryGetValue(cmd.Verb, out config))
+                {
+                    key = cmd.Verb;
+                }
+
+
+                if (key == null || !(config?.Enabled ?? false))
+                {
+                    return RateLimitPartition.GetNoLimiter(string.Empty);
+                }
+
+                return RateLimitPartition.GetSlidingWindowLimiter(key, _ => new()
+                {
+                    AutoReplenishment = false,
+                    QueueLimit = cachedOptions.RateLimiterMaxCommands,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    Window = TimeSpan.FromMilliseconds(config.Duration),
+                    PermitLimit = config.Limit,
+                    SegmentsPerWindow = config.Segments,
+                });
+            }));
+        }
+
+        // Global command limiter
+        if (cachedOptions.GlobalCommandLimiter.Enabled)
+        {
+            limiters.Add(PartitionedRateLimiter.Create<ICommand, string>(_ =>
+            {
+                return RateLimitPartition.GetTokenBucketLimiter(string.Empty, _ => new()
+                {
+                    AutoReplenishment = false,
+                    QueueLimit = cachedOptions.RateLimiterMaxCommands,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    ReplenishmentPeriod = TimeSpan.FromMilliseconds(cachedOptions.GlobalCommandLimiter.ReplenishmentRate),
+                    TokensPerPeriod = cachedOptions.GlobalCommandLimiter.ReplenishmentAmount,
+                    TokenLimit = cachedOptions.GlobalCommandLimiter.MaxTokens,
+                });
+            }));
+        }
+
+        // If no limiters are enabled, present a dummy one as CreateChained() requires the collection to have at least 1 element
+        if (limiters.Count == 0)
+        {
+            limiters.Add(PartitionedRateLimiter.Create<ICommand, string>(_ =>
+            {
+                return RateLimitPartition.GetNoLimiter(string.Empty);
+            }));
+        }
+
+        CommandRateLimiter = PartitionedRateLimiter.CreateChained([.. limiters]);
+
+        // Global bytes limiter
+        if (cachedOptions.GlobalByteLimiter.Enabled)
+        {
+            ByteRateLimiter = PartitionedRateLimiter.Create<ICommand, string>(_ =>
+            {
+                return RateLimitPartition.GetSlidingWindowLimiter(string.Empty, _ => new()
+                {
+                    AutoReplenishment = false,
+                    QueueLimit = cachedOptions.RateLimiterMaxBytes,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    Window = TimeSpan.FromMilliseconds(cachedOptions.GlobalByteLimiter.Duration),
+                    PermitLimit = cachedOptions.GlobalByteLimiter.Limit,
+                    SegmentsPerWindow = cachedOptions.GlobalByteLimiter.Segments,
+                });
+            });
+        }
+        else
+        {
+            ByteRateLimiter = PartitionedRateLimiter.Create<ICommand, string>(_ =>
+            {
+                return RateLimitPartition.GetNoLimiter(string.Empty);
+            });
+        }
+
         // spin up the message loop for this Network
         _messageLoop = Task.Run(MessageLoop);
     }
@@ -469,7 +602,7 @@ public partial class Network : INetwork
                         pingTimeoutTimers.Add(Task.Delay(Options.PingTimeout, token));
                         string cookie = String.Format("NWPC{0:X16}", Random.Shared.NextInt64());
                         pingTimeoutCookies.Add(cookie);
-                        _ = SendAsync(PrepareCommand("PING", [cookie], null), token);
+                        _ = Connection.SendAsync(PrepareCommand("PING", [cookie], null), token);
                     }
 
                     // reset activity so that if we make it to another PingInterval with no activity we send a PING
@@ -582,12 +715,12 @@ public partial class Network : INetwork
 
                     if (Options.ServerPassword != null)
                     {
-                        await SendAsync(
+                        await Connection.SendAsync(
                             PrepareCommand("PASS", [Options.ServerPassword], null),
                             cancellationToken);
                     }
 
-                    await SendAsync(
+                    await Connection.SendAsync(
                         PrepareCommand("NICK", [Options.PrimaryNick], null),
                         cancellationToken);
 
@@ -595,7 +728,7 @@ public partial class Network : INetwork
                     // Some follow RFC 2812 and treat param 2 as a bitfield where 4 = +w and 8 = +i.
                     // Others may allow an arbitrary user mode string in param 2 prefixed with +.
                     // For widest compatibility, leave both unspecified and just handle umodes post-registration.
-                    await SendAsync(
+                    await Connection.SendAsync(
                         PrepareCommand("USER", [Options.Ident, "0", "*", Options.RealName]),
                         cancellationToken);
 
@@ -646,7 +779,7 @@ public partial class Network : INetwork
 
         try
         {
-            await SendAsync(PrepareCommand("QUIT", [reason], null)).ConfigureAwait(false);
+            await Connection.SendAsync(PrepareCommand("QUIT", [reason], null), default).ConfigureAwait(false);
         }
         finally
         {
@@ -664,16 +797,57 @@ public partial class Network : INetwork
         NetworkEvents.OnDisconnected(this);
     }
 
-    /// <inheritdoc />
-    public Task SendAsync(ICommand command, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Send a rate-limited command to the network
+    /// </summary>
+    /// <param name="command">Command to send</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns></returns>
+    /// <exception cref="RateLimitLeaseAcquisitionException">If we're unable to acquire a rate limit lease (e.g. queue is full)</exception>
+    protected async Task InternalSendAsync(ICommand command, CancellationToken cancellationToken)
     {
-        return Connection.SendAsync(command, cancellationToken);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var commandLease = await CommandRateLimiter.AcquireAsync(command, 1, cancellationToken).ConfigureAwait(false);
+        if (!commandLease.IsAcquired)
+        {
+            commandLease.TryGetMetadata(MetadataName.ReasonPhrase, out var reason);
+            Logger.LogError("Unable to send {Command}: {Reason}", command.Verb, reason ?? "Unknown error.");
+            throw new RateLimitLeaseAcquisitionException(command, commandLease.GetAllMetadata().ToDictionary());
+        }
+
+        // command.FullCommand omits the trailing CRLF, so add another 2 bytes to account for it
+        var byteCount = Encoding.UTF8.GetByteCount(command.FullCommand) + 2;
+        using var byteLease = await ByteRateLimiter.AcquireAsync(command, byteCount, cancellationToken).ConfigureAwait(false);
+        if (!byteLease.IsAcquired)
+        {
+            byteLease.TryGetMetadata(MetadataName.ReasonPhrase, out var reason);
+            Logger.LogError("Unable to send {Command}: {Reason}", command.Verb, reason ?? "Unknown error.");
+            throw new RateLimitLeaseAcquisitionException(command, byteLease.GetAllMetadata().ToDictionary());
+        }
+
+        await Connection.SendAsync(command, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public Task UnsafeSendRawAsync(string command, CancellationToken cancellationToken)
+    public DeferredCommand SendAsync(ICommand command, CancellationToken cancellationToken = default)
     {
-        return Connection.UnsafeSendRawAsync(command, cancellationToken);
+        return new(InternalSendAsync, CommandReceived.Select(c => c.Command), command, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public DeferredCommand SendRawAsync(string rawLine, CancellationToken cancellationToken = default)
+    {
+        var parsed = CommandFactory.Parse(CommandType.Client, rawLine);
+        var command = PrepareCommand(parsed.Verb, parsed.Args, parsed.Tags);
+        return new(InternalSendAsync, CommandReceived.Select(c => c.Command), command, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task UnsafeSendRawAsync(string rawLine, CancellationToken cancellationToken)
+    {
+        return Connection.UnsafeSendRawAsync(rawLine, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -813,6 +987,7 @@ public partial class Network : INetwork
         if (!IsConnected)
         {
             // callbacks we only handle if we're pre-registration
+            // TODO: make use of DeferredCommand here to keep logic together
             switch (command.Verb)
             {
                 case "001":
@@ -825,7 +1000,7 @@ public partial class Network : INetwork
                     string secondary = Options.SecondaryNick ?? $"{Options.PrimaryNick}_";
                     if (attempted == Options.PrimaryNick)
                     {
-                        _ = SendAsync(PrepareCommand("NICK", [secondary], null), cancellationToken);
+                        _ = Connection.SendAsync(PrepareCommand("NICK", [secondary], null), cancellationToken);
                     }
                     else if (attempted == secondary)
                     {
@@ -838,7 +1013,7 @@ public partial class Network : INetwork
                 case "422":
                     // got MOTD, we've been registered. But we might still not know our own ident/host,
                     // so send out a WHO for ourselves before handing control back to client
-                    _ = SendAsync(PrepareCommand("WHO", [State.Nick]), cancellationToken);
+                    _ = Connection.SendAsync(PrepareCommand("WHO", [State.Nick]), cancellationToken);
                     break;
                 case "315":
                     // end of WHO, so we've pulled our own client details and can hand back control
@@ -849,7 +1024,7 @@ public partial class Network : INetwork
                     // although if it's saying our CAP END failed (broken ircd), don't cause an infinite loop
                     if (command.Args[1] != "END")
                     {
-                        _ = SendAsync(PrepareCommand("CAP", END), cancellationToken);
+                        _ = Connection.SendAsync(PrepareCommand("CAP", END), cancellationToken);
                     }
 
                     break;
@@ -1093,7 +1268,7 @@ public partial class Network : INetwork
                 if (SuspendCapEndForSasl)
                 {
                     SuspendCapEndForSasl = false;
-                    _ = SendAsync(PrepareCommand("CAP", END), cancellationToken);
+                    _ = Connection.SendAsync(PrepareCommand("CAP", END), cancellationToken);
                 }
                 break;
             case "904":
@@ -1504,7 +1679,7 @@ public partial class Network : INetwork
                 break;
             case "PING":
                 // send a PONG
-                _ = SendAsync(PrepareCommand("PONG", [command.Args[0]]), cancellationToken);
+                _ = Connection.SendAsync(PrepareCommand("PONG", [command.Args[0]]), cancellationToken);
                 break;
             case "QUIT":
                 // QUIT [:<reason>]
@@ -1659,7 +1834,7 @@ public partial class Network : INetwork
                         {
                             if (consumedBytes + token.Length > maxBytes)
                             {
-                                _ = SendAsync(PrepareCommand("CAP", ["REQ", String.Join(" ", param)]), cancellationToken);
+                                _ = Connection.SendAsync(PrepareCommand("CAP", ["REQ", String.Join(" ", param)]), cancellationToken);
                                 consumedBytes = 0;
                                 param.Clear();
                             }
@@ -1670,12 +1845,12 @@ public partial class Network : INetwork
 
                         if (param.Count > 0)
                         {
-                            _ = SendAsync(PrepareCommand("CAP", ["REQ", String.Join(" ", param)]), cancellationToken);
+                            _ = Connection.SendAsync(PrepareCommand("CAP", ["REQ", String.Join(" ", param)]), cancellationToken);
                         }
                         else if (!IsConnected)
                         {
                             // we don't support any of the server's caps, so end cap negotiation here
-                            _ = SendAsync(PrepareCommand("CAP", END), cancellationToken);
+                            _ = Connection.SendAsync(PrepareCommand("CAP", END), cancellationToken);
                         }
                     }
                 }
@@ -1703,7 +1878,7 @@ public partial class Network : INetwork
 
                     if (command.Args[1] == "ACK" && !IsConnected && !SuspendCapEndForSasl)
                     {
-                        _ = SendAsync(PrepareCommand("CAP", END), cancellationToken);
+                        _ = Connection.SendAsync(PrepareCommand("CAP", END), cancellationToken);
                     }
                 }
 
@@ -1726,7 +1901,7 @@ public partial class Network : INetwork
                 // we couldn't set CAPs, bail out
                 if (!IsConnected)
                 {
-                    _ = SendAsync(PrepareCommand("CAP", END), cancellationToken);
+                    _ = Connection.SendAsync(PrepareCommand("CAP", END), cancellationToken);
                 }
 
                 break;
@@ -1766,7 +1941,7 @@ public partial class Network : INetwork
                 }
 
                 SaslMechs.Remove(mech);
-                _ = SendAsync(PrepareCommand("AUTHENTICATE", [mech]), cancellationToken);
+                _ = Connection.SendAsync(PrepareCommand("AUTHENTICATE", [mech]), cancellationToken);
                 return;
             }
         }
@@ -1785,7 +1960,7 @@ public partial class Network : INetwork
             }
 
             SuspendCapEndForSasl = false;
-            _ = SendAsync(PrepareCommand("CAP", END), cancellationToken);
+            _ = Connection.SendAsync(PrepareCommand("CAP", END), cancellationToken);
         }
     }
 
@@ -1821,7 +1996,7 @@ public partial class Network : INetwork
                 SaslBuffer.Clear();
                 SelectedSaslMech.Dispose();
                 SelectedSaslMech = null;
-                _ = SendAsync(PrepareCommand("AUTHENTICATE", STAR), cancellationToken);
+                _ = Connection.SendAsync(PrepareCommand("AUTHENTICATE", STAR), cancellationToken);
                 return;
             }
         }
@@ -1846,14 +2021,14 @@ public partial class Network : INetwork
                 // abort SASL
                 SelectedSaslMech.Dispose();
                 SelectedSaslMech = null;
-                _ = SendAsync(PrepareCommand("AUTHENTICATE", STAR), cancellationToken);
+                _ = Connection.SendAsync(PrepareCommand("AUTHENTICATE", STAR), cancellationToken);
             }
             else
             {
                 // send response
                 if (responseBytes.Length == 0)
                 {
-                    _ = SendAsync(PrepareCommand("AUTHENTICATE", PLUS), cancellationToken);
+                    _ = Connection.SendAsync(PrepareCommand("AUTHENTICATE", PLUS), cancellationToken);
                 }
                 else
                 {
@@ -1863,14 +2038,14 @@ public partial class Network : INetwork
                     do
                     {
                         int end = Math.Min(start + 400, response.Length);
-                        _ = SendAsync(PrepareCommand("AUTHENTICATE", [response[start..end]]), cancellationToken);
+                        _ = Connection.SendAsync(PrepareCommand("AUTHENTICATE", [response[start..end]]), cancellationToken);
                         start = end;
                     } while (start < response.Length);
 
                     if (response.Length % 400 == 0)
                     {
                         // if we sent exactly 400 bytes in the last line, send a blank line to let server know we're done
-                        _ = SendAsync(PrepareCommand("AUTHENTICATE", PLUS), cancellationToken);
+                        _ = Connection.SendAsync(PrepareCommand("AUTHENTICATE", PLUS), cancellationToken);
                     }
                 }
             }

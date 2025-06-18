@@ -3,6 +3,7 @@
 
 using Microsoft.Extensions.Logging;
 
+using Netwolf.Transport.Commands;
 using Netwolf.Transport.State;
 
 namespace Netwolf.Transport.IRC;

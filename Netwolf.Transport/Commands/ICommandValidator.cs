@@ -1,7 +1,9 @@
 ﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-namespace Netwolf.Transport.IRC;
+using Netwolf.Transport.Context;
+
+namespace Netwolf.Transport.Commands;
 
 /// <summary>
 /// Service to validate a command. The default implementation treats all commands as valid

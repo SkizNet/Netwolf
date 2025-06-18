@@ -1,7 +1,9 @@
 ﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-namespace Netwolf.Transport.IRC;
+using Netwolf.Transport.IRC;
+
+namespace Netwolf.Transport.Context;
 
 /// <summary>
 /// Defines a "context" surrounding a command invocation and

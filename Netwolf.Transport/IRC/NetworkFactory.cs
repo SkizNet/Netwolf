@@ -3,6 +3,7 @@
 
 using Microsoft.Extensions.Logging;
 
+using Netwolf.Transport.Commands;
 using Netwolf.Transport.Events;
 using Netwolf.Transport.Sasl;
 

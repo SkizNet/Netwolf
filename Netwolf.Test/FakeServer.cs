@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 
 using Netwolf.Server;
+using Netwolf.Transport.Commands;
 using Netwolf.Transport.IRC;
 
 using System.Collections.Concurrent;

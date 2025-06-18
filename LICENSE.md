@@ -19,6 +19,7 @@ contained within:
 
 **GNU General Public License, version 3.0 or later**
 - Netwolf.BotFramework (with exceptions, see below)
+- Netwolf.ExamplePlugin
 
 **GNU Affero General Public License, version 3.0 or later**
 - Netwolf.Server

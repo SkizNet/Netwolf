@@ -1,16 +1,14 @@
-﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
-// SPDX-License-Identifier: GPL-3.0-or-later
-
-using Netwolf.Transport.IRC;
+﻿// Copyright (c) 2025 Ryan Schmidt <skizzerz@skizzerz.net>
+// SPDX-License-Identifier: LGPL-3.0-or-later
 
 using System.Reactive.Linq;
 using System.Runtime.CompilerServices;
 
-namespace Netwolf.BotFramework;
+namespace Netwolf.Transport.Commands;
 
 public class ConfiguredDeferredCommand : IAsyncEnumerable<ICommand>
 {
-    private Bot Bot { get; set; }
+    private Func<ICommand, CancellationToken, Task> SendCallback { get; init; }
 
     private ICommand Command { get; init; }
 
@@ -19,7 +17,7 @@ public class ConfiguredDeferredCommand : IAsyncEnumerable<ICommand>
     {
         get
         {
-            _task ??= Bot.InternalSendAsync(Command, Token);
+            _task ??= SendCallback(Command, Token);
             return _task;
         }
     }
@@ -28,9 +26,9 @@ public class ConfiguredDeferredCommand : IAsyncEnumerable<ICommand>
 
     private CancellationToken Token { get; init; }
 
-    internal ConfiguredDeferredCommand(Bot bot, ICommand command, IObservable<ICommand> commandStream, CancellationToken cancellationToken)
+    internal ConfiguredDeferredCommand(Func<ICommand, CancellationToken, Task> sendCallback, ICommand command, IObservable<ICommand> commandStream, CancellationToken cancellationToken)
     {
-        Bot = bot;
+        SendCallback = sendCallback;
         Command = command;
         Token = cancellationToken;
 

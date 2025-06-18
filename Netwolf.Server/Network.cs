@@ -1,6 +1,6 @@
 ﻿using Netwolf.Server.Commands;
 using Netwolf.Server.ISupport;
-using Netwolf.Transport.IRC;
+using Netwolf.Transport.Commands;
 
 using System;
 using System.Collections;

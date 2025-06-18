@@ -1,7 +1,7 @@
-﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
-// SPDX-License-Identifier: GPL-3.0-or-later
+﻿// Copyright (c) 2025 Ryan Schmidt <skizzerz@skizzerz.net>
+// SPDX-License-Identifier: LGPL-3.0-or-later
 
-namespace Netwolf.BotFramework.RateLimiting;
+namespace Netwolf.Transport.RateLimiting;
 
 public class SlidingWindowConfig
 {

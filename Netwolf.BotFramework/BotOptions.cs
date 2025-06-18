@@ -1,7 +1,6 @@
 ﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-using Netwolf.BotFramework.RateLimiting;
 using Netwolf.Transport.IRC;
 
 namespace Netwolf.BotFramework;
@@ -78,59 +77,6 @@ public class BotOptions : NetworkOptions
     /// The prefix is optional when addressing the bot via PM.
     /// </summary>
     public string CommandPrefix { get; set; } = "!";
-
-    /// <summary>
-    /// Maximum number of commands that can be waiting in a command-based rate limiter queue;
-    /// attempts to send more commands while the queue is full will result in dropped commands!
-    /// This should be high enough to never be reached in normal operation; the default is 500.
-    /// This setting is read once during bot initialization so changes will require bot restarts.
-    /// </summary>
-    public int RateLimiterMaxCommands { get; set; } = 500;
-
-    /// <summary>
-    /// Maximum amount of bytes that can be waiting in a byte-based rate limiter queue;
-    /// attempts to send more bytes while the queue is full will result in dropped commands!
-    /// This should be high enough to never be reached in normal operation; the default is 2 MiB.
-    /// This setting is read once during bot initialization so changes will require bot restarts.
-    /// </summary>
-    public int RateLimiterMaxBytes { get; set; } = 2_097_152;
-
-    /// <summary>
-    /// Rate limiter that tracks each message target independently.
-    /// This will only apply to PRIVMSG, NOTICE, and TAGMSG commands.
-    /// This setting is read once during bot initialization so changes will require bot restarts.
-    /// </summary>
-    public TokenBucketConfig DefaultPerTargetLimiter { get; set; } = new();
-
-    /// <summary>
-    /// Per-target overrides of the generic <see cref="DefaultPerTargetLimiter"/>.
-    /// If a target is set here, it will take precedence over the default generic per-target config.
-    /// This setting is read once during bot initialization so changes will require bot restarts.
-    /// </summary>
-    public Dictionary<string, TokenBucketConfig> PerTargetLimiter { get; set; } = [];
-
-    /// <summary>
-    /// Rate limiter that applies to sent commands on a per-command basis.
-    /// Commands may additionally have arities attached so that there are individual limiters
-    /// based on the number of command arguments (e.g. to have different limits for local vs. remote WHOIS).
-    /// Commands with arities should be specified with a backtick and the arity, such as WHOIS`2 for remote WHOIS.
-    /// This setting is read once during bot initialization so changes will require bot restarts.
-    /// </summary>
-    public Dictionary<string, SlidingWindowConfig> PerCommandLimiter { get; set; } = [];
-
-    /// <summary>
-    /// Rate limiter that applies to all commands sent by the bot.
-    /// This setting is read once during bot initialization so changes will require bot restarts.
-    /// </summary>
-    public TokenBucketConfig GlobalCommandLimiter { get; set; } = new();
-
-    /// <summary>
-    /// Rate limiter that applies to all commands sent by the bot.
-    /// Unlike <see cref="GlobalCommandLimiter"/>, this is meant to avoid hitting "SendQ" limits
-    /// and each command will deduct its final size in bytes from the limiter.
-    /// This setting is read once during bot initialization so changes will require bot restarts.
-    /// </summary>
-    public SlidingWindowConfig GlobalByteLimiter { get; set; } = new();
 
     /// <summary>
     /// Permissions for accounts recognized by the bot. By default, this is not used.

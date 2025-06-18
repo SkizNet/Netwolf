@@ -2,6 +2,7 @@
 
 using Netwolf.PluginFramework.Commands;
 using Netwolf.Server.Commands;
+using Netwolf.Transport.Commands;
 using Netwolf.Transport.IRC;
 using Netwolf.Transport.State;
 

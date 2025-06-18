@@ -221,7 +221,7 @@ public class PluginCommandGenerator : IIncrementalGenerator
         return param.Type.ToFullyQualifiedString() switch
         {
             "System.Threading.CancellationToken" => ParameterClassification.CancellationToken,
-            _ when IsOrHasInterface(param.Type, "Netwolf.Transport.IRC.IContext") => ParameterClassification.IContext,
+            _ when IsOrHasInterface(param.Type, "Netwolf.Transport.Context.IContext") => ParameterClassification.IContext,
             _ when HasAttribute(param, "Netwolf.Attributes.CommandNameAttribute") => ParameterClassification.CommandName,
             _ when HasAttribute(param, "Netwolf.Attributes.RestAttribute") => ParameterClassification.Rest,
             _ => ParameterClassification.Scalar

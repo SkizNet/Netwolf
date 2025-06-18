@@ -1,6 +1,7 @@
 ﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
+using Netwolf.Transport.Commands;
 using Netwolf.Transport.Events;
 using Netwolf.Transport.Exceptions;
 using Netwolf.Transport.State;
@@ -110,25 +111,35 @@ public interface INetwork : INetworkInfo, IDisposable, IAsyncDisposable
     ICommand PrepareCommand(string verb, IEnumerable<object?>? args = null, IReadOnlyDictionary<string, string?>? tags = null);
 
     /// <summary>
-    /// Send a command to the network
+    /// Sends a command to the network. Rate limiters will apply to the sent command.
     /// </summary>
     /// <param name="command"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    Task SendAsync(ICommand command, CancellationToken cancellationToken = default);
+    DeferredCommand SendAsync(ICommand command, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Send a raw command to the network.
-    /// No validation or manipulation is performed; can be dangerous.
-    /// DO NOT USE with untrusted input.
+    /// Sends a raw line to the network. The line will be parsed and validated and does not need to have a source defined.
+    /// The verb, arguments, and tags from the raw line will be sent.
+    /// Rate limiters will apply to the sent command.
+    /// A CRLF will be automatically appended to the line and must not be present in the passed-in line.
+    /// In general, prefer to use <see cref="SendAsync(ICommand, CancellationToken)"/> as it is more performant due to not requiring command parsing.
     /// </summary>
-    /// <param name="command">Command to send which conforms to the IRC protocol</param>
-    /// <param name="cancellationToken">
-    /// Cancellation token; passing <see cref="CancellationToken.None"/>
-    /// will block indefinitely until the command is sent.
-    /// </param>
+    /// <param name="rawLine">A line containing the verb, arguments, and message tags to send.</param>
+    /// <param name="cancellationToken">Cancellation token</param>
     /// <returns></returns>
-    Task UnsafeSendRawAsync(string command, CancellationToken cancellationToken);
+    DeferredCommand SendRawAsync(string rawLine, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Send a raw line to the network, with no validation and bypassing all rate limiters.
+    /// This is NOT SAFE to use on user input and misuse may lead to security vulnerabilities.
+    /// A CRLF is automatically appended to the end of the line, however lines with embedded CRLF
+    /// are allowed and will be interpreted by the remote ircd as multiple commands.
+    /// </summary>
+    /// <param name="rawLine">A line that conforms to the IRC protocol. No validation or processing is performed.</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns></returns>
+    Task UnsafeSendRawAsync(string rawLine, CancellationToken cancellationToken);
 
     /// <summary>
     /// Disconnect from the network. This task cannot be cancelled.
@@ -142,10 +153,10 @@ public interface INetwork : INetworkInfo, IDisposable, IAsyncDisposable
     /// Be very careful when using this method as it can corrupt internal state if used incorrectly.
     /// </summary>
     /// <param name="command"></param>
-    /// <param name="cancellationToken">
-    /// Cancellation token to pass to async handlers.
+    /// <param name="cancellationToken">Cancellation token to pass to async handlers.</param>
+    /// <remarks>
     /// This method <em>does not block</em> and will execute async handlers in a "fire and forget" fashion.
-    /// </param>
+    /// </remarks>
     void UnsafeReceiveRaw(string command, CancellationToken cancellationToken);
 
     /// <summary>
