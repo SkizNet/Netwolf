@@ -1,4 +1,5 @@
 ﻿using Netwolf.PluginFramework.Commands;
+using Netwolf.Server.Users;
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.Context;
 
@@ -19,7 +20,12 @@ public abstract class ServerCommandHandler : ICommandHandler<ICommandResponse>
 
     public virtual string? Privilege => null;
 
-    public abstract Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken);
+    Task<ICommandResponse> ICommandHandler<ICommandResponse>.ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
+    {
+        return ExecuteAsync(command, (ServerContext)sender, cancellationToken);
+    }
+
+    public abstract Task<ICommandResponse> ExecuteAsync(ICommand command, ServerContext sender, CancellationToken cancellationToken);
 
     string? ICommandHandler.Privilege => Privilege;
 }

@@ -60,10 +60,10 @@ public class WhoCommand : ServerCommandHandler, IISupportTokenProvider
         WhoxEnabled = options.Value.EnabledFeatures.Contains(FeatureFlags.WhoX);
     }
 
-    public override Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
+    public override Task<ICommandResponse> ExecuteAsync(ICommand command, ServerContext sender, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var client = ((ServerContext)sender).User!;
+        var client = sender.User ?? throw new InvalidOperationException("Context is missing a user");
 
         if (command.Args.Count == 0)
         {

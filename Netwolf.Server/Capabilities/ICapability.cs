@@ -14,9 +14,9 @@ public interface ICapability
 
     string? Value => null;
 
-    ICapability[] DependsOn => Array.Empty<ICapability>();
+    ICapability[] DependsOn => [];
 
-    ICapability[] ConflictsWith => Array.Empty<ICapability>();
+    ICapability[] ConflictsWith => [];
 
     int GetHashCode()
     {

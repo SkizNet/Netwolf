@@ -27,4 +27,26 @@ public class NumericResponse : CommandResponse
 
         Args.AddRange(realArgs);
     }
+
+    /// <summary>
+    /// Numeric response with a custom description (as opposed to a description defined as a resource)
+    /// </summary>
+    /// <param name="user"></param>
+    /// <param name="numeric"></param>
+    /// <param name="description">Custom description, or null to omit the description</param>
+    /// <param name="args"></param>
+    public NumericResponse(User user, Numeric numeric, string? description, IEnumerable<string> args)
+        : base(user, null, ((int)numeric).ToString("D3"))
+    {
+        // Nickname might be null if we need to send a numeric before the user sends a valid NICK message
+        var realArgs = new List<string>() { user.Nickname ?? "*" };
+        realArgs.AddRange(args);
+        if (description != null)
+        {
+            var network = user.Network;
+            realArgs.Add(description.Interpolate(user, network));
+        }
+
+        Args.AddRange(realArgs);
+    }
 }

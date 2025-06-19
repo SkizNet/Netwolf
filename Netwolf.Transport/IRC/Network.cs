@@ -851,6 +851,7 @@ public partial class Network : INetwork
     }
 
     /// <inheritdoc />
+    [SuppressMessage("Style", "IDE0305:Simplify collection initialization", Justification = "ToList() is more semantically meaningful")]
     public ICommand PrepareCommand(string verb, IEnumerable<object?>? args = null, IReadOnlyDictionary<string, string?>? tags = null)
     {
         return CommandFactory.CreateCommand(
@@ -1290,7 +1291,7 @@ public partial class Network : INetwork
             case "908":
                 // failed, but will also get a 904, simply update supported mechs
                 {
-                    HashSet<string> mechs = new(SaslMechs);
+                    HashSet<string> mechs = [.. SaslMechs];
                     mechs.IntersectWith(command.Args[1].Split(','));
                     if (mechs.Count == 0 && Options.AbortOnSaslFailure)
                     {
@@ -1793,7 +1794,7 @@ public partial class Network : INetwork
                             if (key == "sasl" && Options.UseSasl && State.Account == null)
                             {
                                 // negotiate SASL
-                                HashSet<string> supportedSaslTypes = new(SaslMechanismFactory.GetSupportedMechanisms(Options, Server!));
+                                HashSet<string> supportedSaslTypes = [.. SaslMechanismFactory.GetSupportedMechanisms(Options, Server!)];
 
                                 if (value != null)
                                 {
@@ -2074,6 +2075,7 @@ public partial class Network : INetwork
         }
     }
 
+    [SuppressMessage("Style", "IDE0305:Simplify collection initialization", Justification = "ToList() is more semantically meaningful")]
     private void RemoveUserFromChannel(UserRecord user, ChannelRecord channel)
     {
         // is this us?

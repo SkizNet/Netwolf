@@ -225,4 +225,22 @@ public enum Numeric : int
     ERR_INVALIDKEY = 525,
     [Display(Description = "Permission denied: missing oper privileges")]
     ERR_NOPRIVS = 723,
+    [Display(Description = "You are now logged in as {user.Account}")]
+    RPL_LOGGEDIN = 900,
+    [Display(Description = "You are now logged out")]
+    RPL_LOGGEDOUT = 901,
+    [Display(Description = "You must use a nick assigned to you")]
+    ERR_NICKLOCKED = 902,
+    [Display(Description = "SASL authentication successful")]
+    RPL_SASLSUCCESS = 903,
+    [Display(Description = "SASL authentication failed")]
+    ERR_SASLFAIL = 904,
+    [Display(Description = "SASL message too long")]
+    ERR_SASLTOOLONG = 905,
+    [Display(Description = "SASL authentication aborted")]
+    ERR_SASLABORTED = 906,
+    [Display(Description = "You have already authenticated using SASL")]
+    ERR_SASLALREADY = 907,
+    [Display(Description = "are available SASL mechanisms")]
+    RPL_SASLMECHS = 908,
 }

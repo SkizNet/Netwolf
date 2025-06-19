@@ -16,45 +16,67 @@ namespace Netwolf.Test.Transport;
 [TestClass, TestCategory("SkipWhenLiveUnitTesting")]
 public class NetworkTests
 {
-    private ServiceProvider Container { get; init; }
-    private static readonly NetworkOptions Options = new()
+    private static NetworkOptions MakeNetworkOptions()
     {
-        // keep timeouts low so tests don't take forever
-        // there are some internal 5s timeouts (ident/hostname lookup) so be a bit longer than that
-        ConnectTimeout = TimeSpan.FromSeconds(7),
-        ConnectRetries = 0,
-        PrimaryNick = "test",
-        Servers = [new("irc.netwolf.org", 6697)]
-    };
+        return new NetworkOptions()
+        {
+            // keep timeouts low so tests don't take forever
+            // there are some internal 5s timeouts (ident/hostname lookup) so be a bit longer than that
+            ConnectTimeout = TimeSpan.FromSeconds(7),
+            ConnectRetries = 0,
+            PrimaryNick = "test",
+            Servers = [new("irc.netwolf.org", 6697)]
+        };
+    }
 
-    public NetworkTests()
+    private static ServiceProvider BuildContainer(ServerOptions? options = null)
     {
-        Container = new ServiceCollection()
+        options ??= new ServerOptions();
+
+        var container = new ServiceCollection()
             .AddLogging(config => config.SetMinimumLevel(LogLevel.Debug).AddConsole())
             // bring in default Netwolf DI services
             .AddTransportServices()
             .AddServerServices()
             .AddSingleton<FakeServer>()
-            .AddSingleton<IOptionsSnapshot<ServerOptions>>(new TestOptionsSnapshot<ServerOptions>() { Value = new ServerOptions() })
+            .AddSingleton<IOptionsSnapshot<ServerOptions>>(new TestOptionsSnapshot<ServerOptions>() { Value = options })
             .Replace(ServiceDescriptor.Singleton<IConnectionFactory, FakeConnectionFactory>())
             .BuildServiceProvider();
 
         // add Server commands
-        Container.GetRequiredService<ICommandDispatcher<ICommandResponse>>()
+        container.GetRequiredService<ICommandDispatcher<ICommandResponse>>()
             .AddCommandsFromAssembly(typeof(Netwolf.Server.Network).Assembly);
+
+        return container;
     }
 
     [TestMethod]
     public async Task User_registration_succeeds()
     {
-        using var scope = Container.CreateScope();
-        var networkFactory = Container.GetRequiredService<INetworkFactory>();
-        using var network = networkFactory.Create("NetwolfTest", Options);
+        var container = BuildContainer();
+        using var scope = container.CreateScope();
+        var networkFactory = container.GetRequiredService<INetworkFactory>();
+        using var network = networkFactory.Create("NetwolfTest", MakeNetworkOptions());
 
         await network.ConnectAsync();
         Assert.IsTrue(network.IsConnected);
         Assert.AreEqual("test", network.Nick);
         Assert.AreEqual("test", network.Ident);
         Assert.AreEqual("127.0.0.1", network.Host);
+    }
+
+    [TestMethod]
+    public async Task Successfully_auth_sasl_plain()
+    {
+        var container = BuildContainer();
+        using var scope = container.CreateScope();
+        var networkFactory = container.GetRequiredService<INetworkFactory>();
+        var options = MakeNetworkOptions();
+        options.UseSasl = true;
+        options.AccountName = "foo";
+        options.AccountPassword = "bar";
+        options.AllowInsecureSaslPlain = true;
+
+        using var network = networkFactory.Create("NetwolfTest", options);
     }
 }

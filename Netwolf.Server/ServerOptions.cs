@@ -20,43 +20,43 @@ public sealed class ServerOptions
 
     public List<string> EnabledFeatures { get; set; }
 
+    public List<string> EnabledSaslMechanisms { get; set; }
+
     public ServerOptions()
     {
-        EnabledCommands = new()
-        {
+        EnabledCommands = [
+            typeof(AuthenticateCommand),
             typeof(CapCommand),
             typeof(ListUsersCommand),
             typeof(MotdCommand),
             typeof(NickCommand),
             typeof(UserCommand),
-            typeof(WhoCommand)
-        };
+            typeof(WhoCommand),
+        ];
 
-        EnabledCapabilities = new()
-        {
+        EnabledCapabilities = [
             typeof(CapNotifyCapability),
-            typeof(PresenceCapability)
-        };
+            typeof(PresenceCapability),
+            typeof(SaslCapability),
+        ];
 
-        EnabledChannelModes = new()
-        {
+        EnabledChannelModes = [
             typeof(SecretChannelMode),
-            typeof(TopicLockChannelMode)
-        };
+            typeof(TopicLockChannelMode),
+        ];
 
-        EnabledChannelTypes = new()
-        {
-            typeof(TextChannel)
-        };
+        EnabledChannelTypes = [
+            typeof(TextChannel),
+        ];
 
-        EnabledUserModes = new()
-        {
+        EnabledUserModes = [];
 
-        };
+        EnabledFeatures = [
+            "WHOX",
+        ];
 
-        EnabledFeatures = new()
-        {
-            "WHOX"
-        };
+        EnabledSaslMechanisms = [
+            "PLAIN",
+        ];
     }
 }

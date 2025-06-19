@@ -14,10 +14,10 @@ public class ListUsersCommand : ServerCommandHandler
 {
     public override string Command => "LUSERS";
 
-    public override Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
+    public override Task<ICommandResponse> ExecuteAsync(ICommand command, ServerContext sender, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult<ICommandResponse>(ExecuteInternal(((ServerContext)sender).User!));
+        return Task.FromResult<ICommandResponse>(ExecuteInternal(sender.User!));
     }
 
     internal static MultiResponse ExecuteInternal(User client)

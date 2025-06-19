@@ -107,16 +107,6 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     /// Allows for cancelling all outstanding Tasks when <see cref="DisconnectAsync(string)"/> is called.
     /// </summary>
     private CancellationTokenSource? CancellationSource { get; set; }
-
-    /// <summary>
-    /// Rate limiter where each permit/token represents a single command being sent
-    /// </summary>
-    private PartitionedRateLimiter<ICommand> CommandRateLimiter { get; init; }
-
-    /// <summary>
-    /// Rate limiter where each permit/token represents a single byte being sent
-    /// </summary>
-    private PartitionedRateLimiter<ICommand> ByteRateLimiter { get; init; }
     #endregion
 
     #region Private DI services

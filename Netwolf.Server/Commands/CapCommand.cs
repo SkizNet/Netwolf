@@ -25,14 +25,14 @@ public class CapCommand : ServerCommandHandler
         CapabilityManager = capabilityManager;
     }
 
-    public override async Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
+    public override async Task<ICommandResponse> ExecuteAsync(ICommand command, ServerContext sender, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var client = ((ServerContext)sender).User!;
+        var client = sender.User ?? throw new InvalidOperationException("Context is missing a user");
 
         if (command.Args.Count == 0)
         {
-            return new NumericResponse(client, Numeric.ERR_NEEDMOREPARAMS);
+            return new NumericResponse(client, Numeric.ERR_NEEDMOREPARAMS, Command);
         }
 
         // determine sub-command
@@ -147,7 +147,7 @@ public class CapCommand : ServerCommandHandler
 
         if (version >= 302)
         {
-            _ = CapabilityManager.ApplyCapabilitySet(client, new[] { "cap-notify" }, Array.Empty<string>());
+            _ = CapabilityManager.ApplyCapabilitySet(client, ["cap-notify"], []);
         }
 
         return Task.FromResult(SplitCapabilityList(client, "LS", CapabilityManager.GetAllCapabilities()));

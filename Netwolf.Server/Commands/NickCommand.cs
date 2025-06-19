@@ -22,10 +22,10 @@ public partial class NickCommand : ServerCommandHandler
 
     public override bool AllowBeforeRegistration => true;
 
-    public override async Task<ICommandResponse> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
+    public override async Task<ICommandResponse> ExecuteAsync(ICommand command, ServerContext sender, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var client = ((ServerContext)sender).User!;
+        var client = sender.User ?? throw new InvalidOperationException("Context lacks a user");
 
         if (command.Args.Count == 0)
         {

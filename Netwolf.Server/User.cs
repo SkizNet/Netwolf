@@ -181,9 +181,9 @@ public class User : IDisposable
     }
 
     public bool HasCapability<T>()
-        where T : ICapability, new()
+        where T : ICapability
     {
-        return Capabilities.Contains(new T());
+        return Capabilities.Any(cap => cap.GetType() == typeof(T));
     }
 
     public void Send(string? source, string verb, IReadOnlyList<string?>? args = null, IReadOnlyDictionary<string, string?>? tags = null)
