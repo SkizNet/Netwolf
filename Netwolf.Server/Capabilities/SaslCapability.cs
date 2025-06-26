@@ -1,17 +1,19 @@
 ﻿using Microsoft.Extensions.Options;
 
+using Netwolf.Server.Sasl;
+
 namespace Netwolf.Server.Capabilities;
 
 public class SaslCapability : ICapability
 {
-    private IOptionsSnapshot<ServerOptions> Options { get; init; }
+    private ISaslLookup Lookup { get; init; }
 
     public string Name => "sasl";
 
-    string? ICapability.Value => string.Join(',', Options.Value.EnabledSaslMechanisms);
+    string? ICapability.Value => string.Join(',', Lookup.AllMechanisms.Select(m => m.Name).Order());
 
-    public SaslCapability(IOptionsSnapshot<ServerOptions> options)
+    public SaslCapability(ISaslLookup lookup)
     {
-        Options = options;
+        Lookup = lookup;
     }
 }

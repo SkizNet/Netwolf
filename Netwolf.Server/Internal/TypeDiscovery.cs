@@ -2,17 +2,10 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-using Netwolf.PluginFramework.Commands;
 using Netwolf.Server.Capabilities;
 using Netwolf.Server.ChannelModes;
-using Netwolf.Server.Commands;
 using Netwolf.Server.ISupport;
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Netwolf.Server.Sasl;
 
 namespace Netwolf.Server.Internal;
 
@@ -39,6 +32,10 @@ internal static class TypeDiscovery
                 .. options.Value.EnabledCapabilities,
                 .. options.Value.EnabledChannelModes,
             ];
+        }
+        else if (typeof(T) == typeof(ISaslMechanismProvider))
+        {
+            collection = options.Value.EnabledSaslMechanisms;
         }
         else
         {

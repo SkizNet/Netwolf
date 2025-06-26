@@ -1,55 +1,25 @@
 ﻿using Microsoft.Extensions.Options;
 
 using Netwolf.Server.Capabilities;
+using Netwolf.Server.Sasl;
 using Netwolf.Server.Users;
 using Netwolf.Transport.Commands;
-using Netwolf.Transport.Context;
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Netwolf.Server.Commands;
 
 public class AuthenticateCommand : ServerCommandHandler
 {
-    private enum SaslMech
-    {
-        // RFC 4616
-        Plain,
-        // RFC 4422
-        External,
-        // RFC 7677
-        ScramSha1,
-        ScramSha1Plus,
-        ScramSha256,
-        ScramSha256Plus,
-        ScramSha512,
-        ScramSha512Plus,
-        // No RFC, follow atheme as reference implementation
-        EcdsaNist256pChallenge,
-        // RFC 7628
-        OAuthBearer,
-        // RFC 2444
-        Otp,
-        // RFC 6616
-        OpenId20,
-    }
-
-    private record SaslState(SaslMech SelectedMech, int Step, MemoryStream ClientBuffer, MemoryStream ServerBuffer);
-
     public override bool AllowBeforeRegistration => true;
 
     public override string Command => "AUTHENTICATE";
 
-    private readonly Dictionary<User, SaslState> _state = [];
+    private ISaslLookup SaslLookup { get; init; }
 
     private IOptionsSnapshot<ServerOptions> Options { get; init; }
 
-    public AuthenticateCommand(IOptionsSnapshot<ServerOptions> options)
+    public AuthenticateCommand(ISaslLookup saslLookup, IOptionsSnapshot<ServerOptions> options)
     {
+        SaslLookup = saslLookup;
         Options = options;
     }
 
@@ -77,39 +47,46 @@ public class AuthenticateCommand : ServerCommandHandler
             return new NumericResponse(client, Numeric.ERR_SASLABORTED);
         }
 
+        if (command.Args[0].Length > 400)
+        {
+            return new NumericResponse(client, Numeric.ERR_SASLTOOLONG);
+        }
+
         // figure out what we're doing based on expected next state for this client
-        if (!_state.TryGetValue(client, out var state))
+        if (client.SaslState == null || client.SaslState.Completed)
         {
             // expecting a mechanism name
-            var clientMech = command.Args[0].ToUpperInvariant();
-            if (!Options.Value.EnabledSaslMechanisms.Contains(clientMech))
+            // RFC 4616 for PLAIN
+            // RFC 4422 for EXTERNAL
+            // RFC 7677 for SCRAM-*
+            // No RFC for ECDSA-NIST256P-CHALLENGE, follow atheme as reference implementation
+            // RFC 7628 for OAUTHBEARER
+            // RFC 2444 for OTP
+            // RFC 6616 for OPENID20
+
+            if (!SaslLookup.TryGet(command.Args[0].ToUpperInvariant(), out var selectedMech))
             {
                 return new NumericResponse(client, Numeric.RPL_SASLMECHS, string.Join(',', Options.Value.EnabledSaslMechanisms));
             }
 
-            SaslMech selectedMech = clientMech switch
-            {
-                "PLAIN" => SaslMech.Plain,
-                "EXTERNAL" => SaslMech.External,
-                "SCRAM-SHA-1" => SaslMech.ScramSha1,
-                "SCRAM-SHA-1-PLUS" => SaslMech.ScramSha1Plus,
-                "SCRAM-SHA-256" => SaslMech.ScramSha256,
-                "SCRAM-SHA-256-PLUS" => SaslMech.ScramSha256Plus,
-                "SCRAM-SHA-512" => SaslMech.ScramSha512,
-                "SCRAM-SHA-512-PLUS" => SaslMech.ScramSha512Plus,
-                "ECDSA-NIST256P-CHALLENGE" => SaslMech.EcdsaNist256pChallenge,
-                "OAUTHBEARER" => SaslMech.OAuthBearer,
-                "OTP" => SaslMech.Otp,
-                "OPENID20" => SaslMech.OpenId20,
-                _ => throw new ArgumentException($"Unknown SASL mechanism {clientMech}"),
-            };
+            client.SaslState = selectedMech.InitializeForUser(client);
         }
 
-        throw new NotImplementedException();
-    }
+        var response = await client.SaslState.ProcessClientCommandAsync(command, cancellationToken);
+        if (client.SaslState.Errored)
+        {
+            client.SaslFailures++;
+            // TODO: make configurable?
+            if (client.SaslFailures >= 3)
+            {
+                response = new MultiResponse()
+                {
+                    response,
+                    new ErrorResponse(client, "Too many SASL failures")
+                };
+            }
+        }
 
-    private async Task TimeoutAuth(User client)
-    {
-
+        return response;
     }
 }

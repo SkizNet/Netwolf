@@ -14,6 +14,7 @@ using Netwolf.PluginFramework.Commands;
 using Netwolf.PluginFramework.Context;
 using Microsoft.Extensions.Options;
 using Netwolf.Transport.Commands;
+using Netwolf.Server.Sasl;
 
 namespace Netwolf.Server;
 
@@ -58,6 +59,10 @@ public class User : IDisposable
     public string UserParam1 { get; internal set; } = null!;
 
     public string UserParam2 { get; internal set; } = null!;
+
+    internal ISaslState? SaslState { get; set; }
+
+    internal int SaslFailures { get; set; } = 0;
 
     /// <summary>
     /// Highest client-specified version passed to CAP LS, or 301 if they didn't pass a version.

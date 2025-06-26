@@ -20,7 +20,7 @@ public sealed class ServerOptions
 
     public List<string> EnabledFeatures { get; set; }
 
-    public List<string> EnabledSaslMechanisms { get; set; }
+    public List<Type> EnabledSaslMechanisms { get; set; }
 
     public ServerOptions()
     {
@@ -56,7 +56,7 @@ public sealed class ServerOptions
         ];
 
         EnabledSaslMechanisms = [
-            "PLAIN",
+            
         ];
     }
 }

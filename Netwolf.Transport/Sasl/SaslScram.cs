@@ -81,6 +81,12 @@ public sealed class SaslScram : ISaslMechanism
                 Hmac = HMACSHA512.HashData;
                 HashSize = SHA512.HashSizeInBytes;
                 break;
+            case "SHA3-512":
+                HashName = HashAlgorithmName.SHA3_512;
+                Hash = SHA3_512.HashData;
+                Hmac = HMACSHA3_512.HashData;
+                HashSize = SHA3_512.HashSizeInBytes;
+                break;
             default:
                 throw new ArgumentException("Unsupported hash name", nameof(hashName));
         }
@@ -304,7 +310,7 @@ public sealed class SaslScram : ISaslMechanism
                 sb.Append(MFA.ScramName);
                 sb.Append(",f=");
                 // accessing .Result blocks the async method; we can maybe refactor this method later to be async-friendly
-                sb.Append(MFA.GetTokenAsync().Result);
+                sb.Append(MFA.GetTokenAsync(MfaChallenge).Result);
             }
 
             // proof
