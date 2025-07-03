@@ -10,11 +10,10 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
 using Netwolf.Server.Capabilities;
-using Netwolf.PluginFramework.Commands;
-using Netwolf.PluginFramework.Context;
 using Microsoft.Extensions.Options;
 using Netwolf.Transport.Commands;
 using Netwolf.Server.Sasl;
+using System.Security.Claims;
 
 namespace Netwolf.Server;
 
@@ -48,7 +47,10 @@ public class User : IDisposable
 
     public string DisplayHost => VirtualHost ?? RealHost;
 
-    public string? Account { get; internal set; }
+    // TODO: make this private set and introduce a public method to manage account identities
+    public ClaimsPrincipal Account { get; internal set; } = new();
+
+    public string? AccountName => Account.Identity?.Name;
 
     public string RealName { get; internal set; } = null!;
 
@@ -108,6 +110,7 @@ public class User : IDisposable
     // and only manipulated internally
     public HashSet<Channel> Channels { get; init; } = [];
 
+    // TODO: Don't store these directly on user, thunk through IServerPermissionManager based on ClaimsPrincipal
     public HashSet<string> UserPrivileges { get; init; } = [];
 
     public HashSet<string> OperPrivileges { get; init; } = [];

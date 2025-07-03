@@ -17,5 +17,5 @@ public interface ISaslState
 
     bool Errored { get; }
 
-    Task<ICommandResponse> ProcessClientCommandAsync(ICommand command, CancellationToken token);
+    Task<ICommandResponse> ProcessClientCommandAsync(ICommand command, CancellationToken cancellationToken);
 }

@@ -1791,7 +1791,7 @@ public partial class Network : INetwork
                                 shouldEnable = ShouldEnableCap.GetInvocationList().Cast<CapFilter>().Any(f => f(args));
                             }
 
-                            if (key == "sasl" && Options.UseSasl && State.Account == null)
+                            if (key == "sasl" && Options.UseSasl && (Options.AccountPassword != null || Options.AccountCertificateFile != null) && State.Account == null)
                             {
                                 // negotiate SASL
                                 HashSet<string> supportedSaslTypes = [.. SaslMechanismFactory.GetSupportedMechanisms(Options, Server!)];

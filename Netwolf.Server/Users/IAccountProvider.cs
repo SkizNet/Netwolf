@@ -15,6 +15,8 @@ namespace Netwolf.Server.Users;
 /// </summary>
 public interface IAccountProvider
 {
+    string ProviderName { get; }
+
     IEnumerable<AuthMechanism> SupportedMechanisms { get; }
 
     Task<ClaimsIdentity?> AuthenticatePlainAsync(byte[] username, byte[] password, CancellationToken cancellationToken);

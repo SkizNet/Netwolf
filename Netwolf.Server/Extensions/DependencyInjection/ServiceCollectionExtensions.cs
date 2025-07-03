@@ -1,10 +1,12 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 using Netwolf.PluginFramework.Extensions.DependencyInjection;
 using Netwolf.PluginFramework.Permissions;
 using Netwolf.Server.Capabilities;
 using Netwolf.Server.Commands;
 using Netwolf.Server.ISupport;
+using Netwolf.Server.Sasl;
 using Netwolf.Server.Users;
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.Context;
@@ -35,7 +37,7 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    private static IServiceCollection AddServerServicesBase(IServiceCollection services)
+    private static void AddServerServicesBase(IServiceCollection services)
     {
         services.AddPluginFrameworkServices();
 
@@ -44,15 +46,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<Network>();
         services.AddScoped<IISupportResolver, ISupportResolver>();
         services.AddScoped<IUserFactory, UserFactory>();
+        services.AddScoped<IAccountProviderFactory, AccountProviderFactory>();
         services.AddScoped<ICapabilityManager, CapabilityManager>();
+        // Use the same object instance for both IServerPermissionManager and IPermissionManager
+        services.AddScoped<IServerPermissionManager, ServerPermissionManager>();
+        services.AddScoped<IPermissionManager>(provider => provider.GetRequiredService<IServerPermissionManager>());
+        services.AddScoped<ISaslLookup, SaslLookup>();
         services.AddSingleton<IContextAugmenter, ChannelContextAugmenter>();
         services.AddSingleton<ICommandValidator<ICommandResponse>, CommandValidator>();
-        services.AddSingleton<IPermissionManager, ServerPermissionManager>();
-
-        // let consumers register an IConfigureOptions<ServerOptions> if they wish, but these are here in case we need them later
-        //services.AddTransient<IPostConfigureOptions<ServerOptions>, PostConfigureServerOptions>();
-        //services.AddTransient<IValidateOptions<ServerOptions>, ValidateServerOptions>();
-
-        return services;
     }
 }

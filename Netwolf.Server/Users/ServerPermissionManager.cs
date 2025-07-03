@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace Netwolf.Server.Users;
 
-public class ServerPermissionManager : IPermissionManager
+public class ServerPermissionManager : IServerPermissionManager
 {
     public Exception GetPermissionError(IContext context, string permission)
     {
@@ -47,5 +47,10 @@ public class ServerPermissionManager : IPermissionManager
         }
 
         return ctx.User.HasPrivilege(permission, ctx.Channel);
+    }
+
+    public IEnumerable<string> GetUserPermissionsForRole(string realm, string role)
+    {
+        throw new NotImplementedException();
     }
 }

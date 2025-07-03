@@ -68,7 +68,16 @@ public class NetworkTests
     [TestMethod]
     public async Task Successfully_auth_sasl_plain()
     {
-        var container = BuildContainer();
+        ServerOptions serverOptions = new()
+        {
+            DefaultRealm = "test",
+            RealmMap = new()
+            {
+                { "test", typeof(TestAccountProvider) }
+            },
+        };
+
+        var container = BuildContainer(serverOptions);
         using var scope = container.CreateScope();
         var networkFactory = container.GetRequiredService<INetworkFactory>();
         var options = MakeNetworkOptions();
@@ -78,5 +87,7 @@ public class NetworkTests
         options.AllowInsecureSaslPlain = true;
 
         using var network = networkFactory.Create("NetwolfTest", options);
+        await network.ConnectAsync();
+        Assert.AreEqual("foo", network.Account);
     }
 }

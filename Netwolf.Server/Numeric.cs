@@ -225,7 +225,7 @@ public enum Numeric : int
     ERR_INVALIDKEY = 525,
     [Display(Description = "Permission denied: missing oper privileges")]
     ERR_NOPRIVS = 723,
-    [Display(Description = "You are now logged in as {user.Account}")]
+    [Display(Description = "You are now logged in as {user.AccountName}")]
     RPL_LOGGEDIN = 900,
     [Display(Description = "You are now logged out")]
     RPL_LOGGEDOUT = 901,

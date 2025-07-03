@@ -3,6 +3,7 @@ using Netwolf.Server.Capabilities.Vendor;
 using Netwolf.Server.ChannelModes;
 using Netwolf.Server.Channels;
 using Netwolf.Server.Commands;
+using Netwolf.Server.Sasl;
 
 namespace Netwolf.Server;
 
@@ -21,6 +22,10 @@ public sealed class ServerOptions
     public List<string> EnabledFeatures { get; set; }
 
     public List<Type> EnabledSaslMechanisms { get; set; }
+
+    public string? DefaultRealm { get; set; }
+
+    public Dictionary<string, Type> RealmMap { get; set; }
 
     public ServerOptions()
     {
@@ -56,7 +61,9 @@ public sealed class ServerOptions
         ];
 
         EnabledSaslMechanisms = [
-            
+            typeof(Plain),
         ];
+
+        RealmMap = [];
     }
 }
