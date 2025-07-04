@@ -52,4 +52,14 @@ internal class TestAccountProvider : IAccountProvider
     {
         throw new NotImplementedException();
     }
+
+    public Task<ClaimsIdentity?> ImpersonateAsync(byte[] username, CancellationToken cancellationToken)
+    {
+        return Task.FromResult<ClaimsIdentity?>(new ClaimsIdentity(
+            [new(ClaimTypes.Name, username.DecodeUtf8())],
+            "Impersonate",
+            ClaimTypes.Name,
+            ClaimTypes.Role
+        ));
+    }
 }

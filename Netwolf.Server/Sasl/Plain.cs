@@ -103,15 +103,14 @@ public class Plain : ISaslMechanismProvider
 
             Buffer.Reset(bytesWritten);
             // split into spans for authzid, authcid, and password
-            // normalization of the strings (i.e. SASLPrep) is handled at a lower level, to ensure
-            // that all authentication mechanisms use the same normalized strings
-            ReadOnlySpan<byte> decoded = Buffer.WrittenSpan;
+            byte[] decoded = Buffer.WrittenSpan.ToArray();
+            ReadOnlySpan<byte> decodedSpan = decoded.AsSpan();
             int i = 0;
             Range authzid = Range.All,
                 authcid = Range.All,
                 password = Range.All;
 
-            foreach (var range in decoded.Split((byte)0))
+            foreach (var range in decodedSpan.Split((byte)0))
             {
                 switch (i)
                 {
@@ -142,21 +141,8 @@ public class Plain : ISaslMechanismProvider
                 return new NumericResponse(Client, Numeric.ERR_SASLFAIL);
             }
 
-            // if authzid is empty, use authcid instead
-            if (decoded[0] == 0)
-            {
-                authzid = authcid;
-            }
-            // TODO: TEMPORARY: otherwise if authzid isn't the same as authcid, mark as invalid (until we figure out impersonation)
-            else if (!decoded[authcid].SequenceEqual(decoded[authzid]))
-            {
-                Completed = true;
-                Errored = true;
-                return new NumericResponse(Client, Numeric.ERR_SASLFAIL);
-            }
-
-            var provider = AccountProviderFactory.GetAccountProvider(decoded[authcid]);
-            if (!provider.SupportedMechanisms.Contains(AuthMechanism.Password))
+            IAccountProvider authnProvider = AccountProviderFactory.GetAccountProvider(decoded[authcid]);
+            if (!authnProvider.SupportedMechanisms.Contains(AuthMechanism.Password))
             {
                 // provider for this user doesn't support password authentication
                 Completed = true;
@@ -164,7 +150,31 @@ public class Plain : ISaslMechanismProvider
                 return new NumericResponse(Client, Numeric.ERR_SASLFAIL);
             }
 
-            var id = await provider.AuthenticatePlainAsync(decoded[authcid].ToArray(), decoded[password].ToArray(), cancellationToken);
+            var authn = authnProvider.NormalizeUsername(decoded[authcid]);
+
+            // only non-null if we're impersonating
+            IAccountProvider? authzProvider = null;
+            var authz = authn;
+
+            // if authzid is empty, use authcid instead
+            if (decoded[0] == 0)
+            {
+                authzid = authcid;
+            }
+            else if (!decodedSpan[authcid].SequenceEqual(decodedSpan[authzid]))
+            {
+                authzProvider = AccountProviderFactory.GetAccountProvider(decodedSpan[authzid]);
+                authz = authzProvider.NormalizeUsername(decodedSpan[authzid]);
+                if (!authzProvider.SupportedMechanisms.Contains(AuthMechanism.Impersonate)
+                    || !Client.HasPrivilege($"oper:impersonate:{authzProvider.ProviderName}:{authz.DecodeUtf8()}"))
+                {
+                    Completed = true;
+                    Errored = true;
+                    return new NumericResponse(Client, Numeric.ERR_SASLFAIL);
+                }
+            }
+
+            var id = await authnProvider.AuthenticatePlainAsync(authn, decoded[password], cancellationToken);
             if (id == null)
             {
                 // authentication failed
@@ -181,12 +191,36 @@ public class Plain : ISaslMechanismProvider
             }
 
             // authentication succeeded
+            Client.Account = new UserPrincipal(id);
+
+            if (authzProvider != null)
+            {
+                // we're impersonating (privileges to do so already checked above)
+                // TODO: this should go through some method on User
+                id = await authzProvider.ImpersonateAsync(authz, cancellationToken);
+                if (id == null)
+                {
+                    // impersonation failed
+                    Completed = true;
+                    Errored = true;
+                    return new NumericResponse(Client, Numeric.ERR_SASLFAIL);
+                }
+                else if (id.Name == null)
+                {
+                    // invalid response from the account provider
+                    Completed = true;
+                    Errored = true;
+                    return new NumericResponse(Client, Numeric.ERR_SASLFAIL);
+                }
+
+                Client.Account.AddIdentity(id);
+            }
+
             // TODO: figure out how we want impersonation to work, and also how to extract this from each sasl mech into a common class
-            Client.Account = new ClaimsPrincipal(id);
             Client.UserPrivileges.Clear();
             foreach (var role in id.Claims.Where(c => c.Type == id.RoleClaimType))
             {
-                Client.UserPrivileges.UnionWith(ServerPermissionManager.GetUserPermissionsForRole(provider.ProviderName, role.Value));
+                Client.UserPrivileges.UnionWith(ServerPermissionManager.GetUserPermissionsForRole(authnProvider.ProviderName, role.Value));
             }
 
             // warn on invalid permissions
@@ -196,7 +230,7 @@ public class Plain : ISaslMechanismProvider
                     "User {Username} has invalid permission {Permission} from provider {Provider}",
                     Client.Account.Identity!.Name,
                     priv,
-                    provider.ProviderName);
+                    authnProvider.ProviderName);
             }
 
             Completed = true;

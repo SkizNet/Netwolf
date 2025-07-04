@@ -19,6 +19,12 @@ public interface IAccountProvider
 
     IEnumerable<AuthMechanism> SupportedMechanisms { get; }
 
+    byte[] NormalizeUsername(ReadOnlySpan<byte> username)
+    {
+        var at = username.IndexOf((byte)'@');
+        return (at == -1 ? username : username[..at]).ToArray();
+    }
+
     Task<ClaimsIdentity?> AuthenticatePlainAsync(byte[] username, byte[] password, CancellationToken cancellationToken);
 
     Task<ScramParameters> GetScramParametersAsync(byte[] username, CancellationToken cancellationToken);
@@ -26,4 +32,6 @@ public interface IAccountProvider
     Task<ClaimsIdentity?> AuthenticateScramAsync(byte[] username, byte[] nonce, byte[] hash, ImmutableDictionary<char, string> extensionData, CancellationToken cancellationToken);
 
     Task<ClaimsIdentity?> AuthenticateCertAsync(X509Certificate2 certificate, CancellationToken cancellationToken);
+
+    Task<ClaimsIdentity?> ImpersonateAsync(byte[] username, CancellationToken cancellationToken);
 }

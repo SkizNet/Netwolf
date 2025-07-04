@@ -14,4 +14,5 @@ public enum AuthMechanism
     PublicKeyChallenge,
     OAuthBearerToken,
     OpenIdConnect,
+    Impersonate,
 }

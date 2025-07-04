@@ -42,4 +42,9 @@ internal class UnresolvedAccountProvider : IAccountProvider
     {
         throw new NotImplementedException();
     }
+
+    public Task<ClaimsIdentity?> ImpersonateAsync(byte[] username, CancellationToken cancellationToken)
+    {
+        throw new NotImplementedException();
+    }
 }
