@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 
+using Netwolf.PRECIS;
 using Netwolf.Server.Commands;
 using Netwolf.Server.Internal;
 using Netwolf.Server.Users;
@@ -103,14 +104,13 @@ public class Plain : ISaslMechanismProvider
 
             Buffer.Reset(bytesWritten);
             // split into spans for authzid, authcid, and password
-            byte[] decoded = Buffer.WrittenSpan.ToArray();
-            ReadOnlySpan<byte> decodedSpan = decoded.AsSpan();
+            ReadOnlySpan<byte> decoded = Buffer.WrittenSpan;
             int i = 0;
             Range authzid = Range.All,
                 authcid = Range.All,
                 password = Range.All;
 
-            foreach (var range in decodedSpan.Split((byte)0))
+            foreach (var range in decoded.Split((byte)0))
             {
                 switch (i)
                 {
@@ -150,7 +150,16 @@ public class Plain : ISaslMechanismProvider
                 return new NumericResponse(Client, Numeric.ERR_SASLFAIL);
             }
 
-            var authn = authnProvider.NormalizeUsername(decoded[authcid]);
+            var authn = authnProvider.ExtractUsername(decoded[authcid]).Enforce(PrecisProfile.UsernameCaseMapped);
+            var pw = decoded[password].DecodeUtf8().Enforce(PrecisProfile.OpaqueString);
+
+            if (authn == null || pw == null)
+            {
+                // username or password contains invalid characters
+                Completed = true;
+                Errored = true;
+                return new NumericResponse(Client, Numeric.ERR_SASLFAIL);
+            }
 
             // only non-null if we're impersonating
             IAccountProvider? authzProvider = null;
@@ -161,12 +170,20 @@ public class Plain : ISaslMechanismProvider
             {
                 authzid = authcid;
             }
-            else if (!decodedSpan[authcid].SequenceEqual(decodedSpan[authzid]))
+            else if (!decoded[authcid].SequenceEqual(decoded[authzid]))
             {
-                authzProvider = AccountProviderFactory.GetAccountProvider(decodedSpan[authzid]);
-                authz = authzProvider.NormalizeUsername(decodedSpan[authzid]);
+                authzProvider = AccountProviderFactory.GetAccountProvider(decoded[authzid]);
+                authz = authzProvider.ExtractUsername(decoded[authzid]).Enforce(PrecisProfile.UsernameCaseMapped);
+                if (authz == null)
+                {
+                    // authorization username contains invalid characters
+                    Completed = true;
+                    Errored = true;
+                    return new NumericResponse(Client, Numeric.ERR_SASLFAIL);
+                }
+
                 if (!authzProvider.SupportedMechanisms.Contains(AuthMechanism.Impersonate)
-                    || !Client.HasPrivilege($"oper:impersonate:{authzProvider.ProviderName}:{authz.DecodeUtf8()}"))
+                    || !Client.HasPrivilege($"oper:impersonate:{authzProvider.ProviderName}:{authz}"))
                 {
                     Completed = true;
                     Errored = true;
@@ -174,7 +191,7 @@ public class Plain : ISaslMechanismProvider
                 }
             }
 
-            var id = await authnProvider.AuthenticatePlainAsync(authn, decoded[password], cancellationToken);
+            var id = await authnProvider.AuthenticatePlainAsync(authn, pw, cancellationToken);
             if (id == null)
             {
                 // authentication failed
@@ -216,7 +233,7 @@ public class Plain : ISaslMechanismProvider
                 Client.Account.AddIdentity(id);
             }
 
-            // TODO: figure out how we want impersonation to work, and also how to extract this from each sasl mech into a common class
+            // TODO: extract this from each sasl mech into a common class (also should impersonation drop oper privs? probably yes)
             Client.UserPrivileges.Clear();
             foreach (var role in id.Claims.Where(c => c.Type == id.RoleClaimType))
             {

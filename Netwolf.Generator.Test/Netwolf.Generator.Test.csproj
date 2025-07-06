@@ -29,9 +29,63 @@
   <ItemGroup>
     <EmbeddedResource Include="..\Netwolf.Transport\Internal\UnicodeHelper.cs">
       <LogicalName>Netwolf.Generator.Test.UnicodeHelper.cs</LogicalName>
+      <Visible>false</Visible>
     </EmbeddedResource>
     <EmbeddedResource Include="..\Netwolf.Transport\Extensions\UnicodeExtensions.cs">
       <LogicalName>Netwolf.Generator.Test.UnicodeExtensions.cs</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\Netwolf.PRECIS\Data\DerivedBidiClass.txt">
+      <LogicalName>Netwolf.Generator.Test.DerivedBidiClass.txt</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\Netwolf.PRECIS\Data\DerivedCombiningClass.txt">
+      <LogicalName>Netwolf.Generator.Test.DerivedCombiningClass.txt</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\Netwolf.PRECIS\Data\DerivedCoreProperties.txt">
+      <LogicalName>Netwolf.Generator.Test.DerivedCoreProperties.txt</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\Netwolf.PRECIS\Data\DerivedJoiningType.txt">
+      <LogicalName>Netwolf.Generator.Test.DerivedJoiningType.txt</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\Netwolf.PRECIS\Data\HangulSyllableType.txt">
+      <LogicalName>Netwolf.Generator.Test.HangulSyllableType.txt</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\Netwolf.PRECIS\Data\PropList.txt">
+      <LogicalName>Netwolf.Generator.Test.PropList.txt</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\Netwolf.PRECIS\Data\Scripts.txt">
+      <LogicalName>Netwolf.Generator.Test.Scripts.txt</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\Netwolf.PRECIS\Data\UnicodeData.txt">
+      <LogicalName>Netwolf.Generator.Test.UnicodeData.txt</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\Netwolf.PRECIS\Internal\BidiClass.cs">
+      <LogicalName>Netwolf.Generator.Test.BidiClass.cs</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\Netwolf.PRECIS\Internal\CombiningClass.cs">
+      <LogicalName>Netwolf.Generator.Test.CombiningClass.cs</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\Netwolf.PRECIS\Internal\HangulSyllableType.cs">
+      <LogicalName>Netwolf.Generator.Test.HangulSyllableType.cs</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\Netwolf.PRECIS\Internal\JoiningType.cs">
+      <LogicalName>Netwolf.Generator.Test.JoiningType.cs</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\Netwolf.PRECIS\Internal\Script.cs">
+      <LogicalName>Netwolf.Generator.Test.Script.cs</LogicalName>
+      <Visible>false</Visible>
     </EmbeddedResource>
   </ItemGroup>
 </Project>

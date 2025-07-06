@@ -28,22 +28,22 @@ internal class UnresolvedAccountProvider : IAccountProvider
         throw new NotImplementedException();
     }
 
-    public Task<ClaimsIdentity?> AuthenticatePlainAsync(byte[] username, byte[] password, CancellationToken cancellationToken)
+    public Task<ClaimsIdentity?> AuthenticatePlainAsync(string username, string password, CancellationToken cancellationToken)
     {
         throw new NotImplementedException();
     }
 
-    public Task<ClaimsIdentity?> AuthenticateScramAsync(byte[] username, byte[] nonce, byte[] hash, ImmutableDictionary<char, string> extensionData, CancellationToken cancellationToken)
+    public Task<ClaimsIdentity?> AuthenticateScramAsync(string username, string nonce, byte[] hash, ImmutableDictionary<char, string> extensionData, CancellationToken cancellationToken)
     {
         throw new NotImplementedException();
     }
 
-    public Task<ScramParameters> GetScramParametersAsync(byte[] username, CancellationToken cancellationToken)
+    public Task<ScramParameters?> GetScramParametersAsync(string username, CancellationToken cancellationToken)
     {
         throw new NotImplementedException();
     }
 
-    public Task<ClaimsIdentity?> ImpersonateAsync(byte[] username, CancellationToken cancellationToken)
+    public Task<ClaimsIdentity?> ImpersonateAsync(string username, CancellationToken cancellationToken)
     {
         throw new NotImplementedException();
     }

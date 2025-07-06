@@ -16,6 +16,7 @@ contained within:
 - Netwolf.Transport
 - Netwolf.Generator (with exceptions, see below)
 - Netwolf.PluginFramework
+- Netwolf.PRECIS
 
 **GNU General Public License, version 3.0 or later**
 - Netwolf.BotFramework (with exceptions, see below)
@@ -41,11 +42,23 @@ CC0 1.0 Universal license or the GNU Lesser General Public License, version
 3.0 or later (your choice). To view a copy of the CC0 1.0 Universl license,
 visit <https://creativecommons.org/publicdomain/zero/1.0/>.
 
-# Netwolf.Generator data files
+# Unicode data files
 
-Some data files within the Netwolf.Generator project are copyright by the
+Some data files within the Netwolf projects are copyright by the
 Unicode project and are made available to you under the
-Uncode License v3 below instead of the GNU Lesser General Public License.
+Uncode License v3 below instead of the GNU Lesser General Public License,
+GNU General Public License, or GNU Affero General Public License.
+This license applies to files with the following names:
+
+- UnicodeData.txt
+- DerivedBidiClass.txt
+- DerivedCombiningClass.txt
+- DerivedCoreProperties.txt
+- DerivedJoiningType.txt
+- EastAsianWidth.txt
+- LineBreak.txt
+- PropList.txt
+- Scripts.txt
 
 UNICODE LICENSE V3
 

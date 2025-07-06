@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Netwolf.Transport.Extensions;
+
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -19,19 +21,27 @@ public interface IAccountProvider
 
     IEnumerable<AuthMechanism> SupportedMechanisms { get; }
 
-    byte[] NormalizeUsername(ReadOnlySpan<byte> username)
+    /// <summary>
+    /// Given a string that is potentially of the form "username@realm", extracts
+    /// the username part from the string. If the string does not contain a '@' character,
+    /// it returns the string as is. No normalization is performed; use the methods
+    /// found in Netwolf.PRECIS if normalization is needed.
+    /// </summary>
+    /// <param name="username"></param>
+    /// <returns></returns>
+    string ExtractUsername(ReadOnlySpan<byte> username)
     {
         var at = username.IndexOf((byte)'@');
-        return (at == -1 ? username : username[..at]).ToArray();
+        return (at == -1 ? username : username[..at]).DecodeUtf8();
     }
 
-    Task<ClaimsIdentity?> AuthenticatePlainAsync(byte[] username, byte[] password, CancellationToken cancellationToken);
+    Task<ClaimsIdentity?> AuthenticatePlainAsync(string username, string password, CancellationToken cancellationToken);
 
-    Task<ScramParameters> GetScramParametersAsync(byte[] username, CancellationToken cancellationToken);
+    Task<ScramParameters?> GetScramParametersAsync(string username, CancellationToken cancellationToken);
 
-    Task<ClaimsIdentity?> AuthenticateScramAsync(byte[] username, byte[] nonce, byte[] hash, ImmutableDictionary<char, string> extensionData, CancellationToken cancellationToken);
+    Task<ClaimsIdentity?> AuthenticateScramAsync(string username, string nonce, byte[] hash, ImmutableDictionary<char, string> extensionData, CancellationToken cancellationToken);
 
     Task<ClaimsIdentity?> AuthenticateCertAsync(X509Certificate2 certificate, CancellationToken cancellationToken);
 
-    Task<ClaimsIdentity?> ImpersonateAsync(byte[] username, CancellationToken cancellationToken);
+    Task<ClaimsIdentity?> ImpersonateAsync(string username, CancellationToken cancellationToken);
 }
