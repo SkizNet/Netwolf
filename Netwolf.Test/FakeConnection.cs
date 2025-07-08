@@ -14,6 +14,14 @@ namespace Netwolf.Test;
 
 internal class FakeConnection : IConnection
 {
+    /// <summary>
+    /// If we have a Server, then we're trying to do integration tests that involve "live" connections,
+    /// so this needs to operate as if it were a real connection. If Server is null, then we're not
+    /// talking to any server and the connection just exists because it needs to, even though we'll never
+    /// call it; in such cases always return that we're connected.
+    /// </summary>
+    public bool IsConnected => Server == null || Server.ClientCount > 0;
+
     private INetwork Network { get; init; }
 
     private FakeServer? Server { get; init; }
@@ -54,12 +62,13 @@ internal class FakeConnection : IConnection
 
     public async Task<ICommand> ReceiveAsync(CancellationToken cancellationToken)
     {
-        if (Server == null)
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (Server == null || !IsConnected)
         {
-            throw new InvalidOperationException("Server is null");
+            throw new InvalidOperationException("Server is null or not connected");
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
         var command = await Server.ReceiveCommand(Network, this, cancellationToken);
         Logger.LogDebug("<-- {Command}", command.FullCommand);
         return command;
@@ -67,12 +76,13 @@ internal class FakeConnection : IConnection
 
     public async Task SendAsync(ICommand command, CancellationToken cancellationToken)
     {
-        if (Server == null)
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (Server == null || !IsConnected)
         {
-            throw new InvalidOperationException("Server is null");
+            throw new InvalidOperationException("Server is null or not connected");
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
         Logger.LogDebug("--> {Command}", command.FullCommand);
         try
         {

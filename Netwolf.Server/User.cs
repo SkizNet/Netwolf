@@ -1,19 +1,21 @@
-﻿using Netwolf.Server.Commands;
+﻿using Microsoft.Extensions.Options;
+
+using Netwolf.Server.Capabilities;
+using Netwolf.Server.Commands;
 using Netwolf.Server.Extensions.Internal;
 using Netwolf.Server.Internal;
-using Netwolf.Transport.IRC;
+using Netwolf.Server.Sasl;
+using Netwolf.Server.Users;
+using Netwolf.Transport.Commands;
 using Netwolf.Transport.Extensions;
+using Netwolf.Transport.IRC;
 
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Claims;
 using System.Text;
 using System.Text.RegularExpressions;
-using Netwolf.Server.Capabilities;
-using Microsoft.Extensions.Options;
-using Netwolf.Transport.Commands;
-using Netwolf.Server.Sasl;
-using System.Security.Claims;
 
 namespace Netwolf.Server;
 
@@ -23,13 +25,15 @@ public class User : IDisposable
 
     private ICommandFactory CommandFactory { get; init; }
 
+    private IServerPermissionManager PermissionManager { get; init; }
+
     private ServerOptions Options { get; init; }
 
     public Network Network { get; init; }
 
     // temporary probably; we eventually want to support multiple clients attached to a single user,
     // and also potentially per-channel/group "profiles" for the user, which means most of these details won't be (only) top-level
-    internal BlockingCollection<ICommand> Queue { get; init; } = new();
+    internal BlockingCollection<ICommand> Queue { get; init; } = [];
 
     public int MaxBytesPerLine { get; set; } = 512;
 
@@ -47,8 +51,9 @@ public class User : IDisposable
 
     public string DisplayHost => VirtualHost ?? RealHost;
 
-    // TODO: make this private set and introduce a public method to manage account identities
-    public ClaimsPrincipal Account { get; internal set; } = new();
+    private ClaimsPrincipal Account { get; set; } = new();
+
+    public bool IsAuthenticated => Account.Identity?.IsAuthenticated ?? false;
 
     public string? AccountName => Account.Identity?.Name;
 
@@ -111,20 +116,22 @@ public class User : IDisposable
     public HashSet<Channel> Channels { get; init; } = [];
 
     // TODO: Don't store these directly on user, thunk through IServerPermissionManager based on ClaimsPrincipal
-    public HashSet<string> UserPrivileges { get; init; } = [];
+    private HashSet<string> UserPrivileges { get; set; } = [];
 
-    public HashSet<string> OperPrivileges { get; init; } = [];
+    private HashSet<string> OperPrivileges { get; set; } = [];
 
     public User(
         Network network,
         ICommandFactory commandFactory,
         IOptionsSnapshot<ServerOptions> options,
+        IServerPermissionManager permissionManager,
         IPAddress ip,
         int localPort,
         int remotePort)
     {
         Network = network;
         CommandFactory = commandFactory;
+        PermissionManager = permissionManager;
         Options = options.Value;
         RealIP = ip;
         LocalPort = localPort;
@@ -201,11 +208,75 @@ public class User : IDisposable
             CommandType.Server,
             source ?? Network.ServerName,
             verb,
-            args ?? new List<string?>(),
+            args ?? [],
             tags ?? new Dictionary<string, string?>());
 
         // TODO: Check for SendQ limits here
         Queue.Add(command);
+    }
+
+    public void LogIn(ClaimsIdentity identity)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        if (string.IsNullOrEmpty(identity.Name) || string.IsNullOrEmpty(identity.AuthenticationType))
+        {
+            throw new ArgumentException("Identity must have a name and authentication type", nameof(identity));
+        }
+
+        // we manage the IdentityType claim here and do not accept outside definitions of it
+        identity.Claims.Where(c => c.Type == ServerClaimTypes.IdentityType).ToList().ForEach(identity.RemoveClaim);
+        identity.AddClaim(new(ServerClaimTypes.IdentityType, "Account"));
+
+        Account = new ClaimsPrincipal(identity);
+        HashSet<string> privs = [];
+        foreach (var role in identity.Claims.Where(c => c.Type == identity.RoleClaimType))
+        {
+            privs.UnionWith(PermissionManager
+                .GetPermissionsForRole(identity.AuthenticationType, role.Value)
+                .Where(p => p.StartsWith("user:")));
+        }
+
+        UserPrivileges = privs;
+    }
+
+    public void LogOut()
+    {
+        // keep non-Account identities
+        var ids = Account.Identities.Where(i => i.Claims.First(c => c.Type == ServerClaimTypes.IdentityType).Value != "Account");
+        Account = new ClaimsPrincipal(ids);
+        UserPrivileges.Clear();
+    }
+
+    public void OperUp(ClaimsIdentity identity)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        if (string.IsNullOrEmpty(identity.Name) || string.IsNullOrEmpty(identity.AuthenticationType))
+        {
+            throw new ArgumentException("Identity must have a name and authentication type", nameof(identity));
+        }
+
+        // we manage the IdentityType claim here and do not accept outside definitions of it
+        identity.Claims.Where(c => c.Type == ServerClaimTypes.IdentityType).ToList().ForEach(identity.RemoveClaim);
+        identity.AddClaim(new(ServerClaimTypes.IdentityType, "Oper"));
+
+        Account.AddIdentity(identity);
+        HashSet<string> privs = [];
+        foreach (var role in identity.Claims.Where(c => c.Type == identity.RoleClaimType))
+        {
+            privs.UnionWith(PermissionManager
+                .GetPermissionsForRole(identity.AuthenticationType, role.Value)
+                .Where(p => p.StartsWith("oper:")));
+        }
+
+        OperPrivileges = privs;
+    }
+
+    public void DeOper()
+    {
+        // keep non-Oper identities
+        var ids = Account.Identities.Where(i => i.Claims.First(c => c.Type == ServerClaimTypes.IdentityType).Value != "Oper");
+        Account = new ClaimsPrincipal(ids);
+        OperPrivileges.Clear();
     }
 
     internal void AddRegistrationFlag(RegistrationFlags flag)
@@ -333,20 +404,19 @@ public class User : IDisposable
                 throw new ArgumentException("Ident response invalid or error");
             }
 
-            ident = new string(m.Groups[1].Value
+            ident = string.Concat(m.Groups[1].Value
                 // strip leading whitespace/nonprintables, as well as leading ^~
                 .SkipWhile(c => (short)c <= 32 || c == '^' || c == '~')
                 // read until we find a whitespace/nonprintable or @:
-                .TakeWhile(c => (short)c > 32 && c != '@' && c != ':')
-                .ToArray());
+                .TakeWhile(c => (short)c > 32 && c != '@' && c != ':'));
 
-            if (ident == String.Empty)
+            if (ident == string.Empty)
             {
                 throw new ArgumentException("Ident response invalid");
             }
 
             // valid ident, keep the full (untruncated) version in the record as well for matching purposes
-            IdentPrefix = String.Empty;
+            IdentPrefix = string.Empty;
             FullIdent = ident;
             Queue.Add(CommandFactory.CreateCommand(CommandType.Server, "irc.netwolf.org", "NOTICE", ["*", "*** Got ident response"], tags));
         }

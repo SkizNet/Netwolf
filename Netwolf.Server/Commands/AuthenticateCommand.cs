@@ -36,7 +36,7 @@ public class AuthenticateCommand : ServerCommandHandler
         }
 
         // for now, don't support reauthentication
-        if (client.Account.Identity?.IsAuthenticated ?? false)
+        if (client.IsAuthenticated)
         {
             return new NumericResponse(client, Numeric.ERR_SASLALREADY);
         }

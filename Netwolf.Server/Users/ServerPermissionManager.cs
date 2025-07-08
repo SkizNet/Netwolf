@@ -49,7 +49,7 @@ public class ServerPermissionManager : IServerPermissionManager
         return ctx.User.HasPrivilege(permission, ctx.Channel);
     }
 
-    public IEnumerable<string> GetUserPermissionsForRole(string realm, string role)
+    public IEnumerable<string> GetPermissionsForRole(string provider, string role)
     {
         throw new NotImplementedException();
     }

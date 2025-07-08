@@ -31,7 +31,7 @@ public class WhoCommand : ServerCommandHandler, IISupportTokenProvider
                 'u' => target.Ident,
                 'h' => target.DisplayHost,
                 'r' => target.RealName,
-                'a' => target.Account.Identity?.Name ?? "0",
+                'a' => target.AccountName ?? "0",
                 'i' => (target.VirtualHost == null || client.HasPrivilege("oper:auspex:user")) ? target.RealIP.ToString() : "255.255.255.255",
                 _ => throw new InvalidOperationException($"Unknown WHO search flag {attribute}")
             });
@@ -283,7 +283,7 @@ public class WhoCommand : ServerCommandHandler, IISupportTokenProvider
 
             if (whox.Contains('a'))
             {
-                args.Add(target.Account.Identity?.Name ?? "0");
+                args.Add(target.AccountName ?? "0");
             }
 
             if (whox.Contains('A'))

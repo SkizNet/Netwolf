@@ -7,14 +7,9 @@ using Netwolf.Server.Users;
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.Extensions;
 
-using System;
 using System.Buffers;
 using System.Buffers.Text;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security.Claims;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace Netwolf.Server.Sasl;
 
@@ -207,9 +202,6 @@ public class Plain : ISaslMechanismProvider
                 return new NumericResponse(Client, Numeric.ERR_SASLFAIL);
             }
 
-            // authentication succeeded
-            Client.Account = new UserPrincipal(id);
-
             if (authzProvider != null)
             {
                 // we're impersonating (privileges to do so already checked above)
@@ -229,27 +221,10 @@ public class Plain : ISaslMechanismProvider
                     Errored = true;
                     return new NumericResponse(Client, Numeric.ERR_SASLFAIL);
                 }
-
-                Client.Account.AddIdentity(id);
             }
 
-            // TODO: extract this from each sasl mech into a common class (also should impersonation drop oper privs? probably yes)
-            Client.UserPrivileges.Clear();
-            foreach (var role in id.Claims.Where(c => c.Type == id.RoleClaimType))
-            {
-                Client.UserPrivileges.UnionWith(ServerPermissionManager.GetUserPermissionsForRole(authnProvider.ProviderName, role.Value));
-            }
-
-            // warn on invalid permissions
-            foreach (var priv in Client.UserPrivileges.Where(p => !p.StartsWith("user:")))
-            {
-                Logger.LogWarning(
-                    "User {Username} has invalid permission {Permission} from provider {Provider}",
-                    Client.Account.Identity!.Name,
-                    priv,
-                    authnProvider.ProviderName);
-            }
-
+            // authentication succeeded
+            Client.LogIn(id);
             Completed = true;
             Errored = false;
 

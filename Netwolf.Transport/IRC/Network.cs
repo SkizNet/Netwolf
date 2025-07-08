@@ -19,6 +19,7 @@ using System.Security.Authentication.ExtendedProtection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
+using System.Threading.Tasks;
 
 using static Netwolf.Transport.IRC.INetwork;
 
@@ -115,7 +116,7 @@ public partial class Network : INetwork
     /// <summary>
     /// True if we are currently connected to this Network
     /// </summary>
-    public bool IsConnected => _connection != null && _userRegistrationCompletionSource == null;
+    public bool IsConnected => _connection?.IsConnected == true && _userRegistrationCompletionSource == null;
 
     #region INetworkInfo
     /// <summary>
@@ -491,6 +492,7 @@ public partial class Network : INetwork
 
     protected virtual void Dispose(bool disposing)
     {
+        Logger.LogTrace("Dispose called with disposing={Disposing}", disposing);
         if (!_disposed)
         {
             if (disposing)
@@ -539,7 +541,7 @@ public partial class Network : INetwork
                 tasks.Add(pingTimer); // index 2
                 tasks.AddRange(pingTimeoutTimers); // index 3+
             }
-            else if (_connection != null)
+            else if (_connection?.IsConnected == true)
             {
                 // in user registration (not fully connected yet, so do not send any PINGs)
                 receiveTask ??= Connection.ReceiveAsync(token);
@@ -673,6 +675,10 @@ public partial class Network : INetwork
                     // clean up any old state
                     ResetState();
 
+                    // set up completion source for user registration
+                    // this needs to go before we initiate connection so that IsConnected properly returns false
+                    _userRegistrationCompletionSource = new TaskCompletionSource();
+
                     // attempt the connection
                     Logger.LogInformation("Connecting to {server}...", server);
                     await _connection.ConnectAsync(aggregate.Token).ConfigureAwait(false);
@@ -688,6 +694,7 @@ public partial class Network : INetwork
                     }
 
                     Logger.LogInformation("Connection timed out, trying next server in list.");
+                    _userRegistrationCompletionSource!.SetCanceled(aggregate.Token);
                     await _connection.DisposeAsync().ConfigureAwait(false);
                     continue;
                 }
@@ -697,9 +704,6 @@ public partial class Network : INetwork
                 // (we want to bounce/reconnect if that fails for whatever reason)
                 Logger.LogInformation("Connected to {server}.", server);
                 NetworkEvents.OnConnecting(this);
-
-                // set up completion source for user registration
-                _userRegistrationCompletionSource = new TaskCompletionSource();
 
                 // alert the message loop to start processing incoming commands
                 _messageLoopCompletionSource.SetResult();

@@ -10,6 +10,13 @@ namespace Netwolf.Transport.IRC;
 public interface IConnection : IDisposable, IAsyncDisposable
 {
     /// <summary>
+    /// If true, we are connected to the remote host at the socket level,
+    /// so commands such as <see cref="SendAsync(ICommand, CancellationToken)"/>
+    /// and <see cref="ReceiveAsync(CancellationToken)"/> will work.
+    /// </summary>
+    bool IsConnected { get; }
+
+    /// <summary>
     /// Connect to the remote host
     /// </summary>
     /// <param name="cancellationToken">

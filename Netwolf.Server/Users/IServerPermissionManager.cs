@@ -10,5 +10,5 @@ namespace Netwolf.Server.Users;
 
 public interface IServerPermissionManager : IPermissionManager
 {
-    IEnumerable<string> GetUserPermissionsForRole(string provider, string role);
+    IEnumerable<string> GetPermissionsForRole(string provider, string role);
 }

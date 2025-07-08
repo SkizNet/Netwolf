@@ -55,6 +55,8 @@ public class IrcConnection : IConnection
 
     private ILogger<IConnection> Logger { get; init; }
 
+    public bool IsConnected => Socket?.Connected ?? false;
+
     internal IrcConnection(
         ServerRecord server,
         NetworkOptions options,
