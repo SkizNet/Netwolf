@@ -25,10 +25,13 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Netwolf.BotFramework\Netwolf.BotFramework.csproj" />
-    <ProjectReference Include="..\Netwolf.ExamplePlugin\Netwolf.ExamplePlugin.csproj" />
     <ProjectReference Include="..\Netwolf.PluginFramework\Netwolf.PluginFramework.csproj" />
     <ProjectReference Include="..\Netwolf.Server\Netwolf.Server.csproj" />
     <ProjectReference Include="..\Netwolf.Transport\Netwolf.Transport.csproj" />
     <ProjectReference Include="..\Netwolf.Generator\Netwolf.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\TestPlugin1\TestPlugin1.csproj" />
+    <ProjectReference Include="..\TestPlugin2\TestPlugin2.csproj" />
+    <ProjectReference Include="..\TestPlugin3\TestPlugin3.csproj" />
+    <ProjectReference Include="..\TestPlugin4\TestPlugin4.csproj" />
   </ItemGroup>
 </Project>

@@ -11,7 +11,8 @@ public class CommandHookRegistryTests : PluginFrameworkTestBase
     [TestMethod]
     public void Hooks_register_correctly()
     {
-        using var scope = CreateScope();
+        using var provider = CreateProvider();
+        using var scope = provider.CreateScope();
         var registry = scope.ServiceProvider.GetRequiredService<ICommandHookRegistry>();
 
         using var hook1 = registry.AddCommandHook(new TestHandler<PluginResult>("HOOK1", PluginResult.Continue));
@@ -22,7 +23,8 @@ public class CommandHookRegistryTests : PluginFrameworkTestBase
     [TestMethod]
     public void Hooks_unregister_correctly()
     {
-        using var scope = CreateScope();
+        using var provider = CreateProvider();
+        using var scope = provider.CreateScope();
         var registry = scope.ServiceProvider.GetRequiredService<ICommandHookRegistry>();
 
         using var hook1 = registry.AddCommandHook(new TestHandler<PluginResult>("HOOK1", PluginResult.Continue));
@@ -37,7 +39,8 @@ public class CommandHookRegistryTests : PluginFrameworkTestBase
     [TestMethod]
     public void Hooks_create_dispatcher_commands()
     {
-        using var scope = CreateScope();
+        using var provider = CreateProvider();
+        using var scope = provider.CreateScope();
         var registry = scope.ServiceProvider.GetRequiredService<ICommandHookRegistry>();
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<int>>();
 
@@ -52,7 +55,8 @@ public class CommandHookRegistryTests : PluginFrameworkTestBase
     [DataRow("HOOK2", 2)]
     public void Retrieve_hooks(string command, int count)
     {
-        using var scope = CreateScope();
+        using var provider = CreateProvider();
+        using var scope = provider.CreateScope();
         var registry = scope.ServiceProvider.GetRequiredService<ICommandHookRegistry>();
 
         using var hook1 = registry.AddCommandHook(new TestHandler<PluginResult>("HOOK1", PluginResult.Continue));
@@ -66,7 +70,8 @@ public class CommandHookRegistryTests : PluginFrameworkTestBase
     [TestMethod]
     public async Task Hooks_in_priority_order()
     {
-        using var scope = CreateScope();
+        using var provider = CreateProvider();
+        using var scope = provider.CreateScope();
         var registry = scope.ServiceProvider.GetRequiredService<ICommandHookRegistry>();
         List<int> order = [];
 

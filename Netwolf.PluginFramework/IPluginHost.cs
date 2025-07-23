@@ -28,9 +28,10 @@ public interface IPluginHost
     /// object sent to listeners is this plugin host instance, and the event args are always <see cref="EventArgs.Empty"/>.
     /// </summary>
     /// <remarks>
-    /// If the plugin holds unmanaged resources, it should clean them up here. The AssemblyLoadContext
-    /// for the plugin is expected to be collected after this event completes; plugins need to ensure
-    /// they are not doing things that keep the ALC loaded as this will cause memory leaks in
+    /// If the plugin holds unmanaged resources, it should either clean them up here and/or it should implement
+    /// IDisposable. If a plugin implements IDisposable, its Dispose method will be called after this Unloading event
+    /// completes. The AssemblyLoadContext for the plugin is expected to be collected after this event completes;
+    /// plugins need to ensure they are not doing things that keep the ALC loaded as this will cause memory leaks in
     /// long-running processes.
     /// </remarks>
     event EventHandler? Unloading;

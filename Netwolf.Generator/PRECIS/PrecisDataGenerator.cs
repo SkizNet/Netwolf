@@ -252,7 +252,7 @@ namespace Netwolf.PRECIS.Internal
             .Combine(assembly)
             .Where(static model => model.Right == "Netwolf.PRECIS")
             // Extract all lines from the file
-            .SelectMany(static (model, token) => model.Left.GetText(token)?.ToString().Split('\n') ?? [])
+            .SelectMany(static (model, token) => model.Left.GetText(token)?.ToString().Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries) ?? [])
             // Extract the mapping field from each line
             .Select(static (line, token) => ExtractDecompositionField(line, token))
             .Where(static mapping => mapping != null && (mapping.Class == "wide" || mapping.Class == "narrow"))
@@ -263,8 +263,8 @@ namespace Netwolf.PRECIS.Internal
             .Where(static text => text.Path.EndsWith("DerivedBidiClass.txt"))
             .Combine(assembly)
             .Where(static model => model.Right == "Netwolf.PRECIS")
-            .SelectMany(static (model, token) => model.Left.GetText(token)?.ToString().Split('\n') ?? [])
-            .Where(static line => !string.IsNullOrEmpty(line) && (!line.StartsWith("#") || line.StartsWith("# @missing:")))
+            .SelectMany(static (model, token) => model.Left.GetText(token)?.ToString().Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries) ?? [])
+            .Where(static line => !line.StartsWith("#") || line.StartsWith("# @missing:"))
             .Select(static (line, token) => (line.StartsWith("#"), ExtractLookup(line, token)))
             .Collect();
 
@@ -272,8 +272,8 @@ namespace Netwolf.PRECIS.Internal
             .Where(static text => text.Path.EndsWith("PropList.txt") || text.Path.EndsWith("DerivedCoreProperties.txt"))
             .Combine(assembly)
             .Where(static model => model.Right == "Netwolf.PRECIS")
-            .SelectMany(static (model, token) => model.Left.GetText(token)?.ToString().Split('\n') ?? [])
-            .Where(static line => !string.IsNullOrEmpty(line) && !line.StartsWith("#"))
+            .SelectMany(static (model, token) => model.Left.GetText(token)?.ToString().Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries) ?? [])
+            .Where(static line => !line.StartsWith("#"))
             .Select(static (line, token) => ExtractLookup(line, token))
             .Where(static lookup => ExtractedProperties.Contains(lookup.Class))
             .Collect();
@@ -282,8 +282,8 @@ namespace Netwolf.PRECIS.Internal
             .Where(static text => text.Path.EndsWith("HangulSyllableType.txt"))
             .Combine(assembly)
             .Where(static model => model.Right == "Netwolf.PRECIS")
-            .SelectMany(static (model, token) => model.Left.GetText(token)?.ToString().Split('\n') ?? [])
-            .Where(static line => !string.IsNullOrEmpty(line) && !line.StartsWith("#"))
+            .SelectMany(static (model, token) => model.Left.GetText(token)?.ToString().Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries) ?? [])
+            .Where(static line => !line.StartsWith("#"))
             .Select(static (line, token) => ExtractLookup(line, token))
             .Collect();
 
@@ -291,8 +291,8 @@ namespace Netwolf.PRECIS.Internal
             .Where(static text => text.Path.EndsWith("DerivedCombiningClass.txt"))
             .Combine(assembly)
             .Where(static model => model.Right == "Netwolf.PRECIS")
-            .SelectMany(static (model, token) => model.Left.GetText(token)?.ToString().Split('\n') ?? [])
-            .Where(static line => !string.IsNullOrEmpty(line) && !line.StartsWith("#"))
+            .SelectMany(static (model, token) => model.Left.GetText(token)?.ToString().Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries) ?? [])
+            .Where(static line => !line.StartsWith("#"))
             .Select(static (line, token) => ExtractLookup(line, token))
             .Collect();
 
@@ -300,8 +300,8 @@ namespace Netwolf.PRECIS.Internal
             .Where(static text => text.Path.EndsWith("DerivedJoiningType.txt"))
             .Combine(assembly)
             .Where(static model => model.Right == "Netwolf.PRECIS")
-            .SelectMany(static (model, token) => model.Left.GetText(token)?.ToString().Split('\n') ?? [])
-            .Where(static line => !string.IsNullOrEmpty(line) && !line.StartsWith("#"))
+            .SelectMany(static (model, token) => model.Left.GetText(token)?.ToString().Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries) ?? [])
+            .Where(static line => !line.StartsWith("#"))
             .Select(static (line, token) => ExtractLookup(line, token))
             .Collect();
 
@@ -309,8 +309,8 @@ namespace Netwolf.PRECIS.Internal
             .Where(static text => text.Path.EndsWith("Scripts.txt"))
             .Combine(assembly)
             .Where(static model => model.Right == "Netwolf.PRECIS")
-            .SelectMany(static (model, token) => model.Left.GetText(token)?.ToString().Split('\n') ?? [])
-            .Where(static line => !string.IsNullOrEmpty(line) && !line.StartsWith("#"))
+            .SelectMany(static (model, token) => model.Left.GetText(token)?.ToString().Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries) ?? [])
+            .Where(static line => !line.StartsWith("#"))
             .Select(static (line, token) => ExtractLookup(line, token))
             .Collect();
 

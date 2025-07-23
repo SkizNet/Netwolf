@@ -12,7 +12,8 @@ public class CommandDispatcherTests : PluginFrameworkTestBase
     [TestMethod]
     public void No_commands_registered_by_default()
     {
-        using var scope = CreateScope();
+        using var provider = CreateProvider();
+        using var scope = provider.CreateScope();
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<int>>();
 
         Assert.AreEqual(0, dispatcher.Commands.Length);
@@ -21,7 +22,8 @@ public class CommandDispatcherTests : PluginFrameworkTestBase
     [TestMethod]
     public void Register_commands_by_assembly()
     {
-        using var scope = CreateScope();
+        using var provider = CreateProvider();
+        using var scope = provider.CreateScope();
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<int>>();
         dispatcher.AddCommandsFromAssembly(typeof(Commands).Assembly);
 
@@ -35,7 +37,8 @@ public class CommandDispatcherTests : PluginFrameworkTestBase
     [TestMethod]
     public void Regsiter_commands_with_custom_validator()
     {
-        using var scope = CreateScope(typeof(Validators.AllowOnlyB<>));
+        using var provider = CreateProvider(typeof(Validators.AllowOnlyB<>));
+        using var scope = provider.CreateScope();
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<int>>();
         dispatcher.AddCommandsFromAssembly(typeof(Commands).Assembly);
 
@@ -45,7 +48,8 @@ public class CommandDispatcherTests : PluginFrameworkTestBase
     [TestMethod]
     public async Task Dispatch_with_default_permissions()
     {
-        using var scope = CreateScope();
+        using var provider = CreateProvider();
+        using var scope = provider.CreateScope();
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<int>>();
         dispatcher.AddCommandsFromAssembly(typeof(Commands).Assembly);
 
@@ -60,7 +64,8 @@ public class CommandDispatcherTests : PluginFrameworkTestBase
     [TestMethod]
     public async Task Dispatch_with_custom_permissions()
     {
-        using var scope = CreateScope(permissionTypes: [typeof(Permissions.AllowAll)]);
+        using var provider = CreateProvider(permissionTypes: [typeof(Permissions.AllowAll)]);
+        using var scope = provider.CreateScope();
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<int>>();
         dispatcher.AddCommandsFromAssembly(typeof(Commands).Assembly);
 
@@ -75,7 +80,8 @@ public class CommandDispatcherTests : PluginFrameworkTestBase
     [TestMethod]
     public async Task Dispatch_propagates_exceptions()
     {
-        using var scope = CreateScope();
+        using var provider = CreateProvider();
+        using var scope = provider.CreateScope();
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<int>>();
         dispatcher.AddCommandsFromAssembly(typeof(Commands).Assembly);
 
@@ -96,7 +102,8 @@ public class CommandDispatcherTests : PluginFrameworkTestBase
     [DataRow(PluginResult.SuppressAll, new int[] { 10, 0 }, DisplayName = "PluginResult.SuppressAll")]
     public async Task Dispatch_with_hooks(PluginResult hookResultType, int[] expectedResults)
     {
-        using var scope = CreateScope();
+        using var provider = CreateProvider();
+        using var scope = provider.CreateScope();
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<int>>();
         var registry = scope.ServiceProvider.GetRequiredService<ICommandHookRegistry>();
         List<int> results = [];

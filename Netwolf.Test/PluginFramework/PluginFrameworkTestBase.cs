@@ -11,7 +11,7 @@ namespace Netwolf.Test.PluginFramework;
 
 public abstract class PluginFrameworkTestBase
 {
-    protected static IServiceScope CreateScope(Type? validatorType = null, IEnumerable<Type>? permissionTypes = null, IEnumerable<Type>? augmenterTypes = null)
+    protected static ServiceProvider CreateProvider(Type? validatorType = null, IEnumerable<Type>? permissionTypes = null, IEnumerable<Type>? augmenterTypes = null)
     {
         var collection = new ServiceCollection()
             .AddLogging(config => config.SetMinimumLevel(LogLevel.Debug).AddConsole())
@@ -33,6 +33,6 @@ public abstract class PluginFrameworkTestBase
             collection.AddSingleton(typeof(IContextAugmenter), type);
         }
 
-        return collection.BuildServiceProvider().CreateScope();
+        return collection.BuildServiceProvider();
     }
 }
