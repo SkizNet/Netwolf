@@ -31,4 +31,9 @@ public sealed record UserRecord(
     /// User modes for this user; empty string if none.
     /// </summary>
     public string ModesDisplay => Modes.Count == 0 ? string.Empty : $"+{string.Join("", Modes.OrderBy(m => m))}";
+
+    /// <summary>
+    /// The user's full hostmask
+    /// </summary>
+    public string Hostmask => $"{Nick}!{Ident}@{Host}";
 }

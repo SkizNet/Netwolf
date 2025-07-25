@@ -21,9 +21,13 @@ public abstract class ExtensibleContextBase : IContext
     private ImmutableDictionary<Type, object?> _extensionData = ImmutableDictionary<Type, object?>.Empty;
 
     public abstract object Sender { get; }
-    public abstract INetworkInfo Network { get; }
-    public abstract ChannelRecord? Channel { get; }
-    public abstract UserRecord? User { get; }
+    INetworkInfo IContext.Network => GetContextNetwork();
+    ChannelRecord? IContext.Channel => GetContextChannel();
+    UserRecord? IContext.User => GetContextUser();
+
+    protected abstract INetworkInfo GetContextNetwork();
+    protected abstract ChannelRecord? GetContextChannel();
+    protected abstract UserRecord? GetContextUser();
 
     public IValidationContextFactory? ValidationContextFactory { get; protected init; }
 

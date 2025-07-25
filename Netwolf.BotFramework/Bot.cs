@@ -247,7 +247,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var command = Network.PrepareCommand(verb, args, tags);
+        var command = CommandFactory.PrepareClientCommand(Network.Self, verb, args, tags, CommandCreationOptions.MakeOptions(Network));
         return Network.SendAsync(command, cancellationToken);
     }
 
@@ -283,7 +283,8 @@ public abstract class Bot : IDisposable, IAsyncDisposable
                 ?.Name;
         }
 
-        foreach (var command in Network.PrepareMessage(MessageType.Message, target, message, tags, sharedChannel))
+        var options = CommandCreationOptions.MakeOptions(Network);
+        foreach (var command in CommandFactory.PrepareClientMessage(Network.Self, MessageType.Message, target, message, tags, sharedChannel, options))
         {
             await Network.SendAsync(command, cancellationToken).ConfigureAwait(false);
         }
@@ -321,7 +322,8 @@ public abstract class Bot : IDisposable, IAsyncDisposable
                 ?.Name;
         }
 
-        foreach (var command in Network.PrepareMessage(MessageType.Notice, target, message, tags, sharedChannel))
+        var options = CommandCreationOptions.MakeOptions(Network);
+        foreach (var command in CommandFactory.PrepareClientMessage(Network.Self, MessageType.Notice, target, message, tags, sharedChannel, options))
         {
             await Network.SendAsync(command, cancellationToken).ConfigureAwait(false);
         }

@@ -3,7 +3,6 @@
 
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.Events;
-using Netwolf.Transport.Exceptions;
 using Netwolf.Transport.State;
 
 namespace Netwolf.Transport.IRC;
@@ -71,44 +70,6 @@ public interface INetwork : INetworkInfo, IDisposable, IAsyncDisposable
     /// will retry connections indefinitely until the connection happens.
     /// </param>
     Task ConnectAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Prepare a message to be sent to the target. If the message is long,
-    /// it will be broken up into multiple commands.
-    /// </summary>
-    /// <param name="messageType">Type of message to send</param>
-    /// <param name="target">Target; can be a nickname or a channel</param>
-    /// <param name="text">Message text</param>
-    /// <param name="tags">Message tags</param>
-    /// <param name="sharedChannel">
-    /// If CPRIVMSG/CNOTICE is supported by the ircd, pass in the name of a channel your user is
-    /// opped or voiced in and that is shared with the target to use CPRIVMSG/CNOTICE instead of
-    /// the PRIVMSG/NOTICE commands. If not supported by the ircd, this parameter does nothing.
-    /// Many ircds will also automatically "promote" messages to CPRIVMSG/CNOTICE and this will
-    /// be unnecessary for those ircds as well.
-    /// </param>
-    /// <returns>One or more commands to send the message to the target</returns>
-    ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, string?>? tags = null, string? sharedChannel = null);
-
-    /// <summary>
-    /// Prepare a command to be sent to the network.
-    /// </summary>
-    /// <param name="verb">Command to send.</param>
-    /// <param name="args">
-    /// Command arguments, which will be turned into strings.
-    /// <c>null</c> values (whether before or after string conversion) will be omitted.
-    /// </param>
-    /// <param name="tags">
-    /// Command tags. <c>null</c> values and empty strings will be sent without a tag value.
-    /// </param>
-    /// <returns>The prepared command, which can be sent to the network via <see cref="SendAsync(ICommand)"/>.</returns>
-    /// <exception cref="ArgumentNullException">If <paramref name="verb"/> is <c>null</c>.</exception>
-    /// <exception cref="ArgumentException">If <paramref name="verb"/> is invalid.</exception>
-    /// <exception cref="ArgumentException">If a member of <paramref name="args"/> except for the final member would be considered a trailing argument.</exception>
-    /// <exception cref="CommandTooLongException">
-    /// If the expanded command (without tags) cannot fit within 512 bytes or the tags cannot fit within 4096 bytes.
-    /// </exception>
-    ICommand PrepareCommand(string verb, IEnumerable<object?>? args = null, IReadOnlyDictionary<string, string?>? tags = null);
 
     /// <summary>
     /// Sends a command to the network. Rate limiters will apply to the sent command.

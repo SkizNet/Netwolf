@@ -6,7 +6,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.Exceptions;
 using Netwolf.Transport.Extensions;
+using Netwolf.Transport.Internal;
+using Netwolf.Transport.State;
 
+using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -38,7 +42,13 @@ public partial class CommandFactory : ICommandFactory
         Provider = provider;
     }
 
-    public ICommand CreateCommand(CommandType commandType, string? source, string verb, IReadOnlyList<string?> args, IReadOnlyDictionary<string, string?> tags, CommandCreationOptions? options = null)
+    public ICommand CreateCommand(
+        CommandType commandType,
+        string? source,
+        string verb,
+        IReadOnlyList<string?> args,
+        IReadOnlyDictionary<string, string?> tags,
+        CommandCreationOptions? options = null)
     {
         // Verify parameters
         ArgumentNullException.ThrowIfNull(verb);
@@ -214,5 +224,131 @@ public partial class CommandFactory : ICommandFactory
         }
 
         return CreateCommand(commandType, source, verb, args, tags);
+    }
+
+    /// <inheritdoc />
+    [SuppressMessage("Style", "IDE0305:Simplify collection initialization", Justification = "ToList() is more semantically meaningful")]
+    public ICommand PrepareClientCommand(
+        UserRecord sender,
+        string verb,
+        IEnumerable<object?>? args = null,
+        IReadOnlyDictionary<string, string?>? tags = null,
+        CommandCreationOptions? options = null)
+    {
+        return CreateCommand(
+            CommandType.Client,
+            sender.Hostmask,
+            verb,
+            (args ?? []).Select(o => o?.ToString()).Where(o => o != null).ToList(),
+            (tags ?? new Dictionary<string, string?>()).ToDictionary(),
+            options);
+    }
+
+    /// <inheritdoc />
+    public ICommand[] PrepareClientMessage(
+        UserRecord sender,
+        MessageType messageType,
+        string target,
+        string text,
+        IReadOnlyDictionary<string, string?>? tags = null,
+        string? sharedChannel = null,
+        CommandCreationOptions? options = null)
+    {
+        var commands = new List<ICommand>();
+        options ??= new();
+
+        string verb = messageType switch
+        {
+            MessageType.Message => "PRIVMSG",
+            MessageType.Notice => "NOTICE",
+            _ => throw new ArgumentException("Invalid message type", nameof(messageType))
+        };
+
+        List<string> args = [target];
+
+        // :<hostmask> <verb> <target> :<text>\r\n -- 2 colons + 3 spaces + CRLF = 7 syntax characters. If CPRIVMSG/CNOTICE, one extra space is needed.
+        // we build in an additional safety buffer of 14 bytes to account for cases where our hostmask is out of sync or the server adds additional context
+        // to relayed messages (for 7 + 14 = 21 total bytes, leaving 491 for the rest normally or 490 when using CPRIVMSG/CNOTICE)
+        int maxlen = options.LineLen - 21 - sender.Hostmask.Length - verb.Length - target.Length;
+
+        // If CPRIVMSG/CNOTICE is enabled by the ircd and a sharedChannel was given, use it
+        if (sharedChannel != null && ((messageType == MessageType.Message && options.UseCPrivMsg) || (messageType == MessageType.Notice && options.UseCNotice)))
+        {
+            verb = "C" + verb;
+            maxlen -= 1 + sharedChannel.Length;
+            args.Add(sharedChannel);
+        }
+
+        // we overwrite the final value in args with each line of text
+        // however List doesn't let us create *new* indexes using the indexer, so add a placeholder for the time being
+        int lineIndex = args.Count;
+        args.Add(null!);
+
+        // split text if it is longer than maxlen bytes
+        bool multilineEnabled = options.UseDraftMultiLine;
+
+        // did the server give us stupid limits? if so disable multiline
+        if (options.MultiLineMaxBytes <= maxlen || options.MultiLineMaxLines <= 1)
+        {
+            multilineEnabled = false;
+        }
+
+        var lines = UnicodeHelper.SplitText(text, maxlen, false);
+
+        string batchId = Guid.NewGuid().ToString();
+        int batchLines = 0;
+        int batchBytes = -1; // our algorithm incorrectly credits an additional byte for a \n before the first line of the batch since isConcat is false for the first line
+        bool isConcat = false;
+        ImmutableDictionary<string, string?> tagsBase = tags != null ? ImmutableDictionary.CreateRange(tags) : ImmutableDictionary<string, string?>.Empty;
+        ImmutableDictionary<string, string?> tagsFinal = tagsBase;
+
+        foreach (var (line, isHardBreak) in lines)
+        {
+            if (multilineEnabled)
+            {
+                int byteCount = Encoding.UTF8.GetByteCount(args[^1]) + (isConcat ? 0 : 1);
+
+                // do we need to start a new batch?
+                if (batchLines == 0 || batchLines + 1 > options.MultiLineMaxLines || batchBytes + byteCount > options.MultiLineMaxBytes)
+                {
+                    // do we need to end a previous batch?
+                    if (batchLines != 0)
+                    {
+                        commands.Add(CreateCommand(CommandType.Client, sender.Hostmask, "BATCH", [$"-{batchId}"], tagsBase, options));
+                        batchId = Guid.NewGuid().ToString();
+                        batchLines = 0;
+                        batchBytes = -1; // see previous comment on batchBytes for why we start at -1
+                    }
+
+                    commands.Add(CreateCommand(CommandType.Client, sender.Hostmask, "BATCH", [$"+{batchId}", "draft/multiline", target], tagsBase, options));
+                    isConcat = false;
+                }
+
+                tagsFinal = tagsBase.SetItem("batch", batchId);
+                if (isConcat)
+                {
+                    tagsFinal = tagsFinal.SetItem("draft/multiline-concat", null);
+                }
+                else
+                {
+                    tagsFinal = tagsFinal.Remove("draft/multiline-concat");
+                }
+
+                batchLines++;
+                batchBytes += byteCount;
+                isConcat = !isHardBreak;
+            }
+
+            args[lineIndex] = line;
+            commands.Add(CreateCommand(CommandType.Client, sender.Hostmask, verb, args, tagsFinal, options));
+        }
+
+        if (multilineEnabled)
+        {
+            // end the final batch
+            commands.Add(CreateCommand(CommandType.Client, sender.Hostmask, "BATCH", [$"-{batchId}"], tagsBase, options));
+        }
+
+        return [.. commands];
     }
 }

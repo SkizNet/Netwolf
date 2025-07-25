@@ -11,9 +11,9 @@ namespace Netwolf.BotFramework.Services;
 public class BotCommandContext : ExtensibleContextBase
 {
     public override object Sender => Bot;
-    public override INetworkInfo Network => Bot.NetworkInfo;
-    public override ChannelRecord? Channel => Bot.NetworkInfo.GetChannel(Target);
-    public override UserRecord? User => Bot.NetworkInfo.GetUserByNick(SenderNickname);
+    protected override INetworkInfo GetContextNetwork() => Bot.NetworkInfo;
+    protected override ChannelRecord? GetContextChannel() => Bot.NetworkInfo.GetChannel(Target);
+    protected override UserRecord? GetContextUser() => Bot.NetworkInfo.GetUserByNick(SenderNickname);
 
     /// <summary>
     /// Bot that received the command

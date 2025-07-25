@@ -12,6 +12,7 @@ namespace Netwolf.Transport.IRC;
 /// </summary>
 public sealed record NetworkState(
     string Name,
+    NetworkLimits Limits,
     Guid ClientId,
     CaseMapping CaseMapping,
     ImmutableDictionary<Guid, UserRecord> Users,
@@ -22,6 +23,8 @@ public sealed record NetworkState(
     ImmutableDictionary<ISupportToken, string?> ISupport
     ) : INetworkInfo
 {
+    public UserRecord Self => Users[ClientId];
+
     public string Nick => Users[ClientId].Nick;
     
     public string Ident => Users[ClientId].Ident;

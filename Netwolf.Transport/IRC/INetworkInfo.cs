@@ -16,11 +16,21 @@ public interface INetworkInfo
     string Name { get; }
 
     /// <summary>
+    /// Limitations on the maximum length of IRC messages
+    /// </summary>
+    NetworkLimits Limits { get; }
+
+    /// <summary>
     /// ID of our client connection.
     /// Can be compared with <see cref="UserRecord.Id"/> to determine if a given <see cref="UserRecord"/> is our client.
     /// This Guid is not guaranteed to be stable between connections and cannot be compared across different networks.
     /// </summary>
     Guid ClientId { get; }
+
+    /// <summary>
+    /// UserRecord representing this connection
+    /// </summary>
+    UserRecord Self { get; }
 
     /// <summary>
     /// Nickname for this connection

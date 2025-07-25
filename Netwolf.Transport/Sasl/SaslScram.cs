@@ -31,6 +31,8 @@ public sealed class SaslScram : ISaslMechanism
 
     private Func<byte[], byte[], byte[]> Hmac { get; init; }
 
+    private int MinimumIterationCount { get; init; }
+
     private IMfaMechanism? MFA { get; init; }
 
     private int HashSize { get; init; }
@@ -68,24 +70,28 @@ public sealed class SaslScram : ISaslMechanism
                 Hash = SHA1.HashData;
                 Hmac = HMACSHA1.HashData;
                 HashSize = SHA1.HashSizeInBytes;
+                MinimumIterationCount = 4096; // per RFC 7677
                 break;
             case "SHA-256":
                 HashName = HashAlgorithmName.SHA256;
                 Hash = SHA256.HashData;
                 Hmac = HMACSHA256.HashData;
                 HashSize = SHA256.HashSizeInBytes;
+                MinimumIterationCount = 4096; // per RFC 7677
                 break;
             case "SHA-512":
                 HashName = HashAlgorithmName.SHA512;
                 Hash = SHA512.HashData;
                 Hmac = HMACSHA512.HashData;
                 HashSize = SHA512.HashSizeInBytes;
+                MinimumIterationCount = 10000; // per draft-melnikov-scram-sha-512-05
                 break;
             case "SHA3-512":
                 HashName = HashAlgorithmName.SHA3_512;
                 Hash = SHA3_512.HashData;
                 Hmac = HMACSHA3_512.HashData;
                 HashSize = SHA3_512.HashSizeInBytes;
+                MinimumIterationCount = 10000; // per draft-melnikov-scram-sha3-512-05
                 break;
             default:
                 throw new ArgumentException("Unsupported hash name", nameof(hashName));
@@ -241,7 +247,7 @@ public sealed class SaslScram : ISaslMechanism
                     }
 
                     // number invalid?
-                    if (iterations < 1)
+                    if (iterations < MinimumIterationCount)
                     {
                         response = [];
                         return false;

@@ -6,8 +6,8 @@ using Microsoft.Extensions.Logging;
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.Events;
 using Netwolf.Transport.Exceptions;
-using Netwolf.Transport.Extensions;
 using Netwolf.Transport.Internal;
+using Netwolf.Transport.RateLimiting;
 using Netwolf.Transport.Sasl;
 using Netwolf.Transport.State;
 
@@ -19,7 +19,6 @@ using System.Security.Authentication.ExtendedProtection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
-using System.Threading.Tasks;
 
 using static Netwolf.Transport.IRC.INetwork;
 
@@ -51,15 +50,7 @@ public partial class Network : INetwork
 
     protected ISaslMechanismFactory SaslMechanismFactory { get; init; }
 
-    /// <summary>
-    /// Rate limiter where each permit/token represents a single command being sent
-    /// </summary>
-    protected PartitionedRateLimiter<ICommand> CommandRateLimiter { get; init; }
-
-    /// <summary>
-    /// Rate limiter where each permit/token represents a single byte being sent
-    /// </summary>
-    protected PartitionedRateLimiter<ICommand> ByteRateLimiter { get; init; }
+    protected IRateLimiter RateLimiter { get; init; }
 
     protected NetworkEvents NetworkEvents { get; set; }
 
@@ -120,9 +111,23 @@ public partial class Network : INetwork
 
     #region INetworkInfo
     /// <summary>
+    /// Shortcut to obtain the UserRecord of the current connection
+    /// </summary>
+    public UserRecord Self => IsConnected ? State.Self : throw new InvalidOperationException("Network is disconnected.");
+
+    /// <summary>
     /// User-defined network name (not necessarily what the network actually calls itself)
     /// </summary>
     public string Name { get; init; }
+
+    /// <summary>
+    /// Limits for this connection.
+    /// </summary>
+    public NetworkLimits Limits
+    {
+        get => State.Limits;
+        protected set => State = State with { Limits = value };
+    }
 
     /// <summary>
     /// Client ID for this connection.
@@ -235,11 +240,6 @@ public partial class Network : INetwork
     #endregion
 
     /// <summary>
-    /// Maxmium length of an IRC line (excluding tags, including final CRLF).
-    /// </summary>
-    private int MaxLength { get; set; } = 512;
-
-    /// <summary>
     /// Case mapping in use.
     /// </summary>
     private CaseMapping CaseMapping { get; set; } = CaseMapping.Ascii;
@@ -305,10 +305,6 @@ public partial class Network : INetwork
     /// </summary>
     public bool SuspendCapEndForSasl { get; set; } = false;
 
-    private static readonly string[] END = ["END"];
-    private static readonly string[] STAR = ["*"];
-    private static readonly string[] PLUS = ["+"];
-
     /// <summary>
     /// Create a new Network that can be connected to.
     /// </summary>
@@ -320,6 +316,7 @@ public partial class Network : INetwork
     /// <param name="logger">Logger to use.</param>
     /// <param name="commandFactory"></param>
     /// <param name="connectionFactory"></param>
+    /// <param name="rateLimiter"></param>
     /// <param name="saslMechanismFactory"></param>
     /// <param name="networkEvents"></param>
     public Network(
@@ -328,6 +325,7 @@ public partial class Network : INetwork
         ILogger<INetwork> logger,
         ICommandFactory commandFactory,
         IConnectionFactory connectionFactory,
+        IRateLimiter rateLimiter,
         ISaslMechanismFactory saslMechanismFactory,
         NetworkEvents networkEvents)
     {
@@ -339,130 +337,11 @@ public partial class Network : INetwork
         Logger = logger;
         CommandFactory = commandFactory;
         ConnectionFactory = connectionFactory;
+        RateLimiter = rateLimiter;
         SaslMechanismFactory = saslMechanismFactory;
         NetworkEvents = networkEvents;
 
         ResetState();
-
-        // Initialize rate limiters with a cached options so it can't change on us
-        var cachedOptions = Options;
-        List<PartitionedRateLimiter<ICommand>> limiters = [];
-
-        // Per-target limiters (PRIVMSG/NOTICE/TAGMSG)
-        if (cachedOptions.DefaultPerTargetLimiter.Enabled || cachedOptions.PerTargetLimiter.Any(o => o.Value.Enabled))
-        {
-            limiters.Add(PartitionedRateLimiter.Create<ICommand, string>(cmd =>
-            {
-                var target = cmd.GetMessageTarget();
-                if (target == null)
-                {
-                    return RateLimitPartition.GetNoLimiter(string.Empty);
-                }
-
-                var config = cachedOptions.PerTargetLimiter.GetValueOrDefault(target, cachedOptions.DefaultPerTargetLimiter);
-                if (!config.Enabled)
-                {
-                    return RateLimitPartition.GetNoLimiter(string.Empty);
-                }
-
-                return RateLimitPartition.GetTokenBucketLimiter(target, _ => new()
-                {
-                    AutoReplenishment = false,
-                    QueueLimit = cachedOptions.RateLimiterMaxCommands,
-                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    ReplenishmentPeriod = TimeSpan.FromMilliseconds(config.ReplenishmentRate),
-                    TokensPerPeriod = config.ReplenishmentAmount,
-                    TokenLimit = config.MaxTokens,
-                });
-            }));
-        }
-
-        // Per-command limiters
-        if (cachedOptions.PerCommandLimiter.Any(o => o.Value.Enabled))
-        {
-            limiters.Add(PartitionedRateLimiter.Create<ICommand, string>(cmd =>
-            {
-                string? key = null;
-                string withArity = $"{cmd.Verb}`{cmd.Args.Count}";
-
-                if (cachedOptions.PerCommandLimiter.TryGetValue(withArity, out var config))
-                {
-                    key = withArity;
-                }
-                else if (cachedOptions.PerCommandLimiter.TryGetValue(cmd.Verb, out config))
-                {
-                    key = cmd.Verb;
-                }
-
-
-                if (key == null || !(config?.Enabled ?? false))
-                {
-                    return RateLimitPartition.GetNoLimiter(string.Empty);
-                }
-
-                return RateLimitPartition.GetSlidingWindowLimiter(key, _ => new()
-                {
-                    AutoReplenishment = false,
-                    QueueLimit = cachedOptions.RateLimiterMaxCommands,
-                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    Window = TimeSpan.FromMilliseconds(config.Duration),
-                    PermitLimit = config.Limit,
-                    SegmentsPerWindow = config.Segments,
-                });
-            }));
-        }
-
-        // Global command limiter
-        if (cachedOptions.GlobalCommandLimiter.Enabled)
-        {
-            limiters.Add(PartitionedRateLimiter.Create<ICommand, string>(_ =>
-            {
-                return RateLimitPartition.GetTokenBucketLimiter(string.Empty, _ => new()
-                {
-                    AutoReplenishment = false,
-                    QueueLimit = cachedOptions.RateLimiterMaxCommands,
-                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    ReplenishmentPeriod = TimeSpan.FromMilliseconds(cachedOptions.GlobalCommandLimiter.ReplenishmentRate),
-                    TokensPerPeriod = cachedOptions.GlobalCommandLimiter.ReplenishmentAmount,
-                    TokenLimit = cachedOptions.GlobalCommandLimiter.MaxTokens,
-                });
-            }));
-        }
-
-        // If no limiters are enabled, present a dummy one as CreateChained() requires the collection to have at least 1 element
-        if (limiters.Count == 0)
-        {
-            limiters.Add(PartitionedRateLimiter.Create<ICommand, string>(_ =>
-            {
-                return RateLimitPartition.GetNoLimiter(string.Empty);
-            }));
-        }
-
-        CommandRateLimiter = PartitionedRateLimiter.CreateChained([.. limiters]);
-
-        // Global bytes limiter
-        if (cachedOptions.GlobalByteLimiter.Enabled)
-        {
-            ByteRateLimiter = PartitionedRateLimiter.Create<ICommand, string>(_ =>
-            {
-                return RateLimitPartition.GetSlidingWindowLimiter(string.Empty, _ => new()
-                {
-                    AutoReplenishment = false,
-                    QueueLimit = cachedOptions.RateLimiterMaxBytes,
-                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    Window = TimeSpan.FromMilliseconds(cachedOptions.GlobalByteLimiter.Duration),
-                    PermitLimit = cachedOptions.GlobalByteLimiter.Limit,
-                    SegmentsPerWindow = cachedOptions.GlobalByteLimiter.Segments,
-                });
-            });
-        }
-        else
-        {
-            ByteRateLimiter = PartitionedRateLimiter.Create<ICommand, string>(_ =>
-            {
-                return RateLimitPartition.GetNoLimiter(string.Empty);
-            });
-        }
 
         // spin up the message loop for this Network
         _messageLoop = Task.Run(MessageLoop);
@@ -604,7 +483,7 @@ public partial class Network : INetwork
                         pingTimeoutTimers.Add(Task.Delay(Options.PingTimeout, token));
                         string cookie = String.Format("NWPC{0:X16}", Random.Shared.NextInt64());
                         pingTimeoutCookies.Add(cookie);
-                        _ = Connection.SendAsync(PrepareCommand("PING", [cookie], null), token);
+                        _ = Connection.UnsafeSendRawAsync($"PING {cookie}", token);
                     }
 
                     // reset activity so that if we make it to another PingInterval with no activity we send a PING
@@ -711,6 +590,7 @@ public partial class Network : INetwork
                 // default to true so that if we abort prematurely, we skip to the error message
                 // about the connection being aborted rather user registration timing out
                 bool registrationComplete = true;
+                var commandOptions = CommandCreationOptions.MakeOptions(this);
 
                 try
                 {
@@ -720,12 +600,12 @@ public partial class Network : INetwork
                     if (Options.ServerPassword != null)
                     {
                         await Connection.SendAsync(
-                            PrepareCommand("PASS", [Options.ServerPassword], null),
+                            CommandFactory.PrepareClientCommand(State.Self, "PASS", [Options.ServerPassword], null, commandOptions),
                             cancellationToken);
                     }
 
                     await Connection.SendAsync(
-                        PrepareCommand("NICK", [Options.PrimaryNick], null),
+                        CommandFactory.PrepareClientCommand(State.Self, "NICK", [Options.PrimaryNick], null, commandOptions),
                         cancellationToken);
 
                     // Most networks outright ignore params 2 and 3.
@@ -733,7 +613,7 @@ public partial class Network : INetwork
                     // Others may allow an arbitrary user mode string in param 2 prefixed with +.
                     // For widest compatibility, leave both unspecified and just handle umodes post-registration.
                     await Connection.SendAsync(
-                        PrepareCommand("USER", [Options.Ident, "0", "*", Options.RealName]),
+                        CommandFactory.PrepareClientCommand(State.Self, "USER", [Options.Ident, "0", "*", Options.RealName], null, commandOptions),
                         cancellationToken);
 
                     // Handle any responses to the above. Notably, we might need to choose a new nickname,
@@ -783,7 +663,9 @@ public partial class Network : INetwork
 
         try
         {
-            await Connection.SendAsync(PrepareCommand("QUIT", [reason], null), default).ConfigureAwait(false);
+            await Connection.SendAsync(
+                CommandFactory.PrepareClientCommand(State.Self, "QUIT", [reason], null, CommandCreationOptions.MakeOptions(this)),
+                default).ConfigureAwait(false);
         }
         finally
         {
@@ -813,22 +695,12 @@ public partial class Network : INetwork
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
 
-        using var commandLease = await CommandRateLimiter.AcquireAsync(command, 1, cancellationToken).ConfigureAwait(false);
+        using var commandLease = await RateLimiter.AcquireAsync(command, cancellationToken).ConfigureAwait(false);
         if (!commandLease.IsAcquired)
         {
             commandLease.TryGetMetadata(MetadataName.ReasonPhrase, out var reason);
             Logger.LogError("Unable to send {Command}: {Reason}", command.Verb, reason ?? "Unknown error.");
             throw new RateLimitLeaseAcquisitionException(command, commandLease.GetAllMetadata().ToDictionary());
-        }
-
-        // command.FullCommand omits the trailing CRLF, so add another 2 bytes to account for it
-        var byteCount = Encoding.UTF8.GetByteCount(command.FullCommand) + 2;
-        using var byteLease = await ByteRateLimiter.AcquireAsync(command, byteCount, cancellationToken).ConfigureAwait(false);
-        if (!byteLease.IsAcquired)
-        {
-            byteLease.TryGetMetadata(MetadataName.ReasonPhrase, out var reason);
-            Logger.LogError("Unable to send {Command}: {Reason}", command.Verb, reason ?? "Unknown error.");
-            throw new RateLimitLeaseAcquisitionException(command, byteLease.GetAllMetadata().ToDictionary());
         }
 
         await Connection.SendAsync(command, cancellationToken).ConfigureAwait(false);
@@ -844,7 +716,7 @@ public partial class Network : INetwork
     public DeferredCommand SendRawAsync(string rawLine, CancellationToken cancellationToken = default)
     {
         var parsed = CommandFactory.Parse(CommandType.Client, rawLine);
-        var command = PrepareCommand(parsed.Verb, parsed.Args, parsed.Tags);
+        var command = CommandFactory.PrepareClientCommand(Self, parsed.Verb, parsed.Args, parsed.Tags, CommandCreationOptions.MakeOptions(this));
         return new(InternalSendAsync, CommandReceived.Select(c => c.Command), command, cancellationToken);
     }
 
@@ -852,133 +724,6 @@ public partial class Network : INetwork
     public Task UnsafeSendRawAsync(string rawLine, CancellationToken cancellationToken)
     {
         return Connection.UnsafeSendRawAsync(rawLine, cancellationToken);
-    }
-
-    /// <inheritdoc />
-    [SuppressMessage("Style", "IDE0305:Simplify collection initialization", Justification = "ToList() is more semantically meaningful")]
-    public ICommand PrepareCommand(string verb, IEnumerable<object?>? args = null, IReadOnlyDictionary<string, string?>? tags = null)
-    {
-        return CommandFactory.CreateCommand(
-            CommandType.Client,
-            $"{State.Nick}!{State.Ident}@{State.Host}",
-            verb,
-            (args ?? []).Select(o => o?.ToString()).Where(o => o != null).ToList(),
-            (tags ?? new Dictionary<string, string?>()).ToDictionary(),
-            new(MaxLength));
-    }
-
-    /// <inheritdoc />
-    public ICommand[] PrepareMessage(MessageType messageType, string target, string text, IReadOnlyDictionary<string, string?>? tags = null, string? sharedChannel = null)
-    {
-        var commands = new List<ICommand>();
-
-        string verb = messageType switch
-        {
-            MessageType.Message => "PRIVMSG",
-            MessageType.Notice => "NOTICE",
-            _ => throw new ArgumentException("Invalid message type", nameof(messageType))
-        };
-
-        string hostmask = $"{State.Nick}!{State.Ident}@{State.Host}";
-        List<string> args = [target];
-
-        // :<hostmask> <verb> <target> :<text>\r\n -- 2 colons + 3 spaces + CRLF = 7 syntax characters. If CPRIVMSG/CNOTICE, one extra space is needed.
-        // we build in an additional safety buffer of 14 bytes to account for cases where our hostmask is out of sync or the server adds additional context
-        // to relayed messages (for 7 + 14 = 21 total bytes, leaving 491 for the rest normally or 490 when using CPRIVMSG/CNOTICE)
-        int maxlen = MaxLength - 21 - hostmask.Length - verb.Length - target.Length;
-
-        // If CPRIVMSG/CONTICE is enabled by the ircd and a sharedChannel was given, use it
-        if (sharedChannel != null)
-        {
-            string cVerb = "C" + verb;
-            if (State.ISupport.ContainsKey(new(cVerb)))
-            {
-                verb = cVerb;
-                maxlen -= 1 + sharedChannel.Length;
-                args.Add(sharedChannel);
-            }
-        }
-
-        // we overwrite the final value in args with each line of text
-        // however List doesn't let us create *new* indexes using the indexer, so add a placeholder for the time being
-        int lineIndex = args.Count;
-        args.Add(null!);
-
-        // split text if it is longer than maxlen bytes
-        bool multilineEnabled = TryGetEnabledCap("draft/multiline", out var multilineValue) && State.EnabledCaps.Contains("batch");
-        Dictionary<string, int> multilineLimits = [];
-        if (multilineValue != null)
-        {
-            // coerce invalid or missing values to -1, which will disable multiline if this happens to be on max-bytes or max-lines
-            multilineLimits = multilineValue.Split(',').Select(t => t.Split('=')).ToDictionary(a => a[0], a => int.TryParse(a.ElementAtOrDefault(1), out int i) ? i : -1);
-        }
-
-        multilineLimits.TryAdd("max-bytes", int.MaxValue);
-        multilineLimits.TryAdd("max-lines", int.MaxValue);
-
-        // did the server give us stupid limits? if so disable multiline
-        if (multilineLimits["max-bytes"] <= maxlen || multilineLimits["max-lines"] <= 1)
-        {
-            multilineEnabled = false;
-        }
-
-        var lines = UnicodeHelper.SplitText(text, maxlen, false);
-        CommandCreationOptions options = new(MaxLength);
-        string batchId = Guid.NewGuid().ToString();
-        int batchLines = 0;
-        int batchBytes = -1; // our algorithm incorrectly credits an additional byte for a \n before the first line of the batch since isConcat is false for the first line
-        bool isConcat = false;
-        ImmutableDictionary<string, string?> tagsBase = tags != null ? ImmutableDictionary.CreateRange(tags) : ImmutableDictionary<string, string?>.Empty;
-        ImmutableDictionary<string, string?> tagsFinal = tagsBase;
-
-        foreach (var (line, isHardBreak) in lines)
-        {
-            if (multilineEnabled)
-            {
-                int byteCount = Encoding.UTF8.GetByteCount(args[^1]) + (isConcat ? 0 : 1);
-
-                // do we need to start a new batch?
-                if (batchLines == 0 || batchLines + 1 > multilineLimits["max-lines"] || batchBytes + byteCount > multilineLimits["max-bytes"])
-                {
-                    // do we need to end a previous batch?
-                    if (batchLines != 0)
-                    {
-                        commands.Add(CommandFactory.CreateCommand(CommandType.Client, hostmask, "BATCH", [$"-{batchId}"], tagsBase, options));
-                        batchId = Guid.NewGuid().ToString();
-                        batchLines = 0;
-                        batchBytes = -1; // see previous comment on batchBytes for why we start at -1
-                    }
-
-                    commands.Add(CommandFactory.CreateCommand(CommandType.Client, hostmask, "BATCH", [$"+{batchId}", "draft/multiline", target], tagsBase, options));
-                    isConcat = false;
-                }
-
-                tagsFinal = tagsBase.SetItem("batch", batchId);
-                if (isConcat)
-                {
-                    tagsFinal = tagsFinal.SetItem("draft/multiline-concat", null);
-                }
-                else
-                {
-                    tagsFinal = tagsFinal.Remove("draft/multiline-concat");
-                }
-
-                batchLines++;
-                batchBytes += byteCount;
-                isConcat = !isHardBreak;
-            }
-
-            args[lineIndex] = line;
-            commands.Add(CommandFactory.CreateCommand(CommandType.Client, hostmask, verb, args, tagsFinal, options));
-        }
-
-        if (multilineEnabled)
-        {
-            // end the final batch
-            commands.Add(CommandFactory.CreateCommand(CommandType.Client, hostmask, "BATCH", [$"-{batchId}"], tagsBase, options));
-        }
-
-        return [.. commands];
     }
 
     #region Command handling
@@ -1005,7 +750,7 @@ public partial class Network : INetwork
                     string secondary = Options.SecondaryNick ?? $"{Options.PrimaryNick}_";
                     if (attempted == Options.PrimaryNick)
                     {
-                        _ = Connection.SendAsync(PrepareCommand("NICK", [secondary], null), cancellationToken);
+                        _ = Connection.UnsafeSendRawAsync($"NICK {secondary}", cancellationToken);
                     }
                     else if (attempted == secondary)
                     {
@@ -1018,7 +763,7 @@ public partial class Network : INetwork
                 case "422":
                     // got MOTD, we've been registered. But we might still not know our own ident/host,
                     // so send out a WHO for ourselves before handing control back to client
-                    _ = Connection.SendAsync(PrepareCommand("WHO", [State.Nick]), cancellationToken);
+                    _ = Connection.UnsafeSendRawAsync($"WHO {State.Nick}", cancellationToken);
                     break;
                 case "315":
                     // end of WHO, so we've pulled our own client details and can hand back control
@@ -1029,7 +774,7 @@ public partial class Network : INetwork
                     // although if it's saying our CAP END failed (broken ircd), don't cause an infinite loop
                     if (command.Args[1] != "END")
                     {
-                        _ = Connection.SendAsync(PrepareCommand("CAP", END), cancellationToken);
+                        _ = Connection.UnsafeSendRawAsync("CAP END", cancellationToken);
                     }
 
                     break;
@@ -1106,7 +851,7 @@ public partial class Network : INetwork
                         case "LINELEN":
                             if (int.TryParse(value, out int lineLen))
                             {
-                                MaxLength = Math.Max(lineLen, MaxLength);
+                                Limits = Limits with { LineLength = Math.Max(lineLen, Limits.LineLength) };
                             }
                             break;
                     }
@@ -1273,7 +1018,7 @@ public partial class Network : INetwork
                 if (SuspendCapEndForSasl)
                 {
                     SuspendCapEndForSasl = false;
-                    _ = Connection.SendAsync(PrepareCommand("CAP", END), cancellationToken);
+                    _ = Connection.UnsafeSendRawAsync("CAP END", cancellationToken);
                 }
                 break;
             case "904":
@@ -1684,7 +1429,7 @@ public partial class Network : INetwork
                 break;
             case "PING":
                 // send a PONG
-                _ = Connection.SendAsync(PrepareCommand("PONG", [command.Args[0]]), cancellationToken);
+                _ = Connection.UnsafeSendRawAsync($"PONG {command.ArgString}", cancellationToken);
                 break;
             case "QUIT":
                 // QUIT [:<reason>]
@@ -1839,7 +1584,7 @@ public partial class Network : INetwork
                         {
                             if (consumedBytes + token.Length > maxBytes)
                             {
-                                _ = Connection.SendAsync(PrepareCommand("CAP", ["REQ", String.Join(" ", param)]), cancellationToken);
+                                _ = Connection.UnsafeSendRawAsync($"CAP REQ :{string.Join(" ", param)}", cancellationToken);
                                 consumedBytes = 0;
                                 param.Clear();
                             }
@@ -1850,12 +1595,12 @@ public partial class Network : INetwork
 
                         if (param.Count > 0)
                         {
-                            _ = Connection.SendAsync(PrepareCommand("CAP", ["REQ", String.Join(" ", param)]), cancellationToken);
+                            _ = Connection.UnsafeSendRawAsync($"CAP REQ :{string.Join(" ", param)}", cancellationToken);
                         }
                         else if (!IsConnected)
                         {
                             // we don't support any of the server's caps, so end cap negotiation here
-                            _ = Connection.SendAsync(PrepareCommand("CAP", END), cancellationToken);
+                            _ = Connection.UnsafeSendRawAsync("CAP END", cancellationToken);
                         }
                     }
                 }
@@ -1883,7 +1628,7 @@ public partial class Network : INetwork
 
                     if (command.Args[1] == "ACK" && !IsConnected && !SuspendCapEndForSasl)
                     {
-                        _ = Connection.SendAsync(PrepareCommand("CAP", END), cancellationToken);
+                        _ = Connection.UnsafeSendRawAsync("CAP END", cancellationToken);
                     }
                 }
 
@@ -1906,7 +1651,7 @@ public partial class Network : INetwork
                 // we couldn't set CAPs, bail out
                 if (!IsConnected)
                 {
-                    _ = Connection.SendAsync(PrepareCommand("CAP", END), cancellationToken);
+                    _ = Connection.UnsafeSendRawAsync("CAP END", cancellationToken);
                 }
 
                 break;
@@ -1946,7 +1691,7 @@ public partial class Network : INetwork
                 }
 
                 SaslMechs.Remove(mech);
-                _ = Connection.SendAsync(PrepareCommand("AUTHENTICATE", [mech]), cancellationToken);
+                _ = Connection.UnsafeSendRawAsync($"AUTHENTICATE {mech}", cancellationToken);
                 return;
             }
         }
@@ -1965,7 +1710,7 @@ public partial class Network : INetwork
             }
 
             SuspendCapEndForSasl = false;
-            _ = Connection.SendAsync(PrepareCommand("CAP", END), cancellationToken);
+            _ = Connection.UnsafeSendRawAsync("CAP END", cancellationToken);
         }
     }
 
@@ -2001,7 +1746,7 @@ public partial class Network : INetwork
                 SaslBuffer.Clear();
                 SelectedSaslMech.Dispose();
                 SelectedSaslMech = null;
-                _ = Connection.SendAsync(PrepareCommand("AUTHENTICATE", STAR), cancellationToken);
+                _ = Connection.UnsafeSendRawAsync("AUTHENTICATE *", cancellationToken);
                 return;
             }
         }
@@ -2026,14 +1771,14 @@ public partial class Network : INetwork
                 // abort SASL
                 SelectedSaslMech.Dispose();
                 SelectedSaslMech = null;
-                _ = Connection.SendAsync(PrepareCommand("AUTHENTICATE", STAR), cancellationToken);
+                _ = Connection.UnsafeSendRawAsync("AUTHENTICATE *", cancellationToken);
             }
             else
             {
                 // send response
                 if (responseBytes.Length == 0)
                 {
-                    _ = Connection.SendAsync(PrepareCommand("AUTHENTICATE", PLUS), cancellationToken);
+                    _ = Connection.UnsafeSendRawAsync("AUTHENTICATE +", cancellationToken);
                 }
                 else
                 {
@@ -2043,14 +1788,14 @@ public partial class Network : INetwork
                     do
                     {
                         int end = Math.Min(start + 400, response.Length);
-                        _ = Connection.SendAsync(PrepareCommand("AUTHENTICATE", [response[start..end]]), cancellationToken);
+                        _ = Connection.UnsafeSendRawAsync($"AUTHENTICATE {response[start..end]}", cancellationToken);
                         start = end;
                     } while (start < response.Length);
 
                     if (response.Length % 400 == 0)
                     {
                         // if we sent exactly 400 bytes in the last line, send a blank line to let server know we're done
-                        _ = Connection.SendAsync(PrepareCommand("AUTHENTICATE", PLUS), cancellationToken);
+                        _ = Connection.UnsafeSendRawAsync("AUTHENTICATE +", cancellationToken);
                     }
                 }
             }
@@ -2178,6 +1923,7 @@ public partial class Network : INetwork
 
         State = new(
             Name,
+            new(),
             clientId,
             CaseMapping,
             ImmutableDictionary.CreateRange<Guid, UserRecord>([new(clientId, client)]),

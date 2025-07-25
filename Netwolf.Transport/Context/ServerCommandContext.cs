@@ -13,9 +13,9 @@ public class ServerCommandContext : ExtensibleContextBase
     private readonly INetworkInfo _networkInfo;
 
     public override object Sender => _network;
-    public override INetworkInfo Network => _networkInfo;
-    public override ChannelRecord? Channel => null;
-    public override UserRecord? User => null;
+    protected override INetworkInfo GetContextNetwork() => _networkInfo;
+    protected override ChannelRecord? GetContextChannel() => null;
+    protected override UserRecord? GetContextUser() => null;
 
     public ICommand Command { get; init; }
 
