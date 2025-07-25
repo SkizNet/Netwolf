@@ -8,9 +8,9 @@ namespace Netwolf.PluginFramework.Context;
 /// <summary>
 /// Abstraction around framework IContext objects
 /// </summary>
-internal class PluginCommandContext : IPluginCommandContext
+internal class PluginContext : IPluginContext
 {
-    internal PluginCommandContext(IContext context)
+    internal PluginContext(IContext context)
     {
 
     }

@@ -105,7 +105,7 @@ internal class PluginLoader : IPluginLoader, IDisposable
             // we have a plugin! grab metadata and initialize it
             // Activator.CreateInstance returns null only for Nullable<T> types, which the plugin is guaranteed not to be
             pluginRef = (IPlugin)Activator.CreateInstance(pluginClass.PluginType)!;
-            pluginHost = new PluginHost(this, HookRegistry, NetworkEvents, pluginId);
+            pluginHost = new PluginHost(HookRegistry, NetworkEvents, pluginRef, pluginId);
             pluginRef.Initialize(pluginHost);
             PluginInfo info = new(pluginRef, context, pluginHost);
             _loadedPlugins[pluginId] = info;

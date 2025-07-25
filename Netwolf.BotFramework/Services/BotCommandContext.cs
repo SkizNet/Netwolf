@@ -4,12 +4,16 @@
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.Context;
 using Netwolf.Transport.IRC;
+using Netwolf.Transport.State;
 
 namespace Netwolf.BotFramework.Services;
 
 public class BotCommandContext : ExtensibleContextBase
 {
     public override object Sender => Bot;
+    public override INetworkInfo Network => Bot.NetworkInfo;
+    public override ChannelRecord? Channel => Bot.NetworkInfo.GetChannel(Target);
+    public override UserRecord? User => Bot.NetworkInfo.GetUserByNick(SenderNickname);
 
     /// <summary>
     /// Bot that received the command

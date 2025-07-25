@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 using Netwolf.Transport.IRC;
+using Netwolf.Transport.State;
 
 using System.Collections.Immutable;
 
@@ -20,6 +21,9 @@ public abstract class ExtensibleContextBase : IContext
     private ImmutableDictionary<Type, object?> _extensionData = ImmutableDictionary<Type, object?>.Empty;
 
     public abstract object Sender { get; }
+    public abstract INetworkInfo Network { get; }
+    public abstract ChannelRecord? Channel { get; }
+    public abstract UserRecord? User { get; }
 
     public IValidationContextFactory? ValidationContextFactory { get; protected init; }
 

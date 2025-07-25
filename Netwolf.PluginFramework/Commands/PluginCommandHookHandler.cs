@@ -25,7 +25,7 @@ internal class PluginCommandHookHandler : ICommandHandler<PluginResult>
     public async Task<PluginResult> ExecuteAsync(ICommand command, IContext sender, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        PluginCommandContext context = new(sender);
+        PluginContext context = new(sender);
         return await Callback(new(command, PluginHost, context, cancellationToken));
     }
 }

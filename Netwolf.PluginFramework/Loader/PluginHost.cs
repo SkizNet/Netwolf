@@ -28,13 +28,13 @@ internal sealed class PluginHost : IPluginHost, IDisposable
 
     public event EventHandler? Unloading;
 
-    private IPluginLoader PluginLoader { get; init; }
+    private int PluginId { get; init; }
+
+    private WeakReference<IPlugin> Plugin { get; init; }
 
     private ICommandHookRegistry HookRegistry { get; init; }
 
     private NetworkEvents NetworkEvents { get; init; }
-
-    private int PluginId { get; init; }
 
     private ConcurrentBag<IDisposable> Hooks { get; init; } = [];
 
@@ -64,14 +64,14 @@ internal sealed class PluginHost : IPluginHost, IDisposable
     }
 
     public PluginHost(
-        IPluginLoader pluginLoader,
         ICommandHookRegistry hookRegistry,
         NetworkEvents networkEvents,
+        IPlugin plugin,
         int pluginId)
     {
-        PluginLoader = pluginLoader;
         HookRegistry = hookRegistry;
         NetworkEvents = networkEvents;
+        Plugin = new(plugin);
         PluginId = pluginId;
 
         NetworkEvents.NetworkConnected += OnNetworkConnected;
@@ -152,7 +152,7 @@ internal sealed class PluginHost : IPluginHost, IDisposable
             .Select(c => new PluginCommandEventArgs(
                 c.Command,
                 this,
-                new PluginCommandContext(new ServerCommandContext(c.Network, c.Command)),
+                new PluginContext(new ServerCommandContext(c.Network, c.Command)),
                 c.Token))
             .Subscribe(PluginCommandStream.OnNext);
 
@@ -161,10 +161,9 @@ internal sealed class PluginHost : IPluginHost, IDisposable
 
     private void OnNetworkDisconnected(object? sender, NetworkEventArgs e)
     {
-        if (Subscriptions.TryGetValue(e.Network, out var subscription))
+        if (Subscriptions.Remove(e.Network, out var subscription))
         {
             subscription.Dispose();
-            Subscriptions.Remove(e.Network);
         }
     }
 
@@ -173,6 +172,15 @@ internal sealed class PluginHost : IPluginHost, IDisposable
         if (!_disposed)
         {
             _disposed = true;
+
+            try
+            {
+                CancellationSource.Cancel(false);
+            }
+            catch (Exception)
+            {
+                // swallow exceptions here
+            }
 
             while (Hooks.TryTake(out var hook))
             {

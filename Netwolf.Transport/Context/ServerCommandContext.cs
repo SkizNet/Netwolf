@@ -3,20 +3,27 @@
 
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.IRC;
+using Netwolf.Transport.State;
 
 namespace Netwolf.Transport.Context;
 
 public class ServerCommandContext : ExtensibleContextBase
 {
-    public override object Sender => Network;
+    private readonly INetwork _network;
+    private readonly INetworkInfo _networkInfo;
 
-    public INetwork Network { get; init; }
+    public override object Sender => _network;
+    public override INetworkInfo Network => _networkInfo;
+    public override ChannelRecord? Channel => null;
+    public override UserRecord? User => null;
 
     public ICommand Command { get; init; }
 
     public ServerCommandContext(INetwork network, ICommand command)
     {
-        Network = network;
+        _network = network;
+        _networkInfo = network.AsNetworkInfo();
         Command = command;
+        // TODO: Process Command to extract channel/user context
     }
 }

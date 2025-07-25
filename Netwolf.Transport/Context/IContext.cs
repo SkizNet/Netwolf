@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 using Netwolf.Transport.IRC;
+using Netwolf.Transport.State;
 
 namespace Netwolf.Transport.Context;
 
@@ -21,6 +22,23 @@ public interface IContext
     /// responsible for dispatching this command.
     /// </summary>
     object Sender { get; }
+
+    /// <summary>
+    /// The network this command is associated with.
+    /// </summary>
+    INetworkInfo Network { get; }
+
+    /// <summary>
+    /// If this command is associated with a channel, this
+    /// contains the channel information. Otherwise, it is null.
+    /// </summary>
+    ChannelRecord? Channel { get; }
+
+    /// <summary>
+    /// If this command is associated with a user (e.g. a PM), this
+    /// contains the user information. Otherwise, it is null.
+    /// </summary>
+    UserRecord? User { get; }
 
     /// <summary>
     /// A means of obtaining a ValidationContext for parameter validation.

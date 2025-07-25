@@ -7,7 +7,7 @@ namespace Netwolf.PluginFramework.Context;
 /// Opaque object representing the context surrounding the
 /// invocation of a plugin command or plugin command hook.
 /// </summary>
-public interface IPluginCommandContext
+public interface IPluginContext
 {
     // This interface intentionally has no members.
 }
