@@ -59,10 +59,11 @@ public class NetworkTests
         using var network = networkFactory.Create("NetwolfTest", MakeNetworkOptions());
 
         await network.ConnectAsync();
+        var info = network.AsNetworkInfo();
         Assert.IsTrue(network.IsConnected);
-        Assert.AreEqual("test", network.Nick);
-        Assert.AreEqual("test", network.Ident);
-        Assert.AreEqual("127.0.0.1", network.Host);
+        Assert.AreEqual("test", info.Nick);
+        Assert.AreEqual("test", info.Ident);
+        Assert.AreEqual("127.0.0.1", info.Host);
     }
 
     [TestMethod]
@@ -88,6 +89,7 @@ public class NetworkTests
 
         using var network = networkFactory.Create("NetwolfTest", options);
         await network.ConnectAsync();
-        Assert.AreEqual("foo", network.Account);
+        var info = network.AsNetworkInfo();
+        Assert.AreEqual("foo", info.Account);
     }
 }

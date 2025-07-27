@@ -10,8 +10,13 @@ namespace Netwolf.Transport.IRC;
 /// <summary>
 /// Represents a Network
 /// </summary>
-public interface INetwork : INetworkInfo, IDisposable, IAsyncDisposable
+public interface INetwork : IDisposable, IAsyncDisposable
 {
+    /// <summary>
+    /// User-defined network name
+    /// </summary>
+    string Name { get; }
+
     /// <summary>
     /// True if we are currently connected to this Network
     /// </summary>

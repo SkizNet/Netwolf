@@ -93,56 +93,37 @@ public partial class Network : INetwork
         }
     }
 
+    /// <inheritdoc />
+    public string Name { get; init; }
+
     /// <summary>
     /// Network state
     /// </summary>
     private NetworkState State { get; set; }
 
-    /// <summary>
-    /// Retrieve an immutable snapshot of the current network state.
-    /// </summary>
-    /// <returns></returns>
+    /// <inheritdoc />
     public INetworkInfo AsNetworkInfo() => State;
 
-    /// <summary>
-    /// True if we are currently connected to this Network
-    /// </summary>
+    /// <inheritdoc />
     public bool IsConnected => _connection?.IsConnected == true && _userRegistrationCompletionSource == null;
 
     #region INetworkInfo
     /// <summary>
-    /// Shortcut to obtain the UserRecord of the current connection
-    /// </summary>
-    public UserRecord Self => IsConnected ? State.Self : throw new InvalidOperationException("Network is disconnected.");
-
-    /// <summary>
-    /// User-defined network name (not necessarily what the network actually calls itself)
-    /// </summary>
-    public string Name { get; init; }
-
-    /// <summary>
     /// Limits for this connection.
     /// </summary>
-    public NetworkLimits Limits
+    protected NetworkLimits Limits
     {
         get => State.Limits;
-        protected set => State = State with { Limits = value };
+        set => State = State with { Limits = value };
     }
 
     /// <summary>
-    /// Client ID for this connection.
-    /// Throws InvalidOperationException if not currently connected.
-    /// </summary>
-    public Guid ClientId => IsConnected ? State.ClientId : throw new InvalidOperationException("Network is disconnected.");
-
-    /// <summary>
     /// Nickname for this connection.
-    /// Throws InvalidOperationException if not currently connected.
     /// </summary>
-    public string Nick
+    protected string Nick
     {
-        get => IsConnected ? State.Nick : throw new InvalidOperationException("Network is disconnected.");
-        protected set => State = State with
+        get => State.Nick;
+        set => State = State with
         {
             Lookup = State.Lookup
                 .Remove(IrcUtil.Casefold(State.Nick, CaseMapping))
@@ -153,90 +134,49 @@ public partial class Network : INetwork
 
     /// <summary>
     /// Ident for this connection.
-    /// Throws InvalidOperationException if not currently connected.
     /// </summary>
-    public string Ident
+    protected string Ident
     {
-        get => IsConnected ? State.Ident : throw new InvalidOperationException("Network is disconnected.");
-        protected set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Ident = value }) };
+        get => State.Ident;
+        set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Ident = value }) };
     }
 
     /// <summary>
     /// Hostname for this connection.
-    /// Throws InvalidOperationException if not currently connected.
     /// </summary>
-    public string Host
+    protected string Host
     {
-        get => IsConnected ? State.Host : throw new InvalidOperationException("Network is disconnected.");
-        protected set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Host = value }) };
+        get => State.Host;
+        set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Host = value }) };
     }
 
     /// <summary>
     /// Account name for this connection, or null if not logged in.
-    /// Throws InvalidOperationException if not currently connected.
     /// </summary>
-    public string? Account
+    protected string? Account
     {
-        get => IsConnected ? State.Account : throw new InvalidOperationException("Network is disconnected.");
-        protected set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Account = value }) };
+        get => State.Account;
+        set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Account = value }) };
     }
 
     /// <summary>
     /// Real name (GECOS) for this connection.
-    /// Throws InvalidOperationException if not currently connected.
     /// </summary>
-    public string RealName
+    protected string RealName
     {
-        get => IsConnected ? State.RealName : throw new InvalidOperationException("Network is disconnected.");
-        protected set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { RealName = value }) };
+        get => State.RealName;
+        set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { RealName = value }) };
     }
-
-    /// <summary>
-    /// Away status for this connection.
-    /// Throws InvalidOperationException if not currently connected.
-    /// Read-only; change the away reason instead to manipulate away status.
-    /// </summary>
-    public bool IsAway => IsConnected ? State.IsAway : throw new InvalidOperationException("Network is disconnected.");
 
     /// <summary>
     /// User modes for this connection.
     /// Throws InvalidOperationException if not currently connected.
     /// </summary>
-    public ImmutableHashSet<char> UserModes
+    protected ImmutableHashSet<char> UserModes
     {
-        get => IsConnected ? State.UserModes : throw new InvalidOperationException("Network is disconnected.");
-        protected set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Modes = value }) };
+        get => State.UserModes;
+        set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Modes = value }) };
     }
-
-    /// <inheritdoc />
-    public IReadOnlyDictionary<ChannelRecord, string> Channels => ((INetworkInfo)State).Channels;
-
-    /// <inheritdoc />
-    public bool TryGetEnabledCap(string cap, out string? value) => State.TryGetEnabledCap(cap, out value);
-
-    /// <inheritdoc />
-    public bool TryGetISupport(ISupportToken token, out string? value) => State.TryGetISupport(token, out value);
-
-    /// <inheritdoc />
-    public string? GetISupportOrDefault(ISupportToken token, string? defaultValue = null) => State.GetISupportOrDefault(token, defaultValue);
-
-    /// <inheritdoc />
-    public IReadOnlyDictionary<UserRecord, string> GetUsersInChannel(ChannelRecord channel) => State.GetUsersInChannel(channel);
-
-    /// <inheritdoc />
-    public IReadOnlyDictionary<ChannelRecord, string> GetChannelsForUser(UserRecord user) => State.GetChannelsForUser(user);
-
-    /// <inheritdoc />
-    public UserRecord? GetUserByNick(string nick) => State.GetUserByNick(nick);
-
-    /// <inheritdoc />
-    public IEnumerable<UserRecord> GetUsersByAccount(string account) => State.GetUsersByAccount(account);
-
-    /// <inheritdoc />
-    public IEnumerable<UserRecord> GetAllUsers() => State.GetAllUsers();
-
-    /// <inheritdoc />
-    public ChannelRecord? GetChannel(string name) => State.GetChannel(name);
     #endregion
 
     /// <summary>
@@ -355,10 +295,11 @@ public partial class Network : INetwork
     protected virtual async ValueTask DisposeAsyncCore()
     {
         SelectedSaslMech?.Dispose();
-        _capEventStream.Dispose();
         _messageLoopTokenSource.Cancel();
         await _messageLoop.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         _messageLoopTokenSource.Dispose();
+        _capEventStream.Dispose();
+        _commandEventStream.Dispose();
         await NullableHelper.DisposeAsyncIfNotNull(_connection).ConfigureAwait(false);
     }
 
@@ -377,10 +318,11 @@ public partial class Network : INetwork
             if (disposing)
             {
                 SelectedSaslMech?.Dispose();
-                _capEventStream.Dispose();
                 _messageLoopTokenSource.Cancel();
                 _messageLoop.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing).GetAwaiter().GetResult();
                 _messageLoopTokenSource.Dispose();
+                _capEventStream.Dispose();
+                _commandEventStream.Dispose();
                 _connection?.Dispose();
             }
 
@@ -483,7 +425,7 @@ public partial class Network : INetwork
                         pingTimeoutTimers.Add(Task.Delay(Options.PingTimeout, token));
                         string cookie = String.Format("NWPC{0:X16}", Random.Shared.NextInt64());
                         pingTimeoutCookies.Add(cookie);
-                        _ = Connection.UnsafeSendRawAsync($"PING {cookie}", token);
+                        _ = UnsafeSendRawAsync($"PING {cookie}", token);
                     }
 
                     // reset activity so that if we make it to another PingInterval with no activity we send a PING
@@ -590,7 +532,7 @@ public partial class Network : INetwork
                 // default to true so that if we abort prematurely, we skip to the error message
                 // about the connection being aborted rather user registration timing out
                 bool registrationComplete = true;
-                var commandOptions = CommandCreationOptions.MakeOptions(this);
+                var commandOptions = CommandCreationOptions.MakeOptions(State);
 
                 try
                 {
@@ -664,7 +606,7 @@ public partial class Network : INetwork
         try
         {
             await Connection.SendAsync(
-                CommandFactory.PrepareClientCommand(State.Self, "QUIT", [reason], null, CommandCreationOptions.MakeOptions(this)),
+                CommandFactory.PrepareClientCommand(State.Self, "QUIT", [reason], null, CommandCreationOptions.MakeOptions(State)),
                 default).ConfigureAwait(false);
         }
         finally
@@ -716,7 +658,7 @@ public partial class Network : INetwork
     public DeferredCommand SendRawAsync(string rawLine, CancellationToken cancellationToken = default)
     {
         var parsed = CommandFactory.Parse(CommandType.Client, rawLine);
-        var command = CommandFactory.PrepareClientCommand(Self, parsed.Verb, parsed.Args, parsed.Tags, CommandCreationOptions.MakeOptions(this));
+        var command = CommandFactory.PrepareClientCommand(State.Self, parsed.Verb, parsed.Args, parsed.Tags, CommandCreationOptions.MakeOptions(State));
         return new(InternalSendAsync, CommandReceived.Select(c => c.Command), command, cancellationToken);
     }
 
@@ -750,7 +692,7 @@ public partial class Network : INetwork
                     string secondary = Options.SecondaryNick ?? $"{Options.PrimaryNick}_";
                     if (attempted == Options.PrimaryNick)
                     {
-                        _ = Connection.UnsafeSendRawAsync($"NICK {secondary}", cancellationToken);
+                        _ = UnsafeSendRawAsync($"NICK {secondary}", cancellationToken);
                     }
                     else if (attempted == secondary)
                     {
@@ -763,7 +705,7 @@ public partial class Network : INetwork
                 case "422":
                     // got MOTD, we've been registered. But we might still not know our own ident/host,
                     // so send out a WHO for ourselves before handing control back to client
-                    _ = Connection.UnsafeSendRawAsync($"WHO {State.Nick}", cancellationToken);
+                    _ = UnsafeSendRawAsync($"WHO {State.Nick}", cancellationToken);
                     break;
                 case "315":
                     // end of WHO, so we've pulled our own client details and can hand back control
@@ -774,7 +716,7 @@ public partial class Network : INetwork
                     // although if it's saying our CAP END failed (broken ircd), don't cause an infinite loop
                     if (command.Args[1] != "END")
                     {
-                        _ = Connection.UnsafeSendRawAsync("CAP END", cancellationToken);
+                        _ = UnsafeSendRawAsync("CAP END", cancellationToken);
                     }
 
                     break;
@@ -875,7 +817,7 @@ public partial class Network : INetwork
             case "332":
                 // RPL_TOPIC (332) <client> <channel> :<topic>
                 {
-                    if (GetChannel(command.Args[1]) is ChannelRecord channel)
+                    if (State.GetChannel(command.Args[1]) is ChannelRecord channel)
                     {
                         State = State with
                         {
@@ -889,7 +831,7 @@ public partial class Network : INetwork
                 {
                     var hopReal = command.Args[7].Split(' ', 2);
                     string realName = hopReal.Length > 1 ? hopReal[1] : string.Empty;
-                    if (GetUserByNick(command.Args[5]) is UserRecord user)
+                    if (State.GetUserByNick(command.Args[5]) is UserRecord user)
                     {
                         // existing user; update info
                         user = user with
@@ -916,7 +858,7 @@ public partial class Network : INetwork
                     }
 
                     // channel being null is ok here since /who nick returns an arbitrary channel or potentially a '*'
-                    ChannelRecord? channel = command.Args[1] == "*" ? null : GetChannel(command.Args[1]);
+                    ChannelRecord? channel = command.Args[1] == "*" ? null : State.GetChannel(command.Args[1]);
 
                     // if channel isn't known and this user didn't share any other channels with us, purge it
                     if (user.Id != State.ClientId && channel == null && user.Channels.Count == 0)
@@ -960,7 +902,7 @@ public partial class Network : INetwork
                     // if userhost-in-names isn't enabled we only get nicknames here, which means UserRecords will have empty string idents/hosts,
                     // which is a corner case that downstream users shouldn't need to deal with. Better for them to just fail a record lookup until
                     // they issue a WHO or WHOX for the channel.
-                    if (GetChannel(command.Args[2]) is not ChannelRecord channel || !TryGetEnabledCap("userhost-in-names", out _))
+                    if (State.GetChannel(command.Args[2]) is not ChannelRecord channel || !State.TryGetEnabledCap("userhost-in-names", out _))
                     {
                         break;
                     }
@@ -978,7 +920,7 @@ public partial class Network : INetwork
                             break;
                         }
 
-                        var user = GetUserByNick(nick)
+                        var user = State.GetUserByNick(nick)
                             ?? new UserRecord(
                                 Guid.NewGuid(),
                                 nick,
@@ -1018,7 +960,7 @@ public partial class Network : INetwork
                 if (SuspendCapEndForSasl)
                 {
                     SuspendCapEndForSasl = false;
-                    _ = Connection.UnsafeSendRawAsync("CAP END", cancellationToken);
+                    _ = UnsafeSendRawAsync("CAP END", cancellationToken);
                 }
                 break;
             case "904":
@@ -1109,7 +1051,7 @@ public partial class Network : INetwork
                                     break;
                                 case var _ when prefixModes.Contains(c):
                                     {
-                                        var user = GetUserByNick(command.Args[argIndex]);
+                                        var user = State.GetUserByNick(command.Args[argIndex]);
                                         if (user == null || !user.Channels.TryGetValue(channel.Id, out string? status))
                                         {
                                             Logger.LogWarning(
@@ -1201,7 +1143,7 @@ public partial class Network : INetwork
                         break;
                     }
 
-                    var channel = GetChannel(command.Args[0]);
+                    var channel = State.GetChannel(command.Args[0]);
                     var (nick, ident, host) = IrcUtil.SplitHostmask(command.Source);
                     // don't blow up if the ircd gave us garbage
                     if (string.IsNullOrEmpty(nick) || string.IsNullOrEmpty(ident) || string.IsNullOrEmpty(host))
@@ -1210,11 +1152,11 @@ public partial class Network : INetwork
                         break;
                     }
 
-                    var user = GetUserByNick(nick);
+                    var user = State.GetUserByNick(nick);
 
                     if (channel == null)
                     {
-                        if (user?.Id == ClientId)
+                        if (user?.Id == State.ClientId)
                         {
                             // if we joined a new channel, add it to state
                             channel = new ChannelRecord(
@@ -1234,7 +1176,7 @@ public partial class Network : INetwork
 
                     string? account = null;
                     string realName = string.Empty;
-                    if (TryGetEnabledCap("extended-join", out _))
+                    if (State.TryGetEnabledCap("extended-join", out _))
                     {
                         account = command.Args[1] != "*" ? command.Args[1] : null;
                         realName = command.Args[2];
@@ -1273,7 +1215,7 @@ public partial class Network : INetwork
             case "PART":
                 // PART <channel>{,<channel>} [:<reason>]
                 {
-                    if (!IrcUtil.TryExtractUserFromSource(command, this, out var user))
+                    if (!IrcUtil.TryExtractUserFromSource(command, State, out var user))
                     {
                         break;
                     }
@@ -1281,7 +1223,7 @@ public partial class Network : INetwork
                     // RFC states that the PART message from server to client SHOULD NOT send multiple channels, not MUST NOT, so accomodate multiple channels here
                     foreach (var channelName in command.Args[0].Split(',', StringSplitOptions.RemoveEmptyEntries))
                     {
-                        if (GetChannel(channelName) is not ChannelRecord channel)
+                        if (State.GetChannel(channelName) is not ChannelRecord channel)
                         {
                             Logger.LogWarning("Potential state corruption detected: Received PART message for {Channel} but it does not exist in state", channelName);
                             continue;
@@ -1300,13 +1242,13 @@ public partial class Network : INetwork
                         break;
                     }
 
-                    if (GetChannel(command.Args[0]) is not ChannelRecord channel)
+                    if (State.GetChannel(command.Args[0]) is not ChannelRecord channel)
                     {
                         Logger.LogWarning("Potential state corruption detected: Received KICK message for {Channel} but it does not exist in state", command.Args[0]);
                         break;
                     }
 
-                    if (GetUserByNick(command.Args[1]) is not UserRecord user)
+                    if (State.GetUserByNick(command.Args[1]) is not UserRecord user)
                     {
                         Logger.LogWarning("Potential state corruption detected: Received KICK message for {Nick} but they do not exist in state", command.Args[1]);
                         break;
@@ -1318,7 +1260,7 @@ public partial class Network : INetwork
             case "ACCOUNT":
                 // ACCOUNT <accountname>
                 {
-                    if (IrcUtil.TryExtractUserFromSource(command, this, out var user))
+                    if (IrcUtil.TryExtractUserFromSource(command, State, out var user))
                     {
                         State = State with
                         {
@@ -1332,7 +1274,7 @@ public partial class Network : INetwork
             case "AWAY":
                 // AWAY [:<message>]
                 {
-                    if (IrcUtil.TryExtractUserFromSource(command, this, out var user))
+                    if (IrcUtil.TryExtractUserFromSource(command, State, out var user))
                     {
                         State = State with
                         {
@@ -1346,7 +1288,7 @@ public partial class Network : INetwork
             case "CHGHOST":
                 // CHGHOST <new_user> <new_host>
                 {
-                    if (IrcUtil.TryExtractUserFromSource(command, this, out var user))
+                    if (IrcUtil.TryExtractUserFromSource(command, State, out var user))
                     {
                         State = State with
                         {
@@ -1360,7 +1302,7 @@ public partial class Network : INetwork
             case "SETNAME":
                 // SETNAME :<realname>
                 {
-                    if (IrcUtil.TryExtractUserFromSource(command, this, out var user))
+                    if (IrcUtil.TryExtractUserFromSource(command, State, out var user))
                     {
                         State = State with
                         {
@@ -1386,7 +1328,7 @@ public partial class Network : INetwork
                         break;
                     }
 
-                    if (IrcUtil.TryExtractUserFromSource(command, this, out var user))
+                    if (IrcUtil.TryExtractUserFromSource(command, State, out var user))
                     {
                         if (info.GetUserByNick(command.Args[0]) is not null && !IrcUtil.IrcEquals(user.Nick, command.Args[0], CaseMapping))
                         {
@@ -1408,7 +1350,7 @@ public partial class Network : INetwork
             case "RENAME":
                 // RENAME <old_channel> <new_channel> :<reason>
                 {
-                    if (GetChannel(command.Args[0]) is ChannelRecord channel && info.ChannelTypes.Contains(command.Args[1][0]))
+                    if (State.GetChannel(command.Args[0]) is ChannelRecord channel && info.ChannelTypes.Contains(command.Args[1][0]))
                     {
                         if (info.GetChannel(command.Args[1]) is not null && !IrcUtil.IrcEquals(channel.Name, command.Args[1], CaseMapping))
                         {
@@ -1429,18 +1371,18 @@ public partial class Network : INetwork
                 break;
             case "PING":
                 // send a PONG
-                _ = Connection.UnsafeSendRawAsync($"PONG {command.ArgString}", cancellationToken);
+                _ = UnsafeSendRawAsync($"PONG {command.ArgString}", cancellationToken);
                 break;
             case "QUIT":
                 // QUIT [:<reason>]
                 {
-                    if (!IrcUtil.TryExtractUserFromSource(command, this, out var user))
+                    if (!IrcUtil.TryExtractUserFromSource(command, State, out var user))
                     {
                         break;
                     }
 
                     // spec says if the client quits the server replies with ERROR, not QUIT
-                    if (user.Id == ClientId)
+                    if (user.Id == State.ClientId)
                     {
                         Logger.LogWarning("Protocol violation: Received a QUIT message with our client as its source");
                         break;
@@ -1584,7 +1526,7 @@ public partial class Network : INetwork
                         {
                             if (consumedBytes + token.Length > maxBytes)
                             {
-                                _ = Connection.UnsafeSendRawAsync($"CAP REQ :{string.Join(" ", param)}", cancellationToken);
+                                _ = UnsafeSendRawAsync($"CAP REQ :{string.Join(" ", param)}", cancellationToken);
                                 consumedBytes = 0;
                                 param.Clear();
                             }
@@ -1595,12 +1537,12 @@ public partial class Network : INetwork
 
                         if (param.Count > 0)
                         {
-                            _ = Connection.UnsafeSendRawAsync($"CAP REQ :{string.Join(" ", param)}", cancellationToken);
+                            _ = UnsafeSendRawAsync($"CAP REQ :{string.Join(" ", param)}", cancellationToken);
                         }
                         else if (!IsConnected)
                         {
                             // we don't support any of the server's caps, so end cap negotiation here
-                            _ = Connection.UnsafeSendRawAsync("CAP END", cancellationToken);
+                            _ = UnsafeSendRawAsync("CAP END", cancellationToken);
                         }
                     }
                 }
@@ -1628,7 +1570,7 @@ public partial class Network : INetwork
 
                     if (command.Args[1] == "ACK" && !IsConnected && !SuspendCapEndForSasl)
                     {
-                        _ = Connection.UnsafeSendRawAsync("CAP END", cancellationToken);
+                        _ = UnsafeSendRawAsync("CAP END", cancellationToken);
                     }
                 }
 
@@ -1651,7 +1593,7 @@ public partial class Network : INetwork
                 // we couldn't set CAPs, bail out
                 if (!IsConnected)
                 {
-                    _ = Connection.UnsafeSendRawAsync("CAP END", cancellationToken);
+                    _ = UnsafeSendRawAsync("CAP END", cancellationToken);
                 }
 
                 break;
@@ -1691,7 +1633,7 @@ public partial class Network : INetwork
                 }
 
                 SaslMechs.Remove(mech);
-                _ = Connection.UnsafeSendRawAsync($"AUTHENTICATE {mech}", cancellationToken);
+                _ = UnsafeSendRawAsync($"AUTHENTICATE {mech}", cancellationToken);
                 return;
             }
         }
@@ -1710,7 +1652,7 @@ public partial class Network : INetwork
             }
 
             SuspendCapEndForSasl = false;
-            _ = Connection.UnsafeSendRawAsync("CAP END", cancellationToken);
+            _ = UnsafeSendRawAsync("CAP END", cancellationToken);
         }
     }
 
@@ -1746,7 +1688,7 @@ public partial class Network : INetwork
                 SaslBuffer.Clear();
                 SelectedSaslMech.Dispose();
                 SelectedSaslMech = null;
-                _ = Connection.UnsafeSendRawAsync("AUTHENTICATE *", cancellationToken);
+                _ = UnsafeSendRawAsync("AUTHENTICATE *", cancellationToken);
                 return;
             }
         }
@@ -1771,14 +1713,14 @@ public partial class Network : INetwork
                 // abort SASL
                 SelectedSaslMech.Dispose();
                 SelectedSaslMech = null;
-                _ = Connection.UnsafeSendRawAsync("AUTHENTICATE *", cancellationToken);
+                _ = UnsafeSendRawAsync("AUTHENTICATE *", cancellationToken);
             }
             else
             {
                 // send response
                 if (responseBytes.Length == 0)
                 {
-                    _ = Connection.UnsafeSendRawAsync("AUTHENTICATE +", cancellationToken);
+                    _ = UnsafeSendRawAsync("AUTHENTICATE +", cancellationToken);
                 }
                 else
                 {
@@ -1788,14 +1730,14 @@ public partial class Network : INetwork
                     do
                     {
                         int end = Math.Min(start + 400, response.Length);
-                        _ = Connection.UnsafeSendRawAsync($"AUTHENTICATE {response[start..end]}", cancellationToken);
+                        _ = UnsafeSendRawAsync($"AUTHENTICATE {response[start..end]}", cancellationToken);
                         start = end;
                     } while (start < response.Length);
 
                     if (response.Length % 400 == 0)
                     {
                         // if we sent exactly 400 bytes in the last line, send a blank line to let server know we're done
-                        _ = Connection.UnsafeSendRawAsync("AUTHENTICATE +", cancellationToken);
+                        _ = UnsafeSendRawAsync("AUTHENTICATE +", cancellationToken);
                     }
                 }
             }
@@ -1828,13 +1770,13 @@ public partial class Network : INetwork
     private void RemoveUserFromChannel(UserRecord user, ChannelRecord channel)
     {
         // is this us?
-        if (user.Id == ClientId)
+        if (user.Id == State.ClientId)
         {
             // if we left a channel, remove the channel from all users and clear our lookup entry
             Logger.LogTrace("Cleaning up channel {Channel} because we left it", channel.Name);
 
             List<string> lookupRemove = [IrcUtil.Casefold(channel.Name, CaseMapping)];
-            List<UserRecord> userRemove = GetAllUsers()
+            List<UserRecord> userRemove = State.GetAllUsers()
                 .Where(u => u.Channels.Count == 1 && u.Channels.ContainsKey(channel.Id))
                 .ToList();
 
@@ -1946,7 +1888,7 @@ public partial class Network : INetwork
     private void ProcessServerCommand(ICommand command, CancellationToken cancellationToken)
     {
         // ignore known commands with incorrect arity
-        if (ArityHelper.CheckArity(this, command.Verb, command.Args.Count))
+        if (ArityHelper.CheckArity(State, command.Verb, command.Args.Count))
         {
             OnCommandReceived(command, cancellationToken);
             _commandEventStream.OnNext(new(this, command, cancellationToken));

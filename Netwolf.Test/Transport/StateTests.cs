@@ -41,11 +41,12 @@ public class StateTests
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #TestiNg");
-        var channel = network.GetChannel("#testing");
+        var info = network.AsNetworkInfo();
+        var channel = info.GetChannel("#testing");
         Assert.IsNotNull(channel);
         Assert.AreEqual("#TestiNg", channel.Name);
-        Assert.IsTrue(network.Channels.ContainsKey(channel));
-        Assert.AreEqual(network.ClientId, channel.Users.Single().Key);
+        Assert.IsTrue(info.Channels.ContainsKey(channel));
+        Assert.AreEqual(info.ClientId, channel.Users.Single().Key);
         Assert.AreEqual(string.Empty, channel.Users.Single().Value);
     }
 
@@ -59,8 +60,9 @@ public class StateTests
 
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #TestiNg");
         network.ReceiveLineForUnitTests(":foo!~bar@baz/baz JOIN #TestiNg");
-        var channel = network.GetChannel("#testing");
-        var user = network.GetUserByNick("FOO");
+        var info = network.AsNetworkInfo();
+        var channel = info.GetChannel("#testing");
+        var user = info.GetUserByNick("FOO");
         Assert.IsNotNull(channel);
         Assert.IsNotNull(user);
         Assert.AreEqual(2, channel.Users.Count);
@@ -86,8 +88,9 @@ public class StateTests
         network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :extended-join");
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #TestiNg different :also different");
         network.ReceiveLineForUnitTests(":foo!~bar@baz/baz JOIN #TestiNg * :UwU");
-        var channel = network.GetChannel("#testing");
-        var user = network.GetUserByNick("FOO");
+        var info = network.AsNetworkInfo();
+        var channel = info.GetChannel("#testing");
+        var user = info.GetUserByNick("FOO");
         Assert.IsNotNull(channel);
         Assert.IsNotNull(user);
         Assert.AreEqual(2, channel.Users.Count);
@@ -102,8 +105,8 @@ public class StateTests
         Assert.AreEqual(string.Empty, user.Channels[channel.Id]);
 
         // ensure that our details were updated too
-        Assert.AreEqual("different", network.Account);
-        Assert.AreEqual("also different", network.RealName);
+        Assert.AreEqual("different", info.Account);
+        Assert.AreEqual("also different", info.RealName);
     }
 
     [TestMethod]
@@ -115,8 +118,9 @@ public class StateTests
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
         network.ReceiveLineForUnitTests(":foo!~bar@baz/baz JOIN #testing");
-        var channel = network.GetChannel("#testing");
-        var user = network.GetUserByNick("foo");
+        var info = network.AsNetworkInfo();
+        var channel = info.GetChannel("#testing");
+        var user = info.GetUserByNick("foo");
         Assert.IsNull(channel);
         Assert.IsNull(user);
     }
@@ -143,10 +147,11 @@ public class StateTests
 
         // line should remove a from the channel via various methods
         network.ReceiveLineForUnitTests(line);
+        var info = network.AsNetworkInfo();
 
-        var channel = network.GetChannel("#testing");
+        var channel = info.GetChannel("#testing");
         Assert.IsNotNull(channel);
-        Assert.IsNull(network.GetUserByNick("a"));
+        Assert.IsNull(info.GetUserByNick("a"));
         Assert.AreEqual(3, channel.Users.Count);
     }
 
@@ -170,9 +175,10 @@ public class StateTests
 
         // line should remove a from the channel via various methods
         network.ReceiveLineForUnitTests(line);
+        var info = network.AsNetworkInfo();
 
-        Assert.IsNull(network.GetChannel("#testing"));
-        Assert.IsNull(network.GetUserByNick("a"));
+        Assert.IsNull(info.GetChannel("#testing"));
+        Assert.IsNull(info.GetUserByNick("a"));
     }
 
     [TestMethod]
@@ -190,9 +196,10 @@ public class StateTests
 
         network.ReceiveLineForUnitTests(":irc.netwolf.org MODE #testing +iobl a d!*@* 5");
         network.ReceiveLineForUnitTests(":irc.netwolf.org MODE #testing +vv-vv test a b c");
+        var info = network.AsNetworkInfo();
 
-        var channel = network.GetChannel("#testing")!;
-        var users = network.GetUsersInChannel(channel);
+        var channel = info.GetChannel("#testing")!;
+        var users = info.GetUsersInChannel(channel);
         var testUser = users.Single(u => u.Key.Nick == "test").Key;
         var aUser = users.Single(u => u.Key.Nick == "a").Key;
         var bUser = users.Single(u => u.Key.Nick == "b").Key;
@@ -210,8 +217,9 @@ public class StateTests
         network.ReceiveLineForUnitTests(":irc.netwolf.org MODE #testing +k-o pw a");
 
         // refresh channel data since records are immutable
-        channel = network.GetChannel("#testing")!;
-        users = network.GetUsersInChannel(channel);
+        info = network.AsNetworkInfo();
+        channel = info.GetChannel("#testing")!;
+        users = info.GetUsersInChannel(channel);
         aUser = users.Single(u => u.Key.Nick == "a").Key;
 
         Assert.AreEqual("+", users[aUser]);
@@ -238,13 +246,14 @@ public class StateTests
         network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :draft/channel-rename");
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
         network.ReceiveLineForUnitTests(line);
+        var info = network.AsNetworkInfo();
         if (!IrcUtil.IrcEquals("#testing", newChannel, CaseMapping.Ascii))
         {
             // only check if the old channel went away if we aren't doing a case change
-            Assert.IsNull(network.GetChannel("#testing"));
+            Assert.IsNull(info.GetChannel("#testing"));
         }
 
-        var channel = network.GetChannel(newChannel);
+        var channel = info.GetChannel(newChannel);
         Assert.IsNotNull(channel);
         Assert.AreEqual(newChannel, channel.Name);
     }
@@ -286,7 +295,7 @@ public class StateTests
         network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :draft/channel-rename");
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #another");
-        Assert.ThrowsException<BadStateException>(() => network.ReceiveLineForUnitTests(line));
+        Assert.ThrowsExactly<BadStateException>(() => network.ReceiveLineForUnitTests(line));
     }
 
     [DataTestMethod]
@@ -353,6 +362,6 @@ public class StateTests
 
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
         network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
-        Assert.ThrowsException<BadStateException>(() => network.ReceiveLineForUnitTests(line));
+        Assert.ThrowsExactly<BadStateException>(() => network.ReceiveLineForUnitTests(line));
     }
 }

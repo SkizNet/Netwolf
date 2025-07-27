@@ -247,7 +247,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var command = CommandFactory.PrepareClientCommand(Network.Self, verb, args, tags, CommandCreationOptions.MakeOptions(Network));
+        var command = CommandFactory.PrepareClientCommand(NetworkInfo.Self, verb, args, tags, CommandCreationOptions.MakeOptions(NetworkInfo));
         return Network.SendAsync(command, cancellationToken);
     }
 
@@ -275,16 +275,16 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     public async Task SendMessageAsync(string target, string message, IReadOnlyDictionary<string, string?> tags, CancellationToken cancellationToken)
     {
         string? sharedChannel = null;
-        if (Network.TryGetISupport(ISupportToken.CPRIVMSG, out _) && Network.GetUserByNick(target) is UserRecord targetUser)
+        if (NetworkInfo.TryGetISupport(ISupportToken.CPRIVMSG, out _) && NetworkInfo.GetUserByNick(target) is UserRecord targetUser)
         {
-            sharedChannel = Network.GetChannelsForUser(targetUser)
+            sharedChannel = NetworkInfo.GetChannelsForUser(targetUser)
                 .Select(x => x.Key)
-                .FirstOrDefault(x => !string.IsNullOrEmpty(Network.Channels.GetValueOrDefault(x)))
+                .FirstOrDefault(x => !string.IsNullOrEmpty(NetworkInfo.Channels.GetValueOrDefault(x)))
                 ?.Name;
         }
 
-        var options = CommandCreationOptions.MakeOptions(Network);
-        foreach (var command in CommandFactory.PrepareClientMessage(Network.Self, MessageType.Message, target, message, tags, sharedChannel, options))
+        var options = CommandCreationOptions.MakeOptions(NetworkInfo);
+        foreach (var command in CommandFactory.PrepareClientMessage(NetworkInfo.Self, MessageType.Message, target, message, tags, sharedChannel, options))
         {
             await Network.SendAsync(command, cancellationToken).ConfigureAwait(false);
         }
@@ -314,16 +314,16 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     public async Task SendNoticeAsync(string target, string message, IReadOnlyDictionary<string, string?> tags, CancellationToken cancellationToken)
     {
         string? sharedChannel = null;
-        if (Network.TryGetISupport(ISupportToken.CNOTICE, out _) && Network.GetUserByNick(target) is UserRecord targetUser)
+        if (NetworkInfo.TryGetISupport(ISupportToken.CNOTICE, out _) && NetworkInfo.GetUserByNick(target) is UserRecord targetUser)
         {
-            sharedChannel = Network.GetChannelsForUser(targetUser)
+            sharedChannel = NetworkInfo.GetChannelsForUser(targetUser)
                 .Select(x => x.Key)
-                .FirstOrDefault(x => !string.IsNullOrEmpty(Network.Channels.GetValueOrDefault(x)))
+                .FirstOrDefault(x => !string.IsNullOrEmpty(NetworkInfo.Channels.GetValueOrDefault(x)))
                 ?.Name;
         }
 
-        var options = CommandCreationOptions.MakeOptions(Network);
-        foreach (var command in CommandFactory.PrepareClientMessage(Network.Self, MessageType.Notice, target, message, tags, sharedChannel, options))
+        var options = CommandCreationOptions.MakeOptions(NetworkInfo);
+        foreach (var command in CommandFactory.PrepareClientMessage(NetworkInfo.Self, MessageType.Notice, target, message, tags, sharedChannel, options))
         {
             await Network.SendAsync(command, cancellationToken).ConfigureAwait(false);
         }
@@ -349,7 +349,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         }
 
         ArgumentException.ThrowIfNullOrEmpty(name);
-        if (!Network.ChannelTypes.Contains(name[0]))
+        if (!NetworkInfo.ChannelTypes.Contains(name[0]))
         {
             throw new ArgumentException($"Channel name is not a valid for this network.", nameof(name));
         }
@@ -362,10 +362,10 @@ public abstract class Bot : IDisposable, IAsyncDisposable
 
         var result = await SendAsync("JOIN", [name, key], linkedToken).WithReply(c => c.Verb switch
         {
-            var x when _joinErrors0.Contains(x) => IrcUtil.IrcEquals(c.Args[0], name, Network.CaseMapping),
-            var x when _joinErrors1.Contains(x) => IrcUtil.IrcEquals(c.Args[1], name, Network.CaseMapping),
-            "JOIN" => IrcUtil.IrcEquals(c.Args[0], name, Network.CaseMapping)
-                && IrcUtil.IrcEquals(IrcUtil.SplitHostmask(c.Source ?? string.Empty).Nick, Network.Nick, Network.CaseMapping),
+            var x when _joinErrors0.Contains(x) => IrcUtil.IrcEquals(c.Args[0], name, NetworkInfo.CaseMapping),
+            var x when _joinErrors1.Contains(x) => IrcUtil.IrcEquals(c.Args[1], name, NetworkInfo.CaseMapping),
+            "JOIN" => IrcUtil.IrcEquals(c.Args[0], name, NetworkInfo.CaseMapping)
+                && IrcUtil.IrcEquals(IrcUtil.SplitHostmask(c.Source ?? string.Empty).Nick, NetworkInfo.Nick, NetworkInfo.CaseMapping),
             _ => false
         }).ConfigureAwait(false);
 
@@ -375,12 +375,12 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         }
 
         // issue a WHOX (or WHO if WHOX isn't available) to obtain more details than NAMES is able to give
-        if (Network.TryGetISupport(ISupportToken.WHOX, out _))
+        if (NetworkInfo.TryGetISupport(ISupportToken.WHOX, out _))
         {
             string token = Random.Shared.Next(1000).ToString();
             var results = SendAsync("WHO", [name, $"%tcuhnfar,{token}"], linkedToken).WithReplies(
-                c => c.Verb == "354" && c.Args.Count == 9 && c.Args[1] == token && IrcUtil.IrcEquals(c.Args[2], name, Network.CaseMapping),
-                c => c.Verb == "315" && IrcUtil.IrcEquals(c.Args[1], name, Network.CaseMapping)
+                c => c.Verb == "354" && c.Args.Count == 9 && c.Args[1] == token && IrcUtil.IrcEquals(c.Args[2], name, NetworkInfo.CaseMapping),
+                c => c.Verb == "315" && IrcUtil.IrcEquals(c.Args[1], name, NetworkInfo.CaseMapping)
                 );
 
             await foreach (var c in results)
@@ -391,7 +391,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         else
         {
             _ = await SendAsync("WHO", [name], linkedToken)
-                .WithReply(c => c.Verb == "315" && IrcUtil.IrcEquals(c.Args[1], name, Network.CaseMapping))
+                .WithReply(c => c.Verb == "315" && IrcUtil.IrcEquals(c.Args[1], name, NetworkInfo.CaseMapping))
                 .ConfigureAwait(false);
         }
     }
@@ -416,10 +416,10 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         var result = await SendAsync("PART", [name, reason], linkedToken).WithReply(c => c.Verb switch
         {
             // channel is 2nd argument
-            "403" or "442" => IrcUtil.IrcEquals(c.Args[1], name, Network.CaseMapping),
+            "403" or "442" => IrcUtil.IrcEquals(c.Args[1], name, NetworkInfo.CaseMapping),
             // channel is 1st argument (might be a channel list) but verify source as well
-            "PART" => IrcUtil.CommaListContains(c.Args[0], name, Network.CaseMapping)
-                && IrcUtil.IrcEquals(IrcUtil.SplitHostmask(c.Source ?? string.Empty).Nick, Network.Nick, Network.CaseMapping),
+            "PART" => IrcUtil.CommaListContains(c.Args[0], name, NetworkInfo.CaseMapping)
+                && IrcUtil.IrcEquals(IrcUtil.SplitHostmask(c.Source ?? string.Empty).Nick, NetworkInfo.Nick, NetworkInfo.CaseMapping),
             _ => false
         }).ConfigureAwait(false);
 
@@ -481,8 +481,8 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         }
 
         // ignore messages sent *from* the bot (e.g. echo-message CAP is enabled)
-        var sender = Network.GetUserByNick(IrcUtil.SplitHostmask(e.Command.Source).Nick);
-        if (sender?.Id == Network.ClientId)
+        var sender = NetworkInfo.GetUserByNick(IrcUtil.SplitHostmask(e.Command.Source).Nick);
+        if (sender?.Id == NetworkInfo.ClientId)
         {
             return;
         }
@@ -490,7 +490,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         // exceptions thrown here after the first await will terminate the process, so ensure we do not throw
         try
         {
-            bool toBot = e.Command.Args[0] == Network.Nick;
+            bool toBot = e.Command.Args[0] == NetworkInfo.Nick;
             bool haveCommand = TryParseCommandAndArgs(e.Command.Args[1].AsSpan(), out var command, out var args);
 
             if (haveCommand || toBot)
@@ -551,7 +551,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
     private bool TryParseCommandAndArgs(ReadOnlySpan<char> line, out string command, out string[] args)
     {
         bool haveCommand = false;
-        string nickPrefix = $"{Network.Nick}: ";
+        string nickPrefix = $"{NetworkInfo.Nick}: ";
 
         if (line.StartsWith(Options.CommandPrefix))
         {
@@ -783,7 +783,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         Justification = "Immutable*.Empty is more indicative of what the data type is and requires no allocations")]
     private void OnWhoXReply(ICommand command)
     {
-        if (Network.GetUserByNick(command.Args[5]) is UserRecord user)
+        if (NetworkInfo.GetUserByNick(command.Args[5]) is UserRecord user)
         {
             // fill in missing user info
             user = user with
@@ -810,7 +810,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         }
 
         // channel being null is ok here since /who nick returns an arbitrary channel or potentially a '*'
-        var channel = command.Args[2] == "*" ? null : Network.GetChannel(command.Args[2]);
+        var channel = command.Args[2] == "*" ? null : NetworkInfo.GetChannel(command.Args[2]);
 
         // if channel isn't known and this user didn't share any other channels with us, then nothing to do here
         if (channel == null && user.Channels.Count == 0)
@@ -823,7 +823,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         {
             // determine prefix
             int prefixStart = (command.Args[6].Length == 1 || command.Args[6][1] != '*') ? 1 : 2;
-            string prefix = string.Concat(command.Args[6][prefixStart..].TakeWhile(Network.ChannelPrefixSymbols.Contains));
+            string prefix = string.Concat(command.Args[6][prefixStart..].TakeWhile(NetworkInfo.ChannelPrefixSymbols.Contains));
 
             user = user with { Channels = user.Channels.SetItem(channel.Id, prefix) };
         }
