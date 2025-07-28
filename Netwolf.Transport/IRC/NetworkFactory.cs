@@ -5,24 +5,30 @@ using Microsoft.Extensions.Logging;
 
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.Events;
+using Netwolf.Transport.Extensions;
+using Netwolf.Transport.Internal;
 using Netwolf.Transport.RateLimiting;
 using Netwolf.Transport.Sasl;
 
+using System.Reactive.Linq;
+
 namespace Netwolf.Transport.IRC;
 
-public class NetworkFactory : INetworkFactory
+internal class NetworkFactory : INetworkFactory
 {
-    protected ILogger<INetwork> Logger { get; set; }
+    private ILogger<INetwork> Logger { get; init; }
 
-    protected ICommandFactory CommandFactory { get; set; }
+    private ICommandFactory CommandFactory { get; init; }
 
-    protected IConnectionFactory ConnectionFactory { get; set; }
+    private IConnectionFactory ConnectionFactory { get; init; }
 
-    protected IRateLimiterFactory RateLimiterFactory { get; set; }
+    private IRateLimiterFactory RateLimiterFactory { get; init; }
 
-    protected ISaslMechanismFactory SaslMechanismFactory { get; set; }
+    private ISaslMechanismFactory SaslMechanismFactory { get; init; }
 
-    protected NetworkEvents NetworkEvents { get; set; }
+    private NetworkEvents NetworkEvents { get; init; }
+
+    private CommandListenerRegistry CommandListenerRegistry { get; init; }
 
     public NetworkFactory(
         ILogger<INetwork> logger,
@@ -30,7 +36,9 @@ public class NetworkFactory : INetworkFactory
         IConnectionFactory connectionFactory,
         IRateLimiterFactory rateLimiterFactory,
         ISaslMechanismFactory saslMechanismFactory,
-        NetworkEvents networkEvents)
+        NetworkEvents networkEvents,
+        CommandListenerRegistry commandListenerRegistry
+        )
     {
         Logger = logger;
         CommandFactory = commandFactory;
@@ -38,11 +46,12 @@ public class NetworkFactory : INetworkFactory
         RateLimiterFactory = rateLimiterFactory;
         SaslMechanismFactory = saslMechanismFactory;
         NetworkEvents = networkEvents;
+        CommandListenerRegistry = commandListenerRegistry;
     }
 
     public INetwork Create(string name, NetworkOptions options)
     {
-        return new Network(
+        Network network = new(
             name,
             options,
             Logger,
@@ -51,5 +60,17 @@ public class NetworkFactory : INetworkFactory
             RateLimiterFactory.Create(options),
             SaslMechanismFactory,
             NetworkEvents);
+
+        foreach (var listener in CommandListenerRegistry.Listeners)
+        {
+            // This returns IDisposable however we don't need to explicitly dispose it;
+            // that will happen automatically when the Network is disposed, since disposing
+            // a Subject<T> automatically unsubscribes all observers.
+            _ = network.CommandReceived
+                .Where(args => listener.CommandFilter.Contains(args.Command.Verb))
+                .SubscribeAsync(listener.ExecuteAsync);
+        }
+
+        return network;
     }
 }

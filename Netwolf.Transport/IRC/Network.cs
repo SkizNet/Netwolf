@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.Events;
 using Netwolf.Transport.Exceptions;
+using Netwolf.Transport.Extensions;
 using Netwolf.Transport.Internal;
 using Netwolf.Transport.RateLimiting;
 using Netwolf.Transport.Sasl;
@@ -285,6 +286,9 @@ public partial class Network : INetwork
 
         // spin up the message loop for this Network
         _messageLoop = Task.Run(MessageLoop);
+
+        // register command listeners via IObservable (experiment to test if this actually works)
+        _commandEventStream.SubscribeAsync(OnCommandReceived);
     }
 
     #region IDisposable / IAsyncDisposable
@@ -671,8 +675,13 @@ public partial class Network : INetwork
     #region Command handling
     [SuppressMessage("Style", "IDE0301:Simplify collection initialization", Justification = "ImmutableHashSet.Empty is more semantically meaningful")]
     [SuppressMessage("Style", "IDE0305:Simplify collection initialization", Justification = "ToImmutableHashSet() is more semantically meaningful")]
-    private void OnCommandReceived(ICommand command, CancellationToken cancellationToken)
+    private async Task OnCommandReceived(CommandEventArgs args)
     {
+        var command = args.Command;
+        var cancellationToken = args.Token;
+
+        cancellationToken.ThrowIfCancellationRequested();
+
         // use INetworkInfo rather than NetworkState directly to gain access to default interface implementations
         INetworkInfo info = AsNetworkInfo();
 
@@ -692,7 +701,7 @@ public partial class Network : INetwork
                     string secondary = Options.SecondaryNick ?? $"{Options.PrimaryNick}_";
                     if (attempted == Options.PrimaryNick)
                     {
-                        _ = UnsafeSendRawAsync($"NICK {secondary}", cancellationToken);
+                        await UnsafeSendRawAsync($"NICK {secondary}", cancellationToken);
                     }
                     else if (attempted == secondary)
                     {
@@ -705,7 +714,7 @@ public partial class Network : INetwork
                 case "422":
                     // got MOTD, we've been registered. But we might still not know our own ident/host,
                     // so send out a WHO for ourselves before handing control back to client
-                    _ = UnsafeSendRawAsync($"WHO {State.Nick}", cancellationToken);
+                    await UnsafeSendRawAsync($"WHO {State.Nick}", cancellationToken);
                     break;
                 case "315":
                     // end of WHO, so we've pulled our own client details and can hand back control
@@ -716,7 +725,7 @@ public partial class Network : INetwork
                     // although if it's saying our CAP END failed (broken ircd), don't cause an infinite loop
                     if (command.Args[1] != "END")
                     {
-                        _ = UnsafeSendRawAsync("CAP END", cancellationToken);
+                        await UnsafeSendRawAsync("CAP END", cancellationToken);
                     }
 
                     break;
@@ -960,7 +969,7 @@ public partial class Network : INetwork
                 if (SuspendCapEndForSasl)
                 {
                     SuspendCapEndForSasl = false;
-                    _ = UnsafeSendRawAsync("CAP END", cancellationToken);
+                    await UnsafeSendRawAsync("CAP END", cancellationToken);
                 }
                 break;
             case "904":
@@ -976,7 +985,7 @@ public partial class Network : INetwork
                 if (Options.AbortOnSaslFailure)
                 {
                     Logger.LogWarning("SASL failed with an unrecoverable error; aborting connection");
-                    _ = DisconnectAsync();
+                    await DisconnectAsync();
                 }
                 break;
             case "908":
@@ -987,7 +996,7 @@ public partial class Network : INetwork
                     if (mechs.Count == 0 && Options.AbortOnSaslFailure)
                     {
                         Logger.LogError("Server and client have no SASL mechanisms in common; aborting connection");
-                        _ = DisconnectAsync();
+                        await DisconnectAsync();
                         return;
                     }
 
@@ -1371,7 +1380,7 @@ public partial class Network : INetwork
                 break;
             case "PING":
                 // send a PONG
-                _ = UnsafeSendRawAsync($"PONG {command.ArgString}", cancellationToken);
+                await UnsafeSendRawAsync($"PONG {command.ArgString}", cancellationToken);
                 break;
             case "QUIT":
                 // QUIT [:<reason>]
@@ -1890,7 +1899,6 @@ public partial class Network : INetwork
         // ignore known commands with incorrect arity
         if (ArityHelper.CheckArity(State, command.Verb, command.Args.Count))
         {
-            OnCommandReceived(command, cancellationToken);
             _commandEventStream.OnNext(new(this, command, cancellationToken));
         }
         else

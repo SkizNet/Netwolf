@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.Events;
+using Netwolf.Transport.Internal;
 using Netwolf.Transport.IRC;
 using Netwolf.Transport.RateLimiting;
 using Netwolf.Transport.Sasl;
@@ -31,6 +32,9 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<ICommandFactory, CommandFactory>();
         services.TryAddSingleton(typeof(ICommandValidator<>), typeof(CommandValidator<>));
         services.TryAddScoped<IValidationContextFactory, ValidationContextFactory>();
+
+        // Internal services (only used within the library and not exposed/usable outside)
+        services.AddSingleton<CommandListenerRegistry>();
 
         return services;
     }
