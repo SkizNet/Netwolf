@@ -6,9 +6,14 @@ using Netwolf.Transport.State;
 
 namespace Netwolf.Transport.Sasl;
 
+/// <summary>
+/// SASL mechanisms supported directly by this library. To add custom SASL mechanism support,
+/// you should subclass this and override the methods to provide the additional mechanisms you support.
+/// Then, register your subclass as the ISaslMechanismFactory service *before* calling AddTransportServices().
+/// </summary>
 public class SaslMechanismFactory : ISaslMechanismFactory
 {
-    public ISaslMechanism CreateMechanism(string mechanism, NetworkOptions options)
+    public virtual ISaslMechanism CreateMechanism(string mechanism, NetworkOptions options)
     {
         return mechanism switch
         {
@@ -24,7 +29,7 @@ public class SaslMechanismFactory : ISaslMechanismFactory
         };
     }
 
-    public IEnumerable<string> GetSupportedMechanisms(NetworkOptions options, ServerRecord server)
+    public virtual IEnumerable<string> GetSupportedMechanisms(NetworkOptions options, ServerRecord server)
     {
         List<string> supported = [];
 

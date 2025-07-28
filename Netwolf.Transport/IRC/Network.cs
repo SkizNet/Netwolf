@@ -134,15 +134,6 @@ public partial class Network : INetwork
     }
 
     /// <summary>
-    /// Ident for this connection.
-    /// </summary>
-    protected string Ident
-    {
-        get => State.Ident;
-        set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Ident = value }) };
-    }
-
-    /// <summary>
     /// Hostname for this connection.
     /// </summary>
     protected string Host
@@ -158,15 +149,6 @@ public partial class Network : INetwork
     {
         get => State.Account;
         set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Account = value }) };
-    }
-
-    /// <summary>
-    /// Real name (GECOS) for this connection.
-    /// </summary>
-    protected string RealName
-    {
-        get => State.RealName;
-        set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { RealName = value }) };
     }
 
     /// <summary>
@@ -316,7 +298,6 @@ public partial class Network : INetwork
 
     protected virtual void Dispose(bool disposing)
     {
-        Logger.LogTrace("Dispose called with disposing={Disposing}", disposing);
         if (!_disposed)
         {
             if (disposing)
@@ -815,14 +796,6 @@ public partial class Network : INetwork
                 // first arg is our nick and the second arg is our umodes
                 UserModes = command.Args[1].ToImmutableHashSet();
                 break;
-            case "305":
-                // RPL_UNAWAY
-                State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { IsAway = false }) };
-                break;
-            case "306":
-                // RPL_NOWAWAY
-                State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { IsAway = true }) };
-                break;
             case "332":
                 // RPL_TOPIC (332) <client> <channel> :<topic>
                 {
@@ -1142,130 +1115,6 @@ public partial class Network : INetwork
                     }
                 }
                 break;
-            case "JOIN":
-                // regular join: JOIN <channel>
-                // extended-join: JOIN <channel> <account> :<gecos>
-                {
-                    if (command.Source == null)
-                    {
-                        Logger.LogWarning("Protocol violation: JOIN message lacks a source");
-                        break;
-                    }
-
-                    var channel = State.GetChannel(command.Args[0]);
-                    var (nick, ident, host) = IrcUtil.SplitHostmask(command.Source);
-                    // don't blow up if the ircd gave us garbage
-                    if (string.IsNullOrEmpty(nick) || string.IsNullOrEmpty(ident) || string.IsNullOrEmpty(host))
-                    {
-                        Logger.LogWarning("Protocol violation: JOIN message source is not a full nick!user@host");
-                        break;
-                    }
-
-                    var user = State.GetUserByNick(nick);
-
-                    if (channel == null)
-                    {
-                        if (user?.Id == State.ClientId)
-                        {
-                            // if we joined a new channel, add it to state
-                            channel = new ChannelRecord(
-                                Guid.NewGuid(),
-                                command.Args[0],
-                                string.Empty,
-                                ImmutableDictionary<char, string?>.Empty,
-                                ImmutableDictionary<Guid, string>.Empty);
-                        }
-                        else
-                        {
-                            // someone other than us joining a channel we aren't aware of
-                            Logger.LogWarning("Potential state corruption detected: Received JOIN message for another user on {Channel} but it does not exist in state", command.Args[0]);
-                            break;
-                        }
-                    }
-
-                    string? account = null;
-                    string realName = string.Empty;
-                    if (State.TryGetEnabledCap("extended-join", out _))
-                    {
-                        account = command.Args[1] != "*" ? command.Args[1] : null;
-                        realName = command.Args[2];
-
-                        if (user != null)
-                        {
-                            user = user with
-                            {
-                                Account = account,
-                                RealName = realName
-                            };
-                        }
-                    }
-
-                    user ??= new UserRecord(
-                        Guid.NewGuid(),
-                        nick,
-                        ident,
-                        host,
-                        account,
-                        false,
-                        realName,
-                        ImmutableHashSet<char>.Empty,
-                        ImmutableDictionary<Guid, string>.Empty);
-
-                    State = State with
-                    {
-                        Lookup = State.Lookup
-                            .SetItem(IrcUtil.Casefold(channel.Name, CaseMapping), channel.Id)
-                            .SetItem(IrcUtil.Casefold(user.Nick, CaseMapping), user.Id),
-                        Channels = State.Channels.SetItem(channel.Id, channel with { Users = channel.Users.SetItem(user.Id, string.Empty) }),
-                        Users = State.Users.SetItem(user.Id, user with { Channels = user.Channels.SetItem(channel.Id, string.Empty) }),
-                    };
-                }
-                break;
-            case "PART":
-                // PART <channel>{,<channel>} [:<reason>]
-                {
-                    if (!IrcUtil.TryExtractUserFromSource(command, State, out var user))
-                    {
-                        break;
-                    }
-
-                    // RFC states that the PART message from server to client SHOULD NOT send multiple channels, not MUST NOT, so accomodate multiple channels here
-                    foreach (var channelName in command.Args[0].Split(',', StringSplitOptions.RemoveEmptyEntries))
-                    {
-                        if (State.GetChannel(channelName) is not ChannelRecord channel)
-                        {
-                            Logger.LogWarning("Potential state corruption detected: Received PART message for {Channel} but it does not exist in state", channelName);
-                            continue;
-                        }
-
-                        RemoveUserFromChannel(user, channel);
-                    }
-                }
-                break;
-            case "KICK":
-                // KICK <channel> <user> [:<comment>]
-                {
-                    if (command.Args[1].Contains(','))
-                    {
-                        Logger.LogWarning("Protocol violation: KICK message contains multiple nicks");
-                        break;
-                    }
-
-                    if (State.GetChannel(command.Args[0]) is not ChannelRecord channel)
-                    {
-                        Logger.LogWarning("Potential state corruption detected: Received KICK message for {Channel} but it does not exist in state", command.Args[0]);
-                        break;
-                    }
-
-                    if (State.GetUserByNick(command.Args[1]) is not UserRecord user)
-                    {
-                        Logger.LogWarning("Potential state corruption detected: Received KICK message for {Nick} but they do not exist in state", command.Args[1]);
-                        break;
-                    }
-
-                    RemoveUserFromChannel(user, channel);
-                }
-                break;
             case "ACCOUNT":
                 // ACCOUNT <accountname>
                 {
@@ -1276,20 +1125,6 @@ public partial class Network : INetwork
                             Users = State.Users.SetItem(
                                 user.Id,
                                 user with { Account = command.Args[0] == "*" ? null : command.Args[0] })
-                        };
-                    }
-                }
-                break;
-            case "AWAY":
-                // AWAY [:<message>]
-                {
-                    if (IrcUtil.TryExtractUserFromSource(command, State, out var user))
-                    {
-                        State = State with
-                        {
-                            Users = State.Users.SetItem(
-                                user.Id,
-                                user with { IsAway = command.Args.Count > 0 })
                         };
                     }
                 }
@@ -1381,32 +1216,6 @@ public partial class Network : INetwork
             case "PING":
                 // send a PONG
                 await UnsafeSendRawAsync($"PONG {command.ArgString}", cancellationToken);
-                break;
-            case "QUIT":
-                // QUIT [:<reason>]
-                {
-                    if (!IrcUtil.TryExtractUserFromSource(command, State, out var user))
-                    {
-                        break;
-                    }
-
-                    // spec says if the client quits the server replies with ERROR, not QUIT
-                    if (user.Id == State.ClientId)
-                    {
-                        Logger.LogWarning("Protocol violation: Received a QUIT message with our client as its source");
-                        break;
-                    }
-
-                    State = State with
-                    {
-                        Lookup = State.Lookup.Remove(IrcUtil.Casefold(user.Nick, CaseMapping)),
-                        Channels = State.Channels.SetItems(user.Channels.Keys.Select(c =>
-                            new KeyValuePair<Guid, ChannelRecord>(
-                                c,
-                                State.Channels[c] with { Users = State.Channels[c].Users.Remove(user.Id) }))),
-                        Users = State.Users.Remove(user.Id),
-                    };
-                }
                 break;
             case "ERROR":
                 // ERROR :<reason>
@@ -1807,22 +1616,31 @@ public partial class Network : INetwork
         else
         {
             // someone else left a channel, just need to update their record
+            // don't re-add the channel or user if it was already removed from state
+            if (State.Users.ContainsKey(user.Id))
+            {
+                State = State with
+                {
+                    Users = State.Users.SetItem(user.Id, user with { Channels = user.Channels.Remove(channel.Id) }),
+                };
+            }
+
+            if (State.Channels.ContainsKey(channel.Id))
+            {
+                State = State with
+                {
+                    Channels = State.Channels.SetItem(channel.Id, channel with { Users = channel.Users.Remove(user.Id) }),
+                };
+            }
+
+            // this might not be necessary anymore after commands are moved out and use UnsafeUpdateUser and UnsafeUpdateChannel
             if (user.Channels.Count == 1 && user.Channels.ContainsKey(channel.Id))
             {
                 Logger.LogTrace("Cleaning up user {Nick} because they left {Channel} and share no other channels with us", user.Nick, channel.Name);
                 State = State with
                 {
                     Lookup = State.Lookup.Remove(IrcUtil.Casefold(user.Nick, CaseMapping)),
-                    Channels = State.Channels.SetItem(channel.Id, channel with { Users = channel.Users.Remove(user.Id) }),
                     Users = State.Users.Remove(user.Id),
-                };
-            }
-            else
-            {
-                State = State with
-                {
-                    Channels = State.Channels.SetItem(channel.Id, channel with { Users = channel.Users.Remove(user.Id) }),
-                    Users = State.Users.SetItem(user.Id, user with { Channels = user.Channels.Remove(channel.Id) }),
                 };
             }
         }
@@ -1912,18 +1730,31 @@ public partial class Network : INetwork
     {
         if (State.Users.TryGetValue(user.Id, out var existing))
         {
-            State = State with
+            if (user.Id != State.ClientId && user.Channels.Count == 0)
             {
-                Lookup = State.Lookup
-                    .Remove(IrcUtil.Casefold(existing.Nick, CaseMapping))
-                    .Add(IrcUtil.Casefold(user.Nick, CaseMapping), user.Id),
-                Channels = State.Channels
-                    .SetItems(user.Channels.Keys.Select(c =>
-                        new KeyValuePair<Guid, ChannelRecord>(
-                            c,
-                            State.Channels[c] with { Users = State.Channels[c].Users.SetItem(user.Id, user.Channels[c]) }))),
-                Users = State.Users.SetItem(user.Id, user)
-            };
+                Logger.LogTrace("Cleaning up user {Nick} because they left all shared channels", existing.Nick);
+
+                State = State with
+                {
+                    Lookup = State.Lookup.Remove(IrcUtil.Casefold(existing.Nick, CaseMapping)),
+                    Users = State.Users.Remove(user.Id),
+                };
+            }
+            else
+            {
+                State = State with
+                {
+                    Lookup = State.Lookup
+                        .Remove(IrcUtil.Casefold(existing.Nick, CaseMapping))
+                        .Add(IrcUtil.Casefold(user.Nick, CaseMapping), user.Id),
+                    Channels = State.Channels
+                        .SetItems(user.Channels.Keys.Where(State.Channels.ContainsKey).Select(c =>
+                            new KeyValuePair<Guid, ChannelRecord>(
+                                c,
+                                State.Channels[c] with { Users = State.Channels[c].Users.SetItem(user.Id, user.Channels[c]) }))),
+                    Users = State.Users.SetItem(user.Id, user)
+                };
+            }
 
             var removedFromChannels = from channel in State.Channels.Values
                                       where channel.Users.ContainsKey(user.Id) && !user.Channels.ContainsKey(channel.Id)
@@ -1933,14 +1764,15 @@ public partial class Network : INetwork
             {
                 RemoveUserFromChannel(user, channel);
             }
+            
         }
-        else
+        else if (user.Id == State.ClientId || user.Channels.Count > 0)
         {
             State = State with
             {
                 Lookup = State.Lookup.Add(IrcUtil.Casefold(user.Nick, CaseMapping), user.Id),
                 Channels = State.Channels
-                    .SetItems(user.Channels.Keys.Select(c =>
+                    .SetItems(user.Channels.Keys.Where(State.Channels.ContainsKey).Select(c =>
                         new KeyValuePair<Guid, ChannelRecord>(
                             c,
                             State.Channels[c] with { Users = State.Channels[c].Users.SetItem(user.Id, user.Channels[c]) }))),
@@ -1954,36 +1786,47 @@ public partial class Network : INetwork
     {
         if (State.Channels.TryGetValue(channel.Id, out var existing))
         {
+            if (channel.Users.Count == 0)
+            {
+                State = State with
+                {
+                    Lookup = State.Lookup.Remove(IrcUtil.Casefold(existing.Name, CaseMapping)),
+                    Channels = State.Channels.Remove(existing.Id),
+                };
+            }
+            else
+            {
+                State = State with
+                {
+                    Lookup = State.Lookup
+                        .Remove(IrcUtil.Casefold(existing.Name, CaseMapping))
+                        .Add(IrcUtil.Casefold(channel.Name, CaseMapping), channel.Id),
+                    Channels = State.Channels.SetItem(channel.Id, channel),
+                    Users = State.Users
+                        .SetItems(channel.Users.Keys.Where(State.Users.ContainsKey).Select(u =>
+                            new KeyValuePair<Guid, UserRecord>(
+                                u,
+                                State.Users[u] with { Channels = State.Users[u].Channels.SetItem(channel.Id, channel.Users[u]) })))
+                };
+            }
+
             var removedUsers = from userId in existing.Users.Keys
                                where !channel.Users.ContainsKey(userId)
                                select State.Users[userId];
-
-            State = State with
-            {
-                Lookup = State.Lookup
-                    .Remove(IrcUtil.Casefold(existing.Name, CaseMapping))
-                    .Add(IrcUtil.Casefold(channel.Name, CaseMapping), channel.Id),
-                Channels = State.Channels.SetItem(channel.Id, channel),
-                Users = State.Users
-                    .SetItems(channel.Users.Keys.Select(u =>
-                        new KeyValuePair<Guid, UserRecord>(
-                            u,
-                            State.Users[u] with { Channels = State.Users[u].Channels.SetItem(channel.Id, channel.Users[u]) })))
-            };
 
             foreach (var user in removedUsers)
             {
                 RemoveUserFromChannel(user, channel);
             }
         }
-        else
+        else if (channel.Users.Count > 0)
         {
             State = State with
             {
                 Lookup = State.Lookup.Add(IrcUtil.Casefold(channel.Name, CaseMapping), channel.Id),
                 Channels = State.Channels.SetItem(channel.Id, channel),
                 Users = State.Users
-                    .SetItems(channel.Users.Keys.Select(u =>
+                    .SetItems(channel.Users.Keys.Where(State.Users.ContainsKey).Select(u =>
                         new KeyValuePair<Guid, UserRecord>(
                             u,
                             State.Users[u] with { Channels = State.Users[u].Channels.SetItem(channel.Id, channel.Users[u]) })))

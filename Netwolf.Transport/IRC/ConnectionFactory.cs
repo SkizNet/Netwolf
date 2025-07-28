@@ -8,7 +8,7 @@ using Netwolf.Transport.State;
 
 namespace Netwolf.Transport.IRC;
 
-public class ConnectionFactory : IConnectionFactory
+internal class ConnectionFactory : IConnectionFactory
 {
     private ICommandFactory CommandFactory { get; init; }
 

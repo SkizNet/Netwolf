@@ -3,9 +3,11 @@
 
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Netwolf.Transport.Internal;
+using Netwolf.Transport.Internal;
 
-internal partial class CommandListenerRegistry
+namespace Netwolf.Transport.Commands;
+
+public partial class CommandListenerRegistry
 {
     internal IReadOnlyCollection<ICommandListener> Listeners { get; init; }
 

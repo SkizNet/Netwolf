@@ -21,7 +21,7 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace Netwolf.Transport.IRC;
 
-public class IrcConnection : IConnection
+internal class IrcConnection : IConnection
 {
     private bool _disposed = false;
 

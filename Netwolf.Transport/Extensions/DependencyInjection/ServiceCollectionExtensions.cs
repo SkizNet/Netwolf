@@ -33,7 +33,8 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(typeof(ICommandValidator<>), typeof(CommandValidator<>));
         services.TryAddScoped<IValidationContextFactory, ValidationContextFactory>();
 
-        // Internal services (only used within the library and not exposed/usable outside)
+        // Internal services (only used within the library, exposed solely for custom implementations of above services)
+        // CommandListenerRegistry is needed for any custom implementations of INetworkFactory
         services.AddSingleton<CommandListenerRegistry>();
 
         return services;

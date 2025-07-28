@@ -6,7 +6,6 @@ using Microsoft.Extensions.Logging;
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.Events;
 using Netwolf.Transport.Extensions;
-using Netwolf.Transport.Internal;
 using Netwolf.Transport.RateLimiting;
 using Netwolf.Transport.Sasl;
 

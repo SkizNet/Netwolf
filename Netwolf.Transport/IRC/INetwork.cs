@@ -128,6 +128,7 @@ public interface INetwork : IDisposable, IAsyncDisposable
     /// <summary>
     /// Updates a user in the network state with the provided details, adding or removing them as necessary.
     /// Be very careful when using this method as it can corrupt internal state if used incorrectly.
+    /// To remove a user, clear out their channel list for the update.
     /// </summary>
     /// <param name="user"></param>
     void UnsafeUpdateUser(UserRecord user);
@@ -135,6 +136,7 @@ public interface INetwork : IDisposable, IAsyncDisposable
     /// <summary>
     /// Updates a channel in the network state with the provided details, adding or removing it as necessary.
     /// Be very careful when using this method as it can corrupt internal state if used incorrectly.
+    /// To remove a channel, clear out its user list for the update.
     /// </summary>
     /// <param name="channel"></param>
     void UnsafeUpdateChannel(ChannelRecord channel);

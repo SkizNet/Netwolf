@@ -25,7 +25,7 @@ public class StateTests
     public StateTests()
     {
         Container = new ServiceCollection()
-            .AddLogging(config => config.SetMinimumLevel(LogLevel.Debug).AddConsole())
+            .AddLogging(config => config.SetMinimumLevel(LogLevel.Trace).AddConsole())
             // bring in default Netwolf DI services
             .AddTransportServices()
             .Replace(ServiceDescriptor.Singleton<IConnectionFactory, FakeConnectionFactory>())
@@ -363,5 +363,148 @@ public class StateTests
         network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
         network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
         Assert.ThrowsExactly<BadStateException>(() => network.ReceiveLineForUnitTests(line));
+    }
+
+    [TestMethod]
+    public void Successfully_self_away_numeric()
+    {
+        using var scope = Container.CreateScope();
+        var networkFactory = Container.GetRequiredService<INetworkFactory>();
+        using var network = (Network)networkFactory.Create("NetwolfTest", Options);
+        network.RegisterForUnitTests("127.0.0.1", "acct");
+
+        network.ReceiveLineForUnitTests(":irc.netwolf.org 306 test :You have been marked as being away");
+        Assert.IsTrue(network.AsNetworkInfo().IsAway);
+    }
+
+    [TestMethod]
+    public void Successfully_self_unaway_numeric()
+    {
+        using var scope = Container.CreateScope();
+        var networkFactory = Container.GetRequiredService<INetworkFactory>();
+        using var network = (Network)networkFactory.Create("NetwolfTest", Options);
+        network.RegisterForUnitTests("127.0.0.1", "acct");
+
+        // set up that we're currently away (and validate that setup worked)
+        network.UnsafeUpdateUser(network.AsNetworkInfo().Self with { IsAway = true });
+        Assert.IsTrue(network.AsNetworkInfo().IsAway);
+
+        network.ReceiveLineForUnitTests(":irc.netwolf.org 305 test :You are no longer marked as being away");
+        Assert.IsFalse(network.AsNetworkInfo().IsAway);
+    }
+
+    [TestMethod]
+    public void Successfully_other_away_numeric()
+    {
+        using var scope = Container.CreateScope();
+        var networkFactory = Container.GetRequiredService<INetworkFactory>();
+        using var network = (Network)networkFactory.Create("NetwolfTest", Options);
+        network.RegisterForUnitTests("127.0.0.1", "acct");
+
+        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        network.ReceiveLineForUnitTests(":irc.netwolf.org 301 test a :Custom away message");
+        Assert.IsTrue(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
+    }
+
+    [DataTestMethod]
+    [DataRow("Custom away message", DisplayName = "AWAY with message")]
+    [DataRow("", DisplayName = "AWAY without message")]
+    public void Successfully_other_away_notify(string reason)
+    {
+        using var scope = Container.CreateScope();
+        var networkFactory = Container.GetRequiredService<INetworkFactory>();
+        using var network = (Network)networkFactory.Create("NetwolfTest", Options);
+        network.RegisterForUnitTests("127.0.0.1", "acct");
+
+        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        network.ReceiveLineForUnitTests($":a!~a@a.a AWAY :{reason}");
+        Assert.IsTrue(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
+    }
+
+    [TestMethod]
+    public void Successfully_other_unaway_notify()
+    {
+        using var scope = Container.CreateScope();
+        var networkFactory = Container.GetRequiredService<INetworkFactory>();
+        using var network = (Network)networkFactory.Create("NetwolfTest", Options);
+        network.RegisterForUnitTests("127.0.0.1", "acct");
+
+        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+
+        // set up that the user is currently away (and validate that setup worked)
+        network.UnsafeUpdateUser(network.AsNetworkInfo().GetUserByNick("a")! with { IsAway = true });
+        Assert.IsTrue(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
+
+        network.ReceiveLineForUnitTests($":a!~a@a.a AWAY");
+        Assert.IsFalse(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
+    }
+
+    [TestMethod]
+    public void Successfully_other_away_who()
+    {
+        using var scope = Container.CreateScope();
+        var networkFactory = Container.GetRequiredService<INetworkFactory>();
+        using var network = (Network)networkFactory.Create("NetwolfTest", Options);
+        network.RegisterForUnitTests("127.0.0.1", "acct");
+
+        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        network.ReceiveLineForUnitTests(":irc.netwolf.org 352 test #testing ~a a.a irc.netwolf.org a G :0 Real Name");
+        Assert.IsTrue(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
+    }
+
+    [TestMethod]
+    public void Successfully_other_unaway_who()
+    {
+        using var scope = Container.CreateScope();
+        var networkFactory = Container.GetRequiredService<INetworkFactory>();
+        using var network = (Network)networkFactory.Create("NetwolfTest", Options);
+        network.RegisterForUnitTests("127.0.0.1", "acct");
+
+        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+
+        // set up that the user is currently away (and validate that setup worked)
+        network.UnsafeUpdateUser(network.AsNetworkInfo().GetUserByNick("a")! with { IsAway = true });
+        Assert.IsTrue(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
+
+        network.ReceiveLineForUnitTests(":irc.netwolf.org 352 test #testing ~a a.a irc.netwolf.org a H :0 Real Name");
+        Assert.IsFalse(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
+    }
+
+    [TestMethod]
+    public void Successfully_other_away_userhost()
+    {
+        using var scope = Container.CreateScope();
+        var networkFactory = Container.GetRequiredService<INetworkFactory>();
+        using var network = (Network)networkFactory.Create("NetwolfTest", Options);
+        network.RegisterForUnitTests("127.0.0.1", "acct");
+
+        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        network.ReceiveLineForUnitTests(":irc.netwolf.org 302 test :a=-a.a");
+        Assert.IsTrue(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
+    }
+
+    [TestMethod]
+    public void Successfully_other_unaway_userhost()
+    {
+        using var scope = Container.CreateScope();
+        var networkFactory = Container.GetRequiredService<INetworkFactory>();
+        using var network = (Network)networkFactory.Create("NetwolfTest", Options);
+        network.RegisterForUnitTests("127.0.0.1", "acct");
+
+        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+
+        // set up that the user is currently away (and validate that setup worked)
+        network.UnsafeUpdateUser(network.AsNetworkInfo().GetUserByNick("a")! with { IsAway = true });
+        Assert.IsTrue(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
+
+        network.ReceiveLineForUnitTests(":irc.netwolf.org 302 test :a=+a.a");
+        Assert.IsFalse(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
     }
 }
