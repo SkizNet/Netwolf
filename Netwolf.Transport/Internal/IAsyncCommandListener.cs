@@ -10,7 +10,7 @@ namespace Netwolf.Transport.Internal;
 /// use the CommandListenerAttribute in order to be picked up by the source generator
 /// and automatically registered with CommandListenerRegistry.
 /// </summary>
-internal interface ICommandListener
+internal interface IAsyncCommandListener
 {
     /// <summary>
     /// Commands that this listener uses as a base filter.
@@ -22,8 +22,9 @@ internal interface ICommandListener
 
     /// <summary>
     /// Callback to execute when a command matching the filter is received.
+    /// The cancellation token in CommandEventArgs should be used to check for cancellation.
     /// </summary>
     /// <param name="args"></param>
     /// <returns></returns>
-    void Execute(CommandEventArgs args);
+    Task ExecuteAsync(CommandEventArgs args);
 }

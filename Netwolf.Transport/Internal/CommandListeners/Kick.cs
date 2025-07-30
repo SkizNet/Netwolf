@@ -21,7 +21,7 @@ internal class Kick : ICommandListener
         Logger = logger;
     }
 
-    public Task ExecuteAsync(CommandEventArgs args)
+    public void Execute(CommandEventArgs args)
     {
         // KICK <channel> <user> [:<comment>]
         var info = args.Network.AsNetworkInfo();
@@ -30,26 +30,24 @@ internal class Kick : ICommandListener
         if (command.Args[1].Contains(','))
         {
             Logger.LogWarning("Protocol violation: KICK message contains multiple nicks");
-            return Task.CompletedTask;
+            return;
         }
 
         if (info.GetChannel(command.Args[0]) is not ChannelRecord channel)
         {
             Logger.LogWarning("Potential state corruption detected: Received KICK message for {Channel} but it does not exist in state", command.Args[0]);
-            return Task.CompletedTask;
+            return;
         }
 
         if (info.GetUserByNick(command.Args[1]) is not UserRecord user)
         {
             Logger.LogWarning("Potential state corruption detected: Received KICK message for {Nick} but they do not exist in state", command.Args[1]);
-            return Task.CompletedTask;
+            return;
         }
 
         args.Network.UnsafeUpdateChannel(channel with
         {
             Users = channel.Users.Remove(user.Id)
         });
-
-        return Task.CompletedTask;
     }
 }

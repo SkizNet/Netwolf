@@ -5,11 +5,8 @@ using Microsoft.Extensions.Logging;
 
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.Events;
-using Netwolf.Transport.Extensions;
 using Netwolf.Transport.RateLimiting;
 using Netwolf.Transport.Sasl;
-
-using System.Reactive.Linq;
 
 namespace Netwolf.Transport.IRC;
 
@@ -50,7 +47,7 @@ internal class NetworkFactory : INetworkFactory
 
     public INetwork Create(string name, NetworkOptions options)
     {
-        Network network = new(
+        return new Network(
             name,
             options,
             Logger,
@@ -58,18 +55,7 @@ internal class NetworkFactory : INetworkFactory
             ConnectionFactory,
             RateLimiterFactory.Create(options),
             SaslMechanismFactory,
+            CommandListenerRegistry,
             NetworkEvents);
-
-        foreach (var listener in CommandListenerRegistry.Listeners)
-        {
-            // This returns IDisposable however we don't need to explicitly dispose it;
-            // that will happen automatically when the Network is disposed, since disposing
-            // a Subject<T> automatically unsubscribes all observers.
-            _ = network.CommandReceived
-                .Where(args => listener.CommandFilter.Contains(args.Command.Verb))
-                .SubscribeAsync(listener.ExecuteAsync);
-        }
-
-        return network;
     }
 }

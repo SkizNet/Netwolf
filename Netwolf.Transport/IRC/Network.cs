@@ -14,11 +14,12 @@ using Netwolf.Transport.State;
 
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
+using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Security.Authentication.ExtendedProtection;
 using System.Text;
-using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.RateLimiting;
 
 using static Netwolf.Transport.IRC.INetwork;
@@ -31,9 +32,6 @@ namespace Netwolf.Transport.IRC;
 public partial class Network : INetwork
 {
     private bool _disposed;
-
-    [GeneratedRegex("^[^:$ ,*?!@][^ ,*?!@]*$")]
-    private static partial Regex ValidNickRegex();
 
     /// <summary>
     /// Network options defined by the user
@@ -52,6 +50,8 @@ public partial class Network : INetwork
     protected ISaslMechanismFactory SaslMechanismFactory { get; init; }
 
     protected IRateLimiter RateLimiter { get; init; }
+
+    protected CommandListenerRegistry CommandListenerRegistry { get; init; }
 
     protected NetworkEvents NetworkEvents { get; set; }
 
@@ -108,7 +108,7 @@ public partial class Network : INetwork
     /// <inheritdoc />
     public bool IsConnected => _connection?.IsConnected == true && _userRegistrationCompletionSource == null;
 
-    #region INetworkInfo
+    #region Deprecated state mutators
     /// <summary>
     /// Limits for this connection.
     /// </summary>
@@ -150,16 +150,6 @@ public partial class Network : INetwork
         get => State.Account;
         set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Account = value }) };
     }
-
-    /// <summary>
-    /// User modes for this connection.
-    /// Throws InvalidOperationException if not currently connected.
-    /// </summary>
-    protected ImmutableHashSet<char> UserModes
-    {
-        get => State.UserModes;
-        set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Modes = value }) };
-    }
     #endregion
 
     /// <summary>
@@ -172,8 +162,13 @@ public partial class Network : INetwork
     /// </summary>
     private readonly Subject<CommandEventArgs> _commandEventStream = new();
 
+    /// <summary>
+    /// Thread to run CommandReceived events on so that (synchronous) command observers are processed in the order they are received
+    /// </summary>
+    private readonly EventLoopScheduler _commandEventScheduler;
+
     /// <inheritdoc />
-    public IObservable<CommandEventArgs> CommandReceived => _commandEventStream.AsObservable();
+    public IObservable<CommandEventArgs> CommandReceived => _commandEventStream.ObserveOn(_commandEventScheduler);
 
     /// <summary>
     /// Internal event stream for CAP events
@@ -241,6 +236,7 @@ public partial class Network : INetwork
     /// <param name="connectionFactory"></param>
     /// <param name="rateLimiter"></param>
     /// <param name="saslMechanismFactory"></param>
+    /// <param name="commandListenerRegistry"></param>
     /// <param name="networkEvents"></param>
     public Network(
         string name,
@@ -250,6 +246,7 @@ public partial class Network : INetwork
         IConnectionFactory connectionFactory,
         IRateLimiter rateLimiter,
         ISaslMechanismFactory saslMechanismFactory,
+        CommandListenerRegistry commandListenerRegistry,
         NetworkEvents networkEvents)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -262,15 +259,20 @@ public partial class Network : INetwork
         ConnectionFactory = connectionFactory;
         RateLimiter = rateLimiter;
         SaslMechanismFactory = saslMechanismFactory;
+        CommandListenerRegistry = commandListenerRegistry;
         NetworkEvents = networkEvents;
 
         ResetState();
+
+        // define the event loop thread for CommandReceived events
+        _commandEventScheduler = new(MakeCommandObserverEventLoop);
 
         // spin up the message loop for this Network
         _messageLoop = Task.Run(MessageLoop);
 
         // register command listeners via IObservable (experiment to test if this actually works)
-        _commandEventStream.SubscribeAsync(OnCommandReceived);
+        CommandReceived.SubscribeAsync(OnCommandReceived, _messageLoopTokenSource.Token);
+        CommandListenerRegistry.RegisterForNetwork(this, _messageLoopTokenSource.Token);
     }
 
     #region IDisposable / IAsyncDisposable
@@ -283,9 +285,10 @@ public partial class Network : INetwork
         SelectedSaslMech?.Dispose();
         _messageLoopTokenSource.Cancel();
         await _messageLoop.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-        _messageLoopTokenSource.Dispose();
         _capEventStream.Dispose();
         _commandEventStream.Dispose();
+        _commandEventScheduler.Dispose();
+        _messageLoopTokenSource.Dispose();
         await NullableHelper.DisposeAsyncIfNotNull(_connection).ConfigureAwait(false);
     }
 
@@ -305,9 +308,10 @@ public partial class Network : INetwork
                 SelectedSaslMech?.Dispose();
                 _messageLoopTokenSource.Cancel();
                 _messageLoop.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing).GetAwaiter().GetResult();
-                _messageLoopTokenSource.Dispose();
                 _capEventStream.Dispose();
                 _commandEventStream.Dispose();
+                _commandEventScheduler.Dispose();
+                _messageLoopTokenSource.Dispose();
                 _connection?.Dispose();
             }
 
@@ -322,6 +326,22 @@ public partial class Network : INetwork
         GC.SuppressFinalize(this);
     }
     #endregion
+
+    private Thread MakeCommandObserverEventLoop(ThreadStart start)
+    {
+        return new(() =>
+        {
+            try
+            {
+                start.Invoke();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "An unhandled exception occurred in a command observer; terminating network connection.");
+                DisconnectAsync(null, ex).Wait();
+            }
+        });
+    }
 
     private void MessageLoop()
     {
@@ -466,14 +486,14 @@ public partial class Network : INetwork
         {
             foreach (var server in Options.Servers)
             {
-                using var timer = new CancellationTokenSource();
-                using var aggregate = CancellationTokenSource.CreateLinkedTokenSource(timer.Token, cancellationToken);
+                using var connectTimer = new CancellationTokenSource();
+                using var connectAggregate = CancellationTokenSource.CreateLinkedTokenSource(connectTimer.Token, cancellationToken);
                 _connection = ConnectionFactory.Create(this, server, Options);
                 Server = server;
 
                 if (Options.ConnectTimeout != TimeSpan.Zero)
                 {
-                    timer.CancelAfter(Options.ConnectTimeout);
+                    connectTimer.CancelAfter(Options.ConnectTimeout);
                 }
 
                 try
@@ -487,7 +507,7 @@ public partial class Network : INetwork
 
                     // attempt the connection
                     Logger.LogInformation("Connecting to {server}...", server);
-                    await _connection.ConnectAsync(aggregate.Token).ConfigureAwait(false);
+                    await _connection.ConnectAsync(connectAggregate.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -500,7 +520,7 @@ public partial class Network : INetwork
                     }
 
                     Logger.LogInformation("Connection timed out, trying next server in list.");
-                    _userRegistrationCompletionSource!.SetCanceled(aggregate.Token);
+                    _userRegistrationCompletionSource!.SetCanceled(connectAggregate.Token);
                     await _connection.DisposeAsync().ConfigureAwait(false);
                     continue;
                 }
@@ -519,21 +539,31 @@ public partial class Network : INetwork
                 bool registrationComplete = true;
                 var commandOptions = CommandCreationOptions.MakeOptions(State);
 
+                // re-using the previous CTS is too risky as the timer could have fired between the successful connection and now
+                // so TryReset or re-applying CancelAfter is not guaranteed to work. Best to make a new CTS.
+                using var registrationTimer = new CancellationTokenSource();
+                using var registrationAggregate = CancellationTokenSource.CreateLinkedTokenSource(registrationTimer.Token, cancellationToken);
+
+                if (Options.RegistrationTimeout != TimeSpan.Zero)
+                {
+                    registrationTimer.CancelAfter(Options.RegistrationTimeout);
+                }
+
                 try
                 {
                     _capValueCache.Clear();
-                    await UnsafeSendRawAsync("CAP LS 302", cancellationToken);
+                    await UnsafeSendRawAsync("CAP LS 302", registrationAggregate.Token);
 
                     if (Options.ServerPassword != null)
                     {
                         await Connection.SendAsync(
                             CommandFactory.PrepareClientCommand(State.Self, "PASS", [Options.ServerPassword], null, commandOptions),
-                            cancellationToken);
+                            registrationAggregate.Token);
                     }
 
                     await Connection.SendAsync(
                         CommandFactory.PrepareClientCommand(State.Self, "NICK", [Options.PrimaryNick], null, commandOptions),
-                        cancellationToken);
+                        registrationAggregate.Token);
 
                     // Most networks outright ignore params 2 and 3.
                     // Some follow RFC 2812 and treat param 2 as a bitfield where 4 = +w and 8 = +i.
@@ -541,21 +571,22 @@ public partial class Network : INetwork
                     // For widest compatibility, leave both unspecified and just handle umodes post-registration.
                     await Connection.SendAsync(
                         CommandFactory.PrepareClientCommand(State.Self, "USER", [Options.Ident, "0", "*", Options.RealName], null, commandOptions),
-                        cancellationToken);
+                        registrationAggregate.Token);
 
                     // Handle any responses to the above. Notably, we might need to choose a new nickname,
                     // handle CAP negotiation (and SASL), or be disconnected outright. This will block the
                     // ConnectAsync method until registration is fully completed (whether successfully or not).
-                    registrationComplete = Task.WaitAll(
-                        [_userRegistrationCompletionSource.Task],
-                        (int)Options.ConnectTimeout.TotalMilliseconds,
-                        cancellationToken);
+                    await _userRegistrationCompletionSource.Task.WaitAsync(registrationAggregate.Token);
                 }
-                catch (AggregateException ex)
+                catch (OperationCanceledException)
                 {
                     // allow other exceptions (e.g. from PrepareCommand) to bubble up and abort entirely,
                     // as those errors are not recoverable and will fail again if tried again
-                    Logger.LogDebug(ex, "An exception was thrown during user registration");
+
+                    // If the timeout was reached in the final await, this will be false (which indicates registration timeout)
+                    // otherwise, it will be true to indicate the user requested that the connection attempt be aborted
+                    // and we want to log a different message in that case
+                    registrationComplete = cancellationToken.IsCancellationRequested;
                 }
 
                 if (_userRegistrationCompletionSource.Task.IsCompletedSuccessfully)
@@ -572,8 +603,9 @@ public partial class Network : INetwork
                 }
                 else
                 {
-                    Logger.LogInformation("Connection aborted, trying next server in list.");
+                    Logger.LogInformation("Connection aborted.");
                     await _connection.DisposeAsync().ConfigureAwait(false);
+                    cancellationToken.ThrowIfCancellationRequested();
                 }
             }
         }
@@ -584,7 +616,18 @@ public partial class Network : INetwork
     }
 
     /// <inheritdoc />
-    public async Task DisconnectAsync(string? reason = null)
+    public Task DisconnectAsync(string? reason = null)
+    {
+        return DisconnectAsync(reason, null);
+    }
+
+    /// <summary>
+    /// Disconnects from the network, potentially with an exception state
+    /// </summary>
+    /// <param name="reason"></param>
+    /// <param name="ex"></param>
+    /// <returns></returns>
+    protected async Task DisconnectAsync(string? reason, Exception? ex)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -594,20 +637,21 @@ public partial class Network : INetwork
                 CommandFactory.PrepareClientCommand(State.Self, "QUIT", [reason], null, CommandCreationOptions.MakeOptions(State)),
                 default).ConfigureAwait(false);
         }
-        finally
+        catch (Exception)
         {
-            if (_connection != null)
-            {
-                await _connection.DisconnectAsync().ConfigureAwait(false);
-            }
-
-            _connection = null;
-            Server = null;
-            _messageLoopCompletionSource.SetResult();
+            // swallow exceptions here
         }
 
-        AbortUserRegistration(null);
-        NetworkEvents.OnDisconnected(this);
+        if (_connection != null)
+        {
+            await _connection.DisconnectAsync().ConfigureAwait(false);
+        }
+
+        _connection = null;
+        Server = null;
+        _messageLoopCompletionSource.SetResult();
+        AbortUserRegistration(ex);
+        NetworkEvents.OnDisconnected(this, ex);
     }
 
     /// <summary>
@@ -654,8 +698,6 @@ public partial class Network : INetwork
     }
 
     #region Command handling
-    [SuppressMessage("Style", "IDE0301:Simplify collection initialization", Justification = "ImmutableHashSet.Empty is more semantically meaningful")]
-    [SuppressMessage("Style", "IDE0305:Simplify collection initialization", Justification = "ToImmutableHashSet() is more semantically meaningful")]
     private async Task OnCommandReceived(CommandEventArgs args)
     {
         var command = args.Command;
@@ -791,138 +833,6 @@ public partial class Network : INetwork
 
                 State = State with { ISupport = State.ISupport.SetItems(newISupport).RemoveRange(removedISupport) };
                 break;
-            case "221":
-                // RPL_UMODEIS
-                // first arg is our nick and the second arg is our umodes
-                UserModes = command.Args[1].ToImmutableHashSet();
-                break;
-            case "332":
-                // RPL_TOPIC (332) <client> <channel> :<topic>
-                {
-                    if (State.GetChannel(command.Args[1]) is ChannelRecord channel)
-                    {
-                        State = State with
-                        {
-                            Channels = State.Channels.SetItem(channel.Id, channel with { Topic = command.Args[2] })
-                        };
-                    }
-                }
-                break;
-            case "352":
-                // RPL_WHOREPLY (352) <client> <channel> <username> <host> <server> <nick> <flags> :<hopcount> <realname>
-                {
-                    var hopReal = command.Args[7].Split(' ', 2);
-                    string realName = hopReal.Length > 1 ? hopReal[1] : string.Empty;
-                    if (State.GetUserByNick(command.Args[5]) is UserRecord user)
-                    {
-                        // existing user; update info
-                        user = user with
-                        {
-                            Ident = command.Args[2],
-                            Host = command.Args[3],
-                            RealName = realName,
-                            IsAway = command.Args[6][0] == 'G',
-                        };
-                    }
-                    else
-                    {
-                        // previously unknown user
-                        user = new UserRecord(
-                            Guid.NewGuid(),
-                            command.Args[5],
-                            command.Args[2],
-                            command.Args[3],
-                            null,
-                            command.Args[6][0] == 'G',
-                            realName,
-                            ImmutableHashSet<char>.Empty,
-                            ImmutableDictionary<Guid, string>.Empty);
-                    }
-
-                    // channel being null is ok here since /who nick returns an arbitrary channel or potentially a '*'
-                    ChannelRecord? channel = command.Args[1] == "*" ? null : State.GetChannel(command.Args[1]);
-
-                    // if channel isn't known and this user didn't share any other channels with us, purge it
-                    if (user.Id != State.ClientId && channel == null && user.Channels.Count == 0)
-                    {
-                        State = State with
-                        {
-                            Lookup = State.Lookup.Remove(IrcUtil.Casefold(user.Nick, CaseMapping)),
-                            Users = State.Users.Remove(user.Id),
-                        };
-                        break;
-                    }
-
-                    // if channel is known, update prefixes
-                    if (channel != null)
-                    {
-                        // determine prefix
-                        int prefixStart = (command.Args[6].Length == 1 || command.Args[6][1] != '*') ? 1 : 2;
-                        string prefix = string.Concat(command.Args[6][prefixStart..].TakeWhile(info.ChannelPrefixSymbols.Contains));
-
-                        State = State with
-                        {
-                            Lookup = State.Lookup.SetItem(IrcUtil.Casefold(user.Nick, CaseMapping), user.Id),
-                            Users = State.Users.SetItem(user.Id, user with { Channels = user.Channels.SetItem(channel.Id, prefix) }),
-                            Channels = State.Channels.SetItem(channel.Id, channel with { Users = channel.Users.SetItem(user.Id, prefix) }),
-                        };
-                    }
-                    else
-                    {
-                        State = State with
-                        {
-                            Lookup = State.Lookup.SetItem(IrcUtil.Casefold(user.Nick, CaseMapping), user.Id),
-                            Users = State.Users.SetItem(user.Id, user)
-                        };
-                    }
-                }
-                break;
-            case "353":
-                // RPL_NAMREPLY (353) <client> <symbol> <channel> :[prefix]<nick>{ [prefix]<nick>}
-                // Note: symbol is ignored, but in theory we could (un)set +s or +p for channel based on it
-                {
-                    // if userhost-in-names isn't enabled we only get nicknames here, which means UserRecords will have empty string idents/hosts,
-                    // which is a corner case that downstream users shouldn't need to deal with. Better for them to just fail a record lookup until
-                    // they issue a WHO or WHOX for the channel.
-                    if (State.GetChannel(command.Args[2]) is not ChannelRecord channel || !State.TryGetEnabledCap("userhost-in-names", out _))
-                    {
-                        break;
-                    }
-
-                    // make a copy since the underlying property on State recomputes the value on each access
-                    string prefixSymbols = info.ChannelPrefixSymbols;
-                    foreach (var prefixedNick in command.Args[3].Split(' ', StringSplitOptions.RemoveEmptyEntries))
-                    {
-                        string prefix = string.Concat(prefixedNick.TakeWhile(prefixSymbols.Contains));
-                        // per above, userhost-in-names is enabled so we get all 3 components
-                        var (nick, ident, host) = IrcUtil.SplitHostmask(prefixedNick[prefix.Length..]);
-                        if (string.IsNullOrEmpty(nick) || string.IsNullOrEmpty(ident) || string.IsNullOrEmpty(host))
-                        {
-                            Logger.LogWarning("Protocol violation: NAMES does not contain a full nick!user@host despite userhost-in-names being negotiated");
-                            break;
-                        }
-
-                        var user = State.GetUserByNick(nick)
-                            ?? new UserRecord(
-                                Guid.NewGuid(),
-                                nick,
-                                ident,
-                                host,
-                                null,
-                                false,
-                                string.Empty,
-                                ImmutableHashSet<char>.Empty,
-                                ImmutableDictionary<Guid, string>.Empty);
-
-                        State = State with
-                        {
-                            Lookup = State.Lookup.SetItem(IrcUtil.Casefold(user.Nick, CaseMapping), user.Id),
-                            Channels = State.Channels.SetItem(channel.Id, channel with { Users = channel.Users.SetItem(user.Id, prefix) }),
-                            Users = State.Users.SetItem(user.Id, user with { Channels = user.Channels.SetItem(channel.Id, prefix) }),
-                        };
-                    }
-                }
-                break;
             case "CAP":
                 // CAP negotation
                 OnCapCommand(command, cancellationToken);
@@ -975,251 +885,6 @@ public partial class Network : INetwork
 
                     SaslMechs = mechs;
                 }
-                break;
-            case "MODE":
-                // only care if we're changing our own modes or channel modes
-                {
-                    var lookupId = State.Lookup.GetValueOrDefault(IrcUtil.Casefold(command.Args[0], CaseMapping));
-                    bool adding = true;
-
-                    // for user modes, we may receive a MODE message before we officially mark us as "connected"
-                    // (i.e. before we complete a WHO on ourselves), so ensure we directly use State instead of
-                    // properties that throw if not connected
-                    if (lookupId == State.ClientId)
-                    {
-                        List<char> toAdd = [];
-                        List<char> toRemove = [];
-                        foreach (var c in command.Args[1])
-                        {
-                            switch (c)
-                            {
-                                case '+':
-                                    adding = true;
-                                    break;
-                                case '-':
-                                    adding = false;
-                                    break;
-                                default:
-                                    (adding ? toAdd : toRemove).Add(c);
-                                    break;
-                            }
-                        }
-
-                        UserModes = State.UserModes.Union(toAdd).Except(toRemove);
-                    }
-                    else if (State.Channels.TryGetValue(lookupId, out var channel))
-                    {
-                        // take a snapshot of the various mode types since calling the underlying properties recomputes the value each time.
-                        string prefixModes = info.ChannelPrefixModes;
-                        string prefixSymbols = info.ChannelPrefixSymbols;
-                        string typeAModes = info.ChannelModesA;
-                        string typeBModes = info.ChannelModesB;
-                        string typeCModes = info.ChannelModesC;
-                        string typeDModes = info.ChannelModesD;
-
-                        // index of the next mode argument
-                        int argIndex = 2;
-                        var changed = channel.Modes;
-
-                        foreach (var c in command.Args[1])
-                        {
-                            switch (c)
-                            {
-                                case '+':
-                                    adding = true;
-                                    break;
-                                case '-':
-                                    adding = false;
-                                    break;
-                                case var _ when prefixModes.Contains(c):
-                                    {
-                                        var user = State.GetUserByNick(command.Args[argIndex]);
-                                        if (user == null || !user.Channels.TryGetValue(channel.Id, out string? status))
-                                        {
-                                            Logger.LogWarning(
-                                                "Potential state corruption detected: Received MODE message for {Nick} on {Channel} but they do not exist in state",
-                                                command.Args[argIndex],
-                                                channel.Name);
-
-                                            break;
-                                        }
-
-                                        argIndex++;
-                                        var statusSet = new HashSet<char>(status);
-                                        var symbol = prefixSymbols[prefixModes.IndexOf(c)];
-                                        if (adding)
-                                        {
-                                            statusSet.Add(symbol);
-                                        }
-                                        else
-                                        {
-                                            statusSet.Remove(symbol);
-                                        }
-
-                                        status = string.Concat(prefixSymbols.Where(statusSet.Contains));
-                                        // keep channel updated for future loop iterations
-                                        channel = channel with { Users = channel.Users.SetItem(user.Id, status) };
-
-                                        State = State with
-                                        {
-                                            Channels = State.Channels.SetItem(channel.Id, channel),
-                                            Users = State.Users.SetItem(user.Id, user with { Channels = user.Channels.SetItem(channel.Id, status) }),
-                                        };
-                                    }
-                                    break;
-                                case var _ when typeAModes.Contains(c):
-                                    // we don't track list modes but we still need to advance arg index
-                                    argIndex++;
-                                    break;
-                                case var _ when typeBModes.Contains(c):
-                                    if (adding)
-                                    {
-                                        changed = changed.SetItem(c, command.Args[argIndex]);
-                                    }
-                                    else
-                                    {
-                                        changed = changed.Remove(c);
-                                    }
-
-                                    argIndex++;
-                                    break;
-                                case var _ when typeCModes.Contains(c):
-                                    if (adding)
-                                    {
-                                        changed = changed.SetItem(c, command.Args[argIndex]);
-                                        argIndex++;
-                                    }
-                                    else
-                                    {
-                                        changed = changed.Remove(c);
-                                    }
-                                    break;
-                                case var _ when typeDModes.Contains(c):
-                                    if (adding)
-                                    {
-                                        changed = changed.SetItem(c, null);
-                                    }
-                                    else
-                                    {
-                                        changed = changed.Remove(c);
-                                    }
-                                    break;
-                                default:
-                                    // hope it's a mode without an argument as otherwise this will mess everything else up
-                                    Logger.LogWarning("Protocol violation: Received MODE command for unknown mode letter {Mode}", c);
-                                    break;
-                            }
-                        }
-
-                        State = State with { Channels = State.Channels.SetItem(channel.Id, channel with { Modes = changed }) };
-                    }
-                }
-                break;
-            case "ACCOUNT":
-                // ACCOUNT <accountname>
-                {
-                    if (IrcUtil.TryExtractUserFromSource(command, State, out var user))
-                    {
-                        State = State with
-                        {
-                            Users = State.Users.SetItem(
-                                user.Id,
-                                user with { Account = command.Args[0] == "*" ? null : command.Args[0] })
-                        };
-                    }
-                }
-                break;
-            case "CHGHOST":
-                // CHGHOST <new_user> <new_host>
-                {
-                    if (IrcUtil.TryExtractUserFromSource(command, State, out var user))
-                    {
-                        State = State with
-                        {
-                            Users = State.Users.SetItem(
-                                user.Id,
-                                user with { Ident = command.Args[0], Host = command.Args[1] })
-                        };
-                    }
-                }
-                break;
-            case "SETNAME":
-                // SETNAME :<realname>
-                {
-                    if (IrcUtil.TryExtractUserFromSource(command, State, out var user))
-                    {
-                        State = State with
-                        {
-                            Users = State.Users.SetItem(
-                                user.Id,
-                                user with { RealName = command.Args[0] })
-                        };
-                    }
-                }
-                break;
-            case "NICK":
-                // NICK <nickname>
-                {
-                    if (!ValidNickRegex().IsMatch(command.Args[0]))
-                    {
-                        Logger.LogWarning("Protocol violation: nickname contains illegal characters");
-                        break;
-                    }
-
-                    if (info.ChannelTypes.Contains(command.Args[0][0]) || info.ChannelPrefixSymbols.Contains(command.Args[0][0]))
-                    {
-                        Logger.LogWarning("Protocol violation: nickname begins with a channel or status prefix");
-                        break;
-                    }
-
-                    if (IrcUtil.TryExtractUserFromSource(command, State, out var user))
-                    {
-                        if (info.GetUserByNick(command.Args[0]) is not null && !IrcUtil.IrcEquals(user.Nick, command.Args[0], CaseMapping))
-                        {
-                            throw new BadStateException($"Nick collision detected; attempting to rename {user.Nick} to {command.Args[0]} but the new nick already exists in state");
-                        }
-
-                        State = State with
-                        {
-                            Lookup = State.Lookup
-                                .Remove(IrcUtil.Casefold(user.Nick, CaseMapping))
-                                .Add(IrcUtil.Casefold(command.Args[0], CaseMapping), user.Id),
-                            Users = State.Users.SetItem(
-                                user.Id,
-                                user with { Nick = command.Args[0] })
-                        };
-                    }
-                }
-                break;
-            case "RENAME":
-                // RENAME <old_channel> <new_channel> :<reason>
-                {
-                    if (State.GetChannel(command.Args[0]) is ChannelRecord channel && info.ChannelTypes.Contains(command.Args[1][0]))
-                    {
-                        if (info.GetChannel(command.Args[1]) is not null && !IrcUtil.IrcEquals(channel.Name, command.Args[1], CaseMapping))
-                        {
-                            throw new BadStateException($"Channel collision detected; attempting to rename {channel.Name} to {command.Args[1]} but the new channel already exists in state");
-                        }
-
-                        State = State with
-                        {
-                            Lookup = State.Lookup
-                                .Remove(IrcUtil.Casefold(channel.Name, CaseMapping))
-                                .Add(IrcUtil.Casefold(command.Args[1], CaseMapping), channel.Id),
-                            Channels = State.Channels.SetItem(
-                                channel.Id,
-                                channel with { Name = command.Args[1] })
-                        };
-                    }
-                }
-                break;
-            case "PING":
-                // send a PONG
-                await UnsafeSendRawAsync($"PONG {command.ArgString}", cancellationToken);
-                break;
-            case "ERROR":
-                // ERROR :<reason>
-                Logger.LogInformation("Received an ERROR from the server: {Reason}", command.Args[0]);
                 break;
         }
     }
@@ -1658,6 +1323,12 @@ public partial class Network : INetwork
     internal void RegisterForUnitTests(string host, string? account = null)
     {
         _messageLoopTokenSource.Cancel();
+        
+        // re-add command handlers since the above cancellation removed them
+        // The GC will need to collect these subscriptions at the end but we're unit testing so that's probably fine ;)
+        CommandReceived.SubscribeAsync(OnCommandReceived, default);
+        CommandListenerRegistry.RegisterForNetwork(this, default);
+
         // This is expected to be a mock/stub connection via DI service replacement in the test harness
         _connection = ConnectionFactory.Create(this, Options.Servers[0], Options);
         Host = host;
@@ -1668,9 +1339,41 @@ public partial class Network : INetwork
     /// Receive a raw protocol line, for use in unit testing.
     /// </summary>
     /// <param name="line"></param>
-    internal void ReceiveLineForUnitTests(string line)
+    /// <returns>A Task that can be awaited to ensure it is fully processed before continuing with test execution</returns>
+    internal async Task ReceiveLineForUnitTests(string line)
     {
-        UnsafeReceiveRaw(line, default);
+        TaskCompletionSource completionSource = new();
+
+        void OnDisconnected(object? sender, NetworkEventArgs args)
+        {
+            if (args.Network == this)
+            {
+                if (args.Exception is Exception ex)
+                {
+                    completionSource.SetException(ex);
+                }
+                else
+                {
+                    completionSource.SetCanceled();
+                }
+            }
+        }
+
+        var subscription = CommandReceived.Subscribe(args => completionSource.SetResult());
+        NetworkEvents.NetworkDisconnected += OnDisconnected;
+
+        try
+        {
+            if (ProcessServerCommand(CommandFactory.Parse(CommandType.Server, line), default))
+            {
+                await completionSource.Task;
+            }
+        }
+        finally
+        {
+            NetworkEvents.NetworkDisconnected -= OnDisconnected;
+            subscription.Dispose();
+        }
     }
 
     [MemberNotNull(nameof(State))]
@@ -1708,20 +1411,22 @@ public partial class Network : INetwork
     /// <inheritdoc />
     public void UnsafeReceiveRaw(string command, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         ProcessServerCommand(CommandFactory.Parse(CommandType.Server, command), cancellationToken);
     }
 
-    private void ProcessServerCommand(ICommand command, CancellationToken cancellationToken)
+    private bool ProcessServerCommand(ICommand command, CancellationToken cancellationToken)
     {
         // ignore known commands with incorrect arity
+        cancellationToken.ThrowIfCancellationRequested();
         if (ArityHelper.CheckArity(State, command.Verb, command.Args.Count))
         {
             _commandEventStream.OnNext(new(this, command, cancellationToken));
+            return true;
         }
         else
         {
             Logger.LogWarning("Protocol violation: receieved {Command} with incorrect arity. Message will be ignored.", command.Verb);
+            return false;
         }
     }
 

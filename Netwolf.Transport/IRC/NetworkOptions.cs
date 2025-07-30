@@ -21,6 +21,13 @@ public class NetworkOptions
     public TimeSpan ConnectTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
+    /// How long to wait before aborting connection registration. This is generally a very fast process,
+    /// however there may be some lag if network services are slow and SASL is being used, or if MFA is
+    /// being used with a manual method. Setting to <see cref="TimeSpan.Zero"/> disables the timeout.
+    /// </summary>
+    public TimeSpan RegistrationTimeout { get; set; } = TimeSpan.FromSeconds(15);
+
+    /// <summary>
     /// Number of times we will attempt to reconnect to a network upon getting a non-fatal connection error.
     /// A single retry involves going through every defined Server for the network. A value of 0 for this
     /// option indicates we will only go through all of the servers once.

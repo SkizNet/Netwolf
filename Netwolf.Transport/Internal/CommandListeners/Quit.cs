@@ -20,25 +20,24 @@ internal class Quit : ICommandListener
         Logger = logger;
     }
 
-    public Task ExecuteAsync(CommandEventArgs args)
+    public void Execute(CommandEventArgs args)
     {
         // QUIT [:<reason>]
         var info = args.Network.AsNetworkInfo();
 
         if (!IrcUtil.TryExtractUserFromSource(args.Command, info, out var user))
         {
-            return Task.CompletedTask;
+            return;
         }
 
         // spec says if the client quits the server replies with ERROR, not QUIT
         if (user.Id == info.ClientId)
         {
             Logger.LogWarning("Protocol violation: Received a QUIT message with our client as its source");
-            return Task.CompletedTask;
+            return;
         }
 
         // Purge user from state
         args.Network.UnsafeUpdateUser(user with { Channels = user.Channels.Clear() });
-        return Task.CompletedTask;
     }
 }

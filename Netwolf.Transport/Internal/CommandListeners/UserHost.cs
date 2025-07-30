@@ -26,12 +26,13 @@ internal partial class UserHost : ICommandListener
         Logger = logger;
     }
 
-    public Task ExecuteAsync(CommandEventArgs args)
+    public void Execute(CommandEventArgs args)
     {
         // RPL_USERHOST <client> :[<reply>{ <reply>}]
         // reply = nickname [ isop ] "=" isaway hostname
         // isop = "*"
         // isaway = ("+" / "-") -- "+" means here, "-" means away
+        // Note: operator status is ignored
 
         var info = args.Network.AsNetworkInfo();
         foreach (var reply in args.Command.Args[1].Split(' ', StringSplitOptions.RemoveEmptyEntries))
@@ -45,7 +46,6 @@ internal partial class UserHost : ICommandListener
 
             if (info.GetUserByNick(match.Groups["nick"].Value) is UserRecord user)
             {
-                // TODO: we currently do not track the user's operator status
                 args.Network.UnsafeUpdateUser(user with
                 {
                     IsAway = match.Groups["isaway"].Value == "-",
@@ -53,7 +53,5 @@ internal partial class UserHost : ICommandListener
                 });
             }
         }
-
-        return Task.CompletedTask;
     }
 }

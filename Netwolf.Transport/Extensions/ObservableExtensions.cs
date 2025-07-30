@@ -16,12 +16,12 @@ public static class ObservableExtensions
     /// <param name="observable"></param>
     /// <param name="callback"></param>
     /// <returns></returns>
-    public static IDisposable SubscribeAsync<TResult>(this IObservable<TResult> observable, Func<Task> callback)
+    public static void SubscribeAsync<TResult>(this IObservable<TResult> observable, Func<Task> callback, CancellationToken token)
     {
-        return observable
+        observable
             .Select(args => Observable.FromAsync(callback))
             .Concat()
-            .Subscribe();
+            .Subscribe(token);
     }
 
 
@@ -34,11 +34,11 @@ public static class ObservableExtensions
     /// <param name="observable"></param>
     /// <param name="callback"></param>
     /// <returns></returns>
-    public static IDisposable SubscribeAsync<TResult>(this IObservable<TResult> observable, Func<TResult, Task> callback)
+    public static void SubscribeAsync<TResult>(this IObservable<TResult> observable, Func<TResult, Task> callback, CancellationToken token)
     {
-        return observable
+        observable
             .Select(args => Observable.FromAsync(async () => await callback(args)))
             .Concat()
-            .Subscribe();
+            .Subscribe(token);
     }
 }

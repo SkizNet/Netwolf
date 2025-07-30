@@ -24,7 +24,7 @@ internal class Join : ICommandListener
         Logger = logger;
     }
 
-    public Task ExecuteAsync(CommandEventArgs args)
+    public void Execute(CommandEventArgs args)
     {
         // regular join: JOIN <channel>
         // extended-join: JOIN <channel> <account> :<gecos>
@@ -34,7 +34,7 @@ internal class Join : ICommandListener
         if (command.Source == null)
         {
             Logger.LogWarning("Protocol violation: JOIN message lacks a source");
-            return Task.CompletedTask;
+            return;
         }
 
         var channel = info.GetChannel(command.Args[0]);
@@ -43,7 +43,7 @@ internal class Join : ICommandListener
         if (string.IsNullOrEmpty(nick) || string.IsNullOrEmpty(ident) || string.IsNullOrEmpty(host))
         {
             Logger.LogWarning("Protocol violation: JOIN message source is not a full nick!user@host");
-            return Task.CompletedTask;
+            return;
         }
 
         var user = info.GetUserByNick(nick);
@@ -64,7 +64,7 @@ internal class Join : ICommandListener
             {
                 // someone other than us joining a channel we aren't aware of
                 Logger.LogWarning("Potential state corruption detected: Received JOIN message for another user on {Channel} but it does not exist in state", command.Args[0]);
-                return Task.CompletedTask;
+                return;
             }
         }
 
@@ -105,7 +105,5 @@ internal class Join : ICommandListener
         {
             Users = channel.Users.SetItem(user.Id, string.Empty)
         });
-
-        return Task.CompletedTask;
     }
 }

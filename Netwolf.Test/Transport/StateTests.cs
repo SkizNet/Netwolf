@@ -33,14 +33,14 @@ public class StateTests
     }
 
     [TestMethod]
-    public void Successfully_self_join_channel()
+    public async Task Successfully_self_join_channel()
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #TestiNg");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #TestiNg");
         var info = network.AsNetworkInfo();
         var channel = info.GetChannel("#testing");
         Assert.IsNotNull(channel);
@@ -51,15 +51,15 @@ public class StateTests
     }
 
     [TestMethod]
-    public void Successfully_other_join_channel_regular()
+    public async Task Successfully_other_join_channel_regular()
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #TestiNg");
-        network.ReceiveLineForUnitTests(":foo!~bar@baz/baz JOIN #TestiNg");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #TestiNg");
+        await network.ReceiveLineForUnitTests(":foo!~bar@baz/baz JOIN #TestiNg");
         var info = network.AsNetworkInfo();
         var channel = info.GetChannel("#testing");
         var user = info.GetUserByNick("FOO");
@@ -78,16 +78,16 @@ public class StateTests
     }
 
     [TestMethod]
-    public void Successfully_other_join_channel_extended()
+    public async Task Successfully_other_join_channel_extended()
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :extended-join");
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #TestiNg different :also different");
-        network.ReceiveLineForUnitTests(":foo!~bar@baz/baz JOIN #TestiNg * :UwU");
+        await network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :extended-join");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #TestiNg different :also different");
+        await network.ReceiveLineForUnitTests(":foo!~bar@baz/baz JOIN #TestiNg * :UwU");
         var info = network.AsNetworkInfo();
         var channel = info.GetChannel("#testing");
         var user = info.GetUserByNick("FOO");
@@ -110,14 +110,14 @@ public class StateTests
     }
 
     [TestMethod]
-    public void Successfully_ignore_join_for_unjoined_channel()
+    public async Task Successfully_ignore_join_for_unjoined_channel()
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":foo!~bar@baz/baz JOIN #testing");
+        await network.ReceiveLineForUnitTests(":foo!~bar@baz/baz JOIN #testing");
         var info = network.AsNetworkInfo();
         var channel = info.GetChannel("#testing");
         var user = info.GetUserByNick("foo");
@@ -133,20 +133,20 @@ public class StateTests
     [DataRow(":c!~c@c.c KICK #testing a :kick reason", DisplayName = "KICK with reason")]
     [DataRow(":a!~a@a.a QUIT", DisplayName = "QUIT without reason")]
     [DataRow(":a!~a@a.a QUIT :quit reason", DisplayName = "QUIT with reason")]
-    public void Successfully_remove_other_from_channel(string line)
+    public async Task Successfully_remove_other_from_channel(string line)
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
-        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
-        network.ReceiveLineForUnitTests(":b!~b@b.b JOIN #testing");
-        network.ReceiveLineForUnitTests(":c!~c@c.c JOIN #testing");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        await network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        await network.ReceiveLineForUnitTests(":b!~b@b.b JOIN #testing");
+        await network.ReceiveLineForUnitTests(":c!~c@c.c JOIN #testing");
 
         // line should remove a from the channel via various methods
-        network.ReceiveLineForUnitTests(line);
+        await network.ReceiveLineForUnitTests(line);
         var info = network.AsNetworkInfo();
 
         var channel = info.GetChannel("#testing");
@@ -161,20 +161,20 @@ public class StateTests
     [DataRow(":test!id@127.0.0.1 PART #testing :part reason", DisplayName = "PART with reason")]
     [DataRow(":c!~c@c.c KICK #testing test", DisplayName = "KICK without reason")]
     [DataRow(":c!~c@c.c KICK #testing test :kick reason", DisplayName = "KICK with reason")]
-    public void Successfully_remove_self_from_channel(string line)
+    public async Task Successfully_remove_self_from_channel(string line)
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
-        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
-        network.ReceiveLineForUnitTests(":b!~b@b.b JOIN #testing");
-        network.ReceiveLineForUnitTests(":c!~c@c.c JOIN #testing");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        await network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        await network.ReceiveLineForUnitTests(":b!~b@b.b JOIN #testing");
+        await network.ReceiveLineForUnitTests(":c!~c@c.c JOIN #testing");
 
         // line should remove a from the channel via various methods
-        network.ReceiveLineForUnitTests(line);
+        await network.ReceiveLineForUnitTests(line);
         var info = network.AsNetworkInfo();
 
         Assert.IsNull(info.GetChannel("#testing"));
@@ -182,20 +182,20 @@ public class StateTests
     }
 
     [TestMethod]
-    public void Successfully_change_modes()
+    public async Task Successfully_change_modes()
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
-        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
-        network.ReceiveLineForUnitTests(":b!~b@b.b JOIN #testing");
-        network.ReceiveLineForUnitTests(":c!~c@c.c JOIN #testing");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        await network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        await network.ReceiveLineForUnitTests(":b!~b@b.b JOIN #testing");
+        await network.ReceiveLineForUnitTests(":c!~c@c.c JOIN #testing");
 
-        network.ReceiveLineForUnitTests(":irc.netwolf.org MODE #testing +iobl a d!*@* 5");
-        network.ReceiveLineForUnitTests(":irc.netwolf.org MODE #testing +vv-vv test a b c");
+        await network.ReceiveLineForUnitTests(":irc.netwolf.org MODE #testing +iobl a d!*@* 5");
+        await network.ReceiveLineForUnitTests(":irc.netwolf.org MODE #testing +vv-vv test a b c");
         var info = network.AsNetworkInfo();
 
         var channel = info.GetChannel("#testing")!;
@@ -214,7 +214,7 @@ public class StateTests
         Assert.AreEqual(string.Empty, channel.Users[bUser.Id]);
         Assert.AreEqual(string.Empty, bUser.Channels[channel.Id]);
 
-        network.ReceiveLineForUnitTests(":irc.netwolf.org MODE #testing +k-o pw a");
+        await network.ReceiveLineForUnitTests(":irc.netwolf.org MODE #testing +k-o pw a");
 
         // refresh channel data since records are immutable
         info = network.AsNetworkInfo();
@@ -236,16 +236,16 @@ public class StateTests
     [DataRow(":irc.netwolf.org RENAME #testing #test2 :", "#test2", DisplayName = "RENAME from server")]
     [DataRow(":a!~a@a.a RENAME #testing #test2 :reason goes here", "#test2", DisplayName = "RENAME with reason")]
     [DataRow(":a!~a@a.a RENAME #testing #TESTING :", "#TESTING", DisplayName = "Change channel case")]
-    public void Successfully_rename_channel(string line, string newChannel)
+    public async Task Successfully_rename_channel(string line, string newChannel)
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :draft/channel-rename");
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
-        network.ReceiveLineForUnitTests(line);
+        await network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :draft/channel-rename");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        await network.ReceiveLineForUnitTests(line);
         var info = network.AsNetworkInfo();
         if (!IrcUtil.IrcEquals("#testing", newChannel, CaseMapping.Ascii))
         {
@@ -266,17 +266,17 @@ public class StateTests
     [DataRow(":irc.netwolf.org RENAME #testing", DisplayName = "Missing 2nd arg")]
     [DataRow(":irc.netwolf.org RENAME #testing #test2", DisplayName = "Missing 3rd arg")]
     [DataRow(":irc.netwolf.org RENAME #testing :#second test whee", DisplayName = "2nd arg is trailing")]
-    public void Ignore_invalid_renames(string line)
+    public async Task Ignore_invalid_renames(string line)
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :draft/channel-rename");
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #another");
-        network.ReceiveLineForUnitTests(line);
+        await network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :draft/channel-rename");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #another");
+        await network.ReceiveLineForUnitTests(line);
 
         var state = network.AsNetworkInfo();
         Assert.AreEqual("test", state.GetAllUsers().Single().Nick);
@@ -285,17 +285,17 @@ public class StateTests
 
     [DataTestMethod]
     [DataRow(":irc.netwolf.org RENAME #another #testing :", DisplayName = "Channel collision")]
-    public void Throw_on_corrupted_state_renames(string line)
+    public async Task Throw_on_corrupted_state_renames(string line)
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :draft/channel-rename");
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #another");
-        Assert.ThrowsExactly<BadStateException>(() => network.ReceiveLineForUnitTests(line));
+        await network.ReceiveLineForUnitTests(":irc.netwolf.org CAP test ACK :draft/channel-rename");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #another");
+        await Assert.ThrowsExactlyAsync<BadStateException>(() => network.ReceiveLineForUnitTests(line));
     }
 
     [DataTestMethod]
@@ -304,17 +304,17 @@ public class StateTests
     [DataRow("a", "a^]", "A~}", "rfc1459", false, DisplayName = "Regular nickchange (casefolded rfc1459)")]
     [DataRow("a", "a^]", "A^}", "rfc1459-strict", false, DisplayName = "Regular nickchange (casefolded rfc1459-strict)")]
     [DataRow("a", "A", "a", "ascii", true, DisplayName = "Casing change")]
-    public void Successfully_change_nick(string oldNick, string newNick, string lookup, string casemapping, bool casingChange)
+    public async Task Successfully_change_nick(string oldNick, string newNick, string lookup, string casemapping, bool casingChange)
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests($":irc.netwolf.org 005 test CASEMAPPING={casemapping} :are supported by this server");
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
-        network.ReceiveLineForUnitTests($":{oldNick}!id2@host.two JOIN #testing");
-        network.ReceiveLineForUnitTests($":{oldNick}!id2@host.two NICK {newNick}");
+        await network.ReceiveLineForUnitTests($":irc.netwolf.org 005 test CASEMAPPING={casemapping} :are supported by this server");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        await network.ReceiveLineForUnitTests($":{oldNick}!id2@host.two JOIN #testing");
+        await network.ReceiveLineForUnitTests($":{oldNick}!id2@host.two NICK {newNick}");
 
         var state = network.AsNetworkInfo();
         var user = state.GetUserByNick(lookup);
@@ -335,16 +335,16 @@ public class StateTests
     [DataRow(":test!id@127.0.0.1 NICK #testing", DisplayName = "Invalid nickname (channel)")]
     [DataRow(":test!id@127.0.0.1 NICK +foo", DisplayName = "Invalid nickname (status)")]
     [DataRow(":b!~b@b.b NICK c", DisplayName = "Unrecognized source")]
-    public void Ignore_invalid_nick_changes(string line)
+    public async Task Ignore_invalid_nick_changes(string line)
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
-        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
-        network.ReceiveLineForUnitTests(line);
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        await network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        await network.ReceiveLineForUnitTests(line);
 
         var state = network.AsNetworkInfo();
         CollectionAssert.AreEquivalent(new List<string> { "test", "a" }, state.GetAllUsers().Select(u => u.Nick).ToList());
@@ -353,32 +353,32 @@ public class StateTests
 
     [DataTestMethod]
     [DataRow(":a!~a@a.a NICK test", DisplayName = "Nick collision")]
-    public void Throw_on_corrupted_state_nick_changes(string line)
+    public async Task Throw_on_corrupted_state_nick_changes(string line)
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
-        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
-        Assert.ThrowsExactly<BadStateException>(() => network.ReceiveLineForUnitTests(line));
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        await network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        await Assert.ThrowsExactlyAsync<BadStateException>(() => network.ReceiveLineForUnitTests(line));
     }
 
     [TestMethod]
-    public void Successfully_self_away_numeric()
+    public async Task Successfully_self_away_numeric()
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":irc.netwolf.org 306 test :You have been marked as being away");
+        await network.ReceiveLineForUnitTests(":irc.netwolf.org 306 test :You have been marked as being away");
         Assert.IsTrue(network.AsNetworkInfo().IsAway);
     }
 
     [TestMethod]
-    public void Successfully_self_unaway_numeric()
+    public async Task Successfully_self_unaway_numeric()
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
@@ -389,122 +389,122 @@ public class StateTests
         network.UnsafeUpdateUser(network.AsNetworkInfo().Self with { IsAway = true });
         Assert.IsTrue(network.AsNetworkInfo().IsAway);
 
-        network.ReceiveLineForUnitTests(":irc.netwolf.org 305 test :You are no longer marked as being away");
+        await network.ReceiveLineForUnitTests(":irc.netwolf.org 305 test :You are no longer marked as being away");
         Assert.IsFalse(network.AsNetworkInfo().IsAway);
     }
 
     [TestMethod]
-    public void Successfully_other_away_numeric()
+    public async Task Successfully_other_away_numeric()
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
-        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
-        network.ReceiveLineForUnitTests(":irc.netwolf.org 301 test a :Custom away message");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        await network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        await network.ReceiveLineForUnitTests(":irc.netwolf.org 301 test a :Custom away message");
         Assert.IsTrue(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
     }
 
     [DataTestMethod]
     [DataRow("Custom away message", DisplayName = "AWAY with message")]
     [DataRow("", DisplayName = "AWAY without message")]
-    public void Successfully_other_away_notify(string reason)
+    public async Task Successfully_other_away_notify(string reason)
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
-        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
-        network.ReceiveLineForUnitTests($":a!~a@a.a AWAY :{reason}");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        await network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        await network.ReceiveLineForUnitTests($":a!~a@a.a AWAY :{reason}");
         Assert.IsTrue(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
     }
 
     [TestMethod]
-    public void Successfully_other_unaway_notify()
+    public async Task Successfully_other_unaway_notify()
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
-        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        await network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
 
         // set up that the user is currently away (and validate that setup worked)
         network.UnsafeUpdateUser(network.AsNetworkInfo().GetUserByNick("a")! with { IsAway = true });
         Assert.IsTrue(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
 
-        network.ReceiveLineForUnitTests($":a!~a@a.a AWAY");
+        await network.ReceiveLineForUnitTests($":a!~a@a.a AWAY");
         Assert.IsFalse(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
     }
 
     [TestMethod]
-    public void Successfully_other_away_who()
+    public async Task Successfully_other_away_who()
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
-        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
-        network.ReceiveLineForUnitTests(":irc.netwolf.org 352 test #testing ~a a.a irc.netwolf.org a G :0 Real Name");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        await network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        await network.ReceiveLineForUnitTests(":irc.netwolf.org 352 test #testing ~a a.a irc.netwolf.org a G :0 Real Name");
         Assert.IsTrue(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
     }
 
     [TestMethod]
-    public void Successfully_other_unaway_who()
+    public async Task Successfully_other_unaway_who()
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
-        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        await network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
 
         // set up that the user is currently away (and validate that setup worked)
         network.UnsafeUpdateUser(network.AsNetworkInfo().GetUserByNick("a")! with { IsAway = true });
         Assert.IsTrue(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
 
-        network.ReceiveLineForUnitTests(":irc.netwolf.org 352 test #testing ~a a.a irc.netwolf.org a H :0 Real Name");
+        await network.ReceiveLineForUnitTests(":irc.netwolf.org 352 test #testing ~a a.a irc.netwolf.org a H :0 Real Name");
         Assert.IsFalse(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
     }
 
     [TestMethod]
-    public void Successfully_other_away_userhost()
+    public async Task Successfully_other_away_userhost()
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
-        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
-        network.ReceiveLineForUnitTests(":irc.netwolf.org 302 test :a=-a.a");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        await network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        await network.ReceiveLineForUnitTests(":irc.netwolf.org 302 test :a=-a.a");
         Assert.IsTrue(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
     }
 
     [TestMethod]
-    public void Successfully_other_unaway_userhost()
+    public async Task Successfully_other_unaway_userhost()
     {
         using var scope = Container.CreateScope();
         var networkFactory = Container.GetRequiredService<INetworkFactory>();
         using var network = (Network)networkFactory.Create("NetwolfTest", Options);
         network.RegisterForUnitTests("127.0.0.1", "acct");
 
-        network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
-        network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
+        await network.ReceiveLineForUnitTests(":test!id@127.0.0.1 JOIN #testing");
+        await network.ReceiveLineForUnitTests(":a!~a@a.a JOIN #testing");
 
         // set up that the user is currently away (and validate that setup worked)
         network.UnsafeUpdateUser(network.AsNetworkInfo().GetUserByNick("a")! with { IsAway = true });
         Assert.IsTrue(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
 
-        network.ReceiveLineForUnitTests(":irc.netwolf.org 302 test :a=+a.a");
+        await network.ReceiveLineForUnitTests(":irc.netwolf.org 302 test :a=+a.a");
         Assert.IsFalse(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
     }
 }

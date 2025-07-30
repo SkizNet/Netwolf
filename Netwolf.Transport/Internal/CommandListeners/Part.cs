@@ -21,13 +21,13 @@ internal class Part : ICommandListener
         Logger = logger;
     }
 
-    public Task ExecuteAsync(CommandEventArgs args)
+    public void Execute(CommandEventArgs args)
     {
         // PART <channel>{,<channel>} [:<reason>]
         var info = args.Network.AsNetworkInfo();
         if (!IrcUtil.TryExtractUserFromSource(args.Command, info, out var user))
         {
-            return Task.CompletedTask;
+            return;
         }
 
         // RFC states that the PART message from server to client SHOULD NOT send multiple channels, not MUST NOT, so accomodate multiple channels here
@@ -44,7 +44,5 @@ internal class Part : ICommandListener
                 Users = channel.Users.Remove(user.Id)
             });
         }
-
-        return Task.CompletedTask;
     }
 }

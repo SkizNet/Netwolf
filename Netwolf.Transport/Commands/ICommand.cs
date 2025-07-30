@@ -128,7 +128,7 @@ public interface ICommand
     /// The command part of the final command, without trailing CRLF.
     /// This does not include the source prefix.
     /// </summary>
-    string UnprefixedCommandPart => Args.Count > 0 ? $"{Verb} {ArgString}" : Verb;
+    string UnprefixedCommandPart => $"{Verb}{ArgString}";
 
     /// <summary>
     /// All command arguments as a single string.
@@ -141,6 +141,8 @@ public interface ICommand
             var sb = new StringBuilder();
             for (int i = 0; i < Args.Count; ++i)
             {
+                sb.Append(' ');
+
                 if (i == Args.Count - 1 && HasTrailingArg)
                 {
                     sb.Append(':');

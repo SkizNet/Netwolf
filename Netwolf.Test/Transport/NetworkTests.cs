@@ -22,7 +22,8 @@ public class NetworkTests
         {
             // keep timeouts low so tests don't take forever
             // there are some internal 5s timeouts (ident/hostname lookup) so be a bit longer than that
-            ConnectTimeout = TimeSpan.FromSeconds(7),
+            ConnectTimeout = TimeSpan.FromSeconds(1),
+            RegistrationTimeout = TimeSpan.FromSeconds(7),
             ConnectRetries = 0,
             PrimaryNick = "test",
             Servers = [new("irc.netwolf.org", 6697)]

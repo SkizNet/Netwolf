@@ -12,7 +12,7 @@ internal class Away : ICommandListener
 {
     public IReadOnlyCollection<string> CommandFilter => ["AWAY", "301", "305", "306"];
 
-    public Task ExecuteAsync(CommandEventArgs args)
+    public void Execute(CommandEventArgs args)
     {
         var info = args.Network.AsNetworkInfo();
         var command = args.Command;
@@ -48,7 +48,5 @@ internal class Away : ICommandListener
                 args.Network.UnsafeUpdateUser(info.Self with { IsAway = true });
                 break;
         }
-
-        return Task.CompletedTask;
     }
 }
