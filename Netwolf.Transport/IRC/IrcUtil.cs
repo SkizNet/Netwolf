@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 using Netwolf.Transport.Commands;
-using Netwolf.Transport.Extensions;
 using Netwolf.Transport.State;
+using Netwolf.Unicode;
 
 using System.Diagnostics.CodeAnalysis;
 

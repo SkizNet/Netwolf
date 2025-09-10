@@ -5,9 +5,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.Exceptions;
-using Netwolf.Transport.Extensions;
-using Netwolf.Transport.Internal;
 using Netwolf.Transport.State;
+using Netwolf.Unicode;
 
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
@@ -293,7 +292,7 @@ public partial class CommandFactory : ICommandFactory
             multilineEnabled = false;
         }
 
-        var lines = UnicodeHelper.SplitText(text, maxlen, false);
+        var lines = LineBreakHelper.SplitText(text, maxlen, false);
 
         string batchId = Guid.NewGuid().ToString();
         int batchLines = 0;

@@ -1,0 +1,39 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="Data\DerivedBidiClass.txt" />
+    <None Remove="Data\DerivedCombiningClass.txt" />
+    <None Remove="Data\DerivedCoreProperties.txt" />
+    <None Remove="Data\DerivedJoiningType.txt" />
+    <None Remove="Data\EastAsianWidth.txt" />
+    <None Remove="Data\HangulSyllableType.txt" />
+    <None Remove="Data\LineBreak.txt" />
+    <None Remove="Data\PropList.txt" />
+    <None Remove="Data\Scripts.txt" />
+    <None Remove="Data\UnicodeData.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="Data\DerivedBidiClass.txt" />
+    <AdditionalFiles Include="Data\DerivedCombiningClass.txt" />
+    <AdditionalFiles Include="Data\DerivedCoreProperties.txt" />
+    <AdditionalFiles Include="Data\DerivedJoiningType.txt" />
+    <AdditionalFiles Include="Data\EastAsianWidth.txt" />
+    <AdditionalFiles Include="Data\HangulSyllableType.txt" />
+    <AdditionalFiles Include="Data\LineBreak.txt" />
+    <AdditionalFiles Include="Data\PropList.txt" />
+    <AdditionalFiles Include="Data\Scripts.txt" />
+    <AdditionalFiles Include="Data\UnicodeData.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Netwolf.Generator\Netwolf.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>

@@ -1,4 +1,4 @@
-﻿using Netwolf.Transport.Extensions;
+﻿using Netwolf.Unicode;
 
 using System;
 using System.Collections.Generic;
@@ -25,7 +25,7 @@ public interface IAccountProvider
     /// Given a string that is potentially of the form "username@realm", extracts
     /// the username part from the string. If the string does not contain a '@' character,
     /// it returns the string as is. No normalization is performed; use the methods
-    /// found in Netwolf.PRECIS if normalization is needed.
+    /// found in Netwolf.Unicode if normalization is needed.
     /// </summary>
     /// <param name="username"></param>
     /// <returns></returns>

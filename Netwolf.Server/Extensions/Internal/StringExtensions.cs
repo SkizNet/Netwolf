@@ -1,4 +1,4 @@
-﻿using Netwolf.Transport.Extensions;
+﻿using Netwolf.Unicode;
 
 using System;
 using System.Collections.Generic;

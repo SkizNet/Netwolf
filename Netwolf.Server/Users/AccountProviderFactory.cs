@@ -2,7 +2,7 @@
 using Microsoft.Extensions.Options;
 
 using Netwolf.Server.Internal;
-using Netwolf.Transport.Extensions;
+using Netwolf.Unicode;
 
 using System;
 using System.Collections.Generic;

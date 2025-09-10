@@ -46,7 +46,7 @@ public interface INetwork : IDisposable, IAsyncDisposable
     /// This delegate can be chained, and the CAP will be enabled should any of its registered
     /// callbacks returns true.
     /// </summary>
-    CapFilter? ShouldEnableCap { get; set; }
+    event CapFilter? ShouldEnableCap;
 
     /// <summary>
     /// Event raised for each CAP that is enabled by the network. This is fired

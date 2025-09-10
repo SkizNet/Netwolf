@@ -7,8 +7,8 @@ using Netwolf.Server.Internal;
 using Netwolf.Server.Sasl;
 using Netwolf.Server.Users;
 using Netwolf.Transport.Commands;
-using Netwolf.Transport.Extensions;
 using Netwolf.Transport.IRC;
+using Netwolf.Unicode;
 
 using System.Collections.Concurrent;
 using System.Net;
@@ -39,7 +39,7 @@ public class User : IDisposable
 
     public string Nickname { get; internal set; } = null!;
 
-    public string LookupKey => IrcUtil.Casefold(Nickname, CaseMapping.Ascii);
+    public string LookupKey => IrcUtil.Casefold(Nickname, Transport.IRC.CaseMapping.Ascii);
 
     public string Ident { get; internal set; } = null!;
 

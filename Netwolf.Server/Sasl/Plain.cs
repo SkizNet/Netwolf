@@ -1,11 +1,12 @@
 ﻿using Microsoft.Extensions.Logging;
 
-using Netwolf.PRECIS;
 using Netwolf.Server.Commands;
 using Netwolf.Server.Internal;
 using Netwolf.Server.Users;
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.Extensions;
+using Netwolf.Unicode;
+using Netwolf.Unicode.PRECIS;
 
 using System.Buffers;
 using System.Buffers.Text;

@@ -20,16 +20,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="Data\EastAsianWidth.txt" />
-    <None Remove="Data\LineBreak.txt" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <EmbeddedResource Include="Data\EastAsianWidth.txt" />
-    <EmbeddedResource Include="Data\LineBreak.txt" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

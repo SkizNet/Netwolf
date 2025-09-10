@@ -1,8 +1,8 @@
 ﻿// Copyright (c) 2024 Ryan Schmidt <skizzerz@skizzerz.net>
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-using Netwolf.Transport.Extensions;
 using Netwolf.Transport.MFA;
+using Netwolf.Unicode;
 
 using System.Runtime.InteropServices;
 using System.Security.Authentication.ExtendedProtection;

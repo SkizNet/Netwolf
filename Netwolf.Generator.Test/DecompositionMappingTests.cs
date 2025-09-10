@@ -1,7 +1,7 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
-using Netwolf.Generator.PRECIS;
+using Netwolf.Generator.Unicode;
 
 using System;
 using System.Collections.Generic;
@@ -20,7 +20,7 @@ public class DecompositionMappingTests
     public void Successfully_generates_source()
     {
         // compilation object we inject our source into containing the implementation of partial methods the generator requires
-        Compilation input = CSharpCompilation.Create("Netwolf.PRECIS",
+        Compilation input = CSharpCompilation.Create("Netwolf.Unicode",
             [
                 CSharpSyntaxTree.ParseText(@"global using global::System.Collections.Generic;"),
                 CSharpSyntaxTree.ParseText(GetSkeleton()),
@@ -30,7 +30,7 @@ public class DecompositionMappingTests
             ],
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
 
-        PrecisDataGenerator generator = new();
+        UnicodeDataGenerator generator = new();
         CSharpGeneratorDriver.Create(generator)
             .AddAdditionalTexts([new EmbeddedAdditionalText("UnicodeData.txt")])
             .RunGeneratorsAndUpdateCompilation(input, out var output, out var diagnostics);
@@ -46,14 +46,14 @@ public class DecompositionMappingTests
 
         using MetadataLoadContext mlc = new(new PathAssemblyResolver(Directory.GetFiles(RuntimeEnvironment.GetRuntimeDirectory(), "*.dll")));
         var assembly = mlc.LoadFromByteArray(assemblyStream.ToArray());
-        var type = assembly.GetType("Netwolf.PRECIS.Internal.DecompositionMappings");
+        var type = assembly.GetType("Netwolf.Unicode.Internal.DecompositionMappings");
         Assert.IsNotNull(type);
     }
 
     private static string GetSkeleton()
     {
         return @"
-namespace Netwolf.PRECIS.Internal
+namespace Netwolf.Unicode.Internal
 {
     internal static partial class DecompositionMappings
     {

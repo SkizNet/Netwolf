@@ -19,7 +19,6 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Security.Authentication.ExtendedProtection;
 using System.Text;
-using System.Threading;
 using System.Threading.RateLimiting;
 
 using static Netwolf.Transport.IRC.INetwork;
@@ -181,7 +180,7 @@ public partial class Network : INetwork
     private readonly Dictionary<string, string?> _capValueCache = [];
 
     /// <inheritdoc />
-    public CapFilter? ShouldEnableCap { get; set; }
+    public event CapFilter? ShouldEnableCap;
 
     /// <inheritdoc />
     public IObservable<CapEventArgs> CapEnabled => from e in _capEventStream
@@ -192,6 +191,27 @@ public partial class Network : INetwork
     public IObservable<CapEventArgs> CapDisabled => from e in _capEventStream
                                                     where e.Subcommand == "DEL"
                                                     select e;
+
+    /// <summary>
+    /// CAPs that are always enabled if supported by the server, because we support them in this layer
+    /// </summary>
+    private static readonly HashSet<string> DefaultCaps =
+    [
+        "account-notify",
+        "away-notify",
+        "batch",
+        "cap-notify",
+        "chghost",
+        "draft/channel-rename",
+        "draft/multiline",
+        "extended-join",
+        "message-ids",
+        "message-tags",
+        "multi-prefix",
+        "server-time",
+        "setname",
+        "userhost-in-names",
+    ];
 
     /// <summary>
     /// SASL mechanisms that are supported by both the server and us.
@@ -274,6 +294,7 @@ public partial class Network : INetwork
         CommandReceived.SubscribeAsync(OnCommandReceived, _messageLoopTokenSource.Token);
         CommandListenerRegistry.RegisterForNetwork(this, _messageLoopTokenSource.Token);
     }
+
 
     #region IDisposable / IAsyncDisposable
     /// <summary>
@@ -835,7 +856,7 @@ public partial class Network : INetwork
                 break;
             case "CAP":
                 // CAP negotation
-                OnCapCommand(command, cancellationToken);
+                await OnCapCommand(command, cancellationToken);
                 break;
             case "AUTHENTICATE":
                 // SASL
@@ -889,27 +910,8 @@ public partial class Network : INetwork
         }
     }
 
-    private void OnCapCommand(ICommand command, CancellationToken cancellationToken)
+    private async Task OnCapCommand(ICommand command, CancellationToken cancellationToken)
     {
-        // CAPs that are always enabled if supported by the server, because we support them in this layer
-        HashSet<string> defaultCaps =
-        [
-            "account-notify",
-            "away-notify",
-            "batch",
-            "cap-notify",
-            "chghost",
-            "draft/channel-rename",
-            "draft/multiline",
-            "extended-join",
-            "message-ids",
-            "message-tags",
-            "multi-prefix",
-            "server-time",
-            "setname",
-            "userhost-in-names",
-        ];
-
         // figure out which subcommand we have
         // CAP nickname subcommand args...
         switch (command.Args[1])
@@ -958,7 +960,7 @@ public partial class Network : INetwork
                         {
                             _capValueCache[key] = value;
 
-                            bool shouldEnable = defaultCaps.Contains(key);
+                            bool shouldEnable = DefaultCaps.Contains(key);
                             if (!shouldEnable && ShouldEnableCap != null)
                             {
                                 var args = new CapEventArgs(this, key, value, command.Args[1]);
@@ -985,7 +987,7 @@ public partial class Network : INetwork
                                 else if (supportedSaslTypes.Count == 0 && Options.AbortOnSaslFailure)
                                 {
                                     Logger.LogError("Server and client have no SASL mechanisms in common; aborting connection");
-                                    _ = DisconnectAsync();
+                                    await DisconnectAsync();
                                     return;
                                 }
                             }
@@ -1009,7 +1011,7 @@ public partial class Network : INetwork
                         {
                             if (consumedBytes + token.Length > maxBytes)
                             {
-                                _ = UnsafeSendRawAsync($"CAP REQ :{string.Join(" ", param)}", cancellationToken);
+                                await UnsafeSendRawAsync($"CAP REQ :{string.Join(" ", param)}", cancellationToken);
                                 consumedBytes = 0;
                                 param.Clear();
                             }
@@ -1020,12 +1022,12 @@ public partial class Network : INetwork
 
                         if (param.Count > 0)
                         {
-                            _ = UnsafeSendRawAsync($"CAP REQ :{string.Join(" ", param)}", cancellationToken);
+                            await UnsafeSendRawAsync($"CAP REQ :{string.Join(" ", param)}", cancellationToken);
                         }
                         else if (!IsConnected)
                         {
                             // we don't support any of the server's caps, so end cap negotiation here
-                            _ = UnsafeSendRawAsync("CAP END", cancellationToken);
+                            await UnsafeSendRawAsync("CAP END", cancellationToken);
                         }
                     }
                 }
@@ -1053,7 +1055,7 @@ public partial class Network : INetwork
 
                     if (command.Args[1] == "ACK" && !IsConnected && !SuspendCapEndForSasl)
                     {
-                        _ = UnsafeSendRawAsync("CAP END", cancellationToken);
+                        await UnsafeSendRawAsync("CAP END", cancellationToken);
                     }
                 }
 
@@ -1076,7 +1078,7 @@ public partial class Network : INetwork
                 // we couldn't set CAPs, bail out
                 if (!IsConnected)
                 {
-                    _ = UnsafeSendRawAsync("CAP END", cancellationToken);
+                    await UnsafeSendRawAsync("CAP END", cancellationToken);
                 }
 
                 break;

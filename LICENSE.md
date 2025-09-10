@@ -16,7 +16,7 @@ contained within:
 - Netwolf.Transport
 - Netwolf.Generator (with exceptions, see below)
 - Netwolf.PluginFramework
-- Netwolf.PRECIS
+- Netwolf.Unicode
 
 **GNU General Public License, version 3.0 or later**
 - Netwolf.BotFramework (with exceptions, see below)
@@ -50,21 +50,23 @@ Uncode License v3 below instead of the GNU Lesser General Public License,
 GNU General Public License, or GNU Affero General Public License.
 This license applies to files with the following names:
 
-- UnicodeData.txt
 - DerivedBidiClass.txt
 - DerivedCombiningClass.txt
 - DerivedCoreProperties.txt
 - DerivedJoiningType.txt
 - EastAsianWidth.txt
+- HangulSyllableType.txt
 - LineBreak.txt
+- LineBreakTest.txt
 - PropList.txt
 - Scripts.txt
+- UnicodeData.txt
 
 UNICODE LICENSE V3
 
 COPYRIGHT AND PERMISSION NOTICE
 
-Copyright © 1991-2024 Unicode, Inc.
+Copyright © 1991-2025 Unicode, Inc.
 
 NOTICE TO USER: Carefully read the following legal agreement. BY
 DOWNLOADING, INSTALLING, COPYING OR OTHERWISE USING DATA FILES, AND/OR

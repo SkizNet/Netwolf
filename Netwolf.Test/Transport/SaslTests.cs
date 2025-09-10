@@ -1,11 +1,5 @@
-﻿using Netwolf.Transport.Extensions;
-using Netwolf.Transport.Sasl;
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using Netwolf.Transport.Sasl;
+using Netwolf.Unicode;
 
 namespace Netwolf.Test.Transport;
 
