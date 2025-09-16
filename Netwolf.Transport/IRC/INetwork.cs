@@ -34,6 +34,32 @@ public interface INetwork : IDisposable, IAsyncDisposable
     INetworkInfo AsNetworkInfo();
 
     /// <summary>
+    /// Event raised whenever we first establish a connection to a network.
+    /// This happens after the socket is established but before user registration occurs.
+    /// The <c>sender</c> parameter is the network we connected to, however
+    /// make use of the <see cref="NetworkEventArgs"/> to obtain this in a
+    /// strongly-typed manner instead.
+    /// </summary>
+    event EventHandler<NetworkEventArgs>? NetworkConnecting;
+
+    /// <summary>
+    /// Event raised whenever we become fully connected to a network.
+    /// This happens after connection registration completes.
+    /// The <c>sender</c> parameter is the network we connected to, however
+    /// make use of the <see cref="NetworkEventArgs"/> to obtain this in a
+    /// strongly-typed manner instead.
+    /// </summary>
+    event EventHandler<NetworkEventArgs>? NetworkConnected;
+
+    /// <summary>
+    /// Event raised whenever we become disconnected to a network for any reason.
+    /// The <c>sender</c> parameter will be the network we disconnected from,
+    /// however make use of the <see cref="NetworkEventArgs"/> to obtain this
+    /// in a strongly-typed manner instead.
+    /// </summary>
+    event EventHandler<NetworkEventArgs>? NetworkDisconnected;
+
+    /// <summary>
     /// Delegate type for <see cref="ShouldEnableCap"/>.
     /// </summary>
     /// <param name="args">Arguments for the filter</param>
@@ -46,14 +72,14 @@ public interface INetwork : IDisposable, IAsyncDisposable
     /// This delegate can be chained, and the CAP will be enabled should any of its registered
     /// callbacks returns true.
     /// </summary>
-    event CapFilter? ShouldEnableCap;
+    public CapFilter? ShouldEnableCap { get; set; }
 
     /// <summary>
     /// Event raised for each CAP that is enabled by the network. This is fired
     /// once per capability mentioned in the CAP ACK or CAP LIST commands. It is possible
     /// for this to fire multiple times for the same capability.
     /// </summary>
-    IObservable<CapEventArgs> CapEnabled { get; }
+    event EventHandler<CapEventArgs>? CapEnabled;
 
     /// <summary>
     /// Event raised for each CAP that is no longer supported by the network.
@@ -61,7 +87,7 @@ public interface INetwork : IDisposable, IAsyncDisposable
     /// It is possible for this to fire on a cap that was not previously listed in a
     /// CapEnabled event, so listeners should not assume that the cap was previously enabled.
     /// </summary>
-    IObservable<CapEventArgs> CapDisabled { get; }
+    event EventHandler<CapEventArgs>? CapDisabled;
 
     /// <summary>
     /// Connect to the network and perform user registration. If the passed-in

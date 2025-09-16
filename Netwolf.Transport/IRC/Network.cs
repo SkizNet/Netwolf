@@ -52,8 +52,6 @@ public partial class Network : INetwork
 
     protected CommandListenerRegistry CommandListenerRegistry { get; init; }
 
-    protected NetworkEvents NetworkEvents { get; set; }
-
     /// <summary>
     /// Cancellation token for <see cref="_messageLoop"/>, used when disposing this <see cref="Network"/> instance.
     /// </summary>
@@ -169,28 +167,28 @@ public partial class Network : INetwork
     /// <inheritdoc />
     public IObservable<CommandEventArgs> CommandReceived => _commandEventStream.ObserveOn(_commandEventScheduler);
 
+    /// <inheritdoc />
+    public event EventHandler<NetworkEventArgs>? NetworkConnecting;
+
+    /// <inheritdoc />
+    public event EventHandler<NetworkEventArgs>? NetworkConnected;
+
+    /// <inheritdoc />
+    public event EventHandler<NetworkEventArgs>? NetworkDisconnected;
+
     /// <summary>
-    /// Internal event stream for CAP events
+    /// Represents the observable on CommandListenerRegistry for CAP events.
     /// </summary>
-    private readonly Subject<CapEventArgs> _capEventStream = new();
-
-    /// <summary>
-    /// Values for all caps received via CAP LS or CAP NEW, including those we did not enable
-    /// </summary>
-    private readonly Dictionary<string, string?> _capValueCache = [];
+    private readonly IDisposable _capEventObserver;
 
     /// <inheritdoc />
-    public event CapFilter? ShouldEnableCap;
+    public CapFilter? ShouldEnableCap { get; set; }
 
     /// <inheritdoc />
-    public IObservable<CapEventArgs> CapEnabled => from e in _capEventStream
-                                                   where e.Subcommand == "ACK"
-                                                   select e;
+    public event EventHandler<CapEventArgs>? CapEnabled;
 
     /// <inheritdoc />
-    public IObservable<CapEventArgs> CapDisabled => from e in _capEventStream
-                                                    where e.Subcommand == "DEL"
-                                                    select e;
+    public event EventHandler<CapEventArgs>? CapDisabled;
 
     /// <summary>
     /// CAPs that are always enabled if supported by the server, because we support them in this layer
@@ -257,7 +255,6 @@ public partial class Network : INetwork
     /// <param name="rateLimiter"></param>
     /// <param name="saslMechanismFactory"></param>
     /// <param name="commandListenerRegistry"></param>
-    /// <param name="networkEvents"></param>
     public Network(
         string name,
         NetworkOptions options,
@@ -266,8 +263,7 @@ public partial class Network : INetwork
         IConnectionFactory connectionFactory,
         IRateLimiter rateLimiter,
         ISaslMechanismFactory saslMechanismFactory,
-        CommandListenerRegistry commandListenerRegistry,
-        NetworkEvents networkEvents)
+        CommandListenerRegistry commandListenerRegistry)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(options);
@@ -280,7 +276,6 @@ public partial class Network : INetwork
         RateLimiter = rateLimiter;
         SaslMechanismFactory = saslMechanismFactory;
         CommandListenerRegistry = commandListenerRegistry;
-        NetworkEvents = networkEvents;
 
         ResetState();
 
@@ -290,9 +285,25 @@ public partial class Network : INetwork
         // spin up the message loop for this Network
         _messageLoop = Task.Run(MessageLoop);
 
-        // register command listeners via IObservable (experiment to test if this actually works)
+        // register command listeners via IObservable
         CommandReceived.SubscribeAsync(OnCommandReceived, _messageLoopTokenSource.Token);
         CommandListenerRegistry.RegisterForNetwork(this, _messageLoopTokenSource.Token);
+
+        // wire up the CAP events
+        _capEventObserver = CommandListenerRegistry.CommandListenerEvents.OfType<CapEventArgs>()
+            .Subscribe(args =>
+            {
+                switch (args.Subcommand)
+                {
+                    case "ACK":
+                    case "LIST":
+                        CapEnabled?.Invoke(this, args);
+                        break;
+                    case "DEL":
+                        CapDisabled?.Invoke(this, args);
+                        break;
+                }
+            });
     }
 
 
@@ -304,9 +315,9 @@ public partial class Network : INetwork
     protected virtual async ValueTask DisposeAsyncCore()
     {
         SelectedSaslMech?.Dispose();
+        _capEventObserver.Dispose();
         _messageLoopTokenSource.Cancel();
         await _messageLoop.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-        _capEventStream.Dispose();
         _commandEventStream.Dispose();
         _commandEventScheduler.Dispose();
         _messageLoopTokenSource.Dispose();
@@ -327,9 +338,9 @@ public partial class Network : INetwork
             if (disposing)
             {
                 SelectedSaslMech?.Dispose();
+                _capEventObserver.Dispose();
                 _messageLoopTokenSource.Cancel();
                 _messageLoop.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing).GetAwaiter().GetResult();
-                _capEventStream.Dispose();
                 _commandEventStream.Dispose();
                 _commandEventScheduler.Dispose();
                 _messageLoopTokenSource.Dispose();
@@ -467,7 +478,7 @@ public partial class Network : INetwork
                         _connection = null;
 
                         AbortUserRegistration(tasks[index].Exception);
-                        NetworkEvents.OnDisconnected(this, tasks[index].Exception);
+                        NetworkDisconnected?.Invoke(this, new(this, tasks[index].Exception));
                     }
                     break;
             }
@@ -550,7 +561,7 @@ public partial class Network : INetwork
                 // don't exit the loop until registration succeeds
                 // (we want to bounce/reconnect if that fails for whatever reason)
                 Logger.LogInformation("Connected to {server}.", server);
-                NetworkEvents.OnConnecting(this);
+                NetworkConnecting?.Invoke(this, new(this));
 
                 // alert the message loop to start processing incoming commands
                 _messageLoopCompletionSource.SetResult();
@@ -572,7 +583,6 @@ public partial class Network : INetwork
 
                 try
                 {
-                    _capValueCache.Clear();
                     await UnsafeSendRawAsync("CAP LS 302", registrationAggregate.Token);
 
                     if (Options.ServerPassword != null)
@@ -614,7 +624,7 @@ public partial class Network : INetwork
                 {
                     // user registration succeeded, exit out of the connect loop
                     _userRegistrationCompletionSource = null;
-                    NetworkEvents.OnConnected(this);
+                    NetworkConnected?.Invoke(this, new(this));
                     return;
                 }
                 else if (!registrationComplete)
@@ -672,7 +682,7 @@ public partial class Network : INetwork
         Server = null;
         _messageLoopCompletionSource.SetResult();
         AbortUserRegistration(ex);
-        NetworkEvents.OnDisconnected(this, ex);
+        NetworkDisconnected?.Invoke(this, new(this, ex));
     }
 
     /// <summary>
@@ -1362,7 +1372,7 @@ public partial class Network : INetwork
         }
 
         var subscription = CommandReceived.Subscribe(args => completionSource.SetResult());
-        NetworkEvents.NetworkDisconnected += OnDisconnected;
+        NetworkDisconnected += OnDisconnected;
 
         try
         {
@@ -1373,7 +1383,7 @@ public partial class Network : INetwork
         }
         finally
         {
-            NetworkEvents.NetworkDisconnected -= OnDisconnected;
+            NetworkDisconnected -= OnDisconnected;
             subscription.Dispose();
         }
     }

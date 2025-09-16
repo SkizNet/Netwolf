@@ -47,6 +47,11 @@ public sealed record NetworkState(
         return EnabledCaps.Contains(cap);
     }
 
+    public IReadOnlyDictionary<string, string?> GetAllEnabledCaps()
+    {
+        return SupportedCaps.Where(x => EnabledCaps.Contains(x.Key)).ToDictionary();
+    }
+
     public bool TryGetISupport(ISupportToken token, out string? value)
     {
         return ISupport.TryGetValue(token, out value);

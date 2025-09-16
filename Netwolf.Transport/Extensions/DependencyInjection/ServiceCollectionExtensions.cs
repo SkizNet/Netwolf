@@ -26,7 +26,6 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IConnectionFactory, ConnectionFactory>();
         services.TryAddSingleton<IRateLimiterFactory, RateLimiterFactory>();
         services.TryAddSingleton<ISaslMechanismFactory, SaslMechanismFactory>();
-        services.TryAddSingleton<NetworkEvents>();
 
         // General services (used for both client and server)
         services.TryAddSingleton<ICommandFactory, CommandFactory>();

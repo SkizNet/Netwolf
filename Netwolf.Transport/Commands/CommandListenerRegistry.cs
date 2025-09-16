@@ -8,14 +8,22 @@ using Netwolf.Transport.Internal;
 using Netwolf.Transport.IRC;
 
 using System.Reactive.Linq;
+using System.Reactive.Subjects;
 
 namespace Netwolf.Transport.Commands;
 
 public partial class CommandListenerRegistry
 {
-    internal IReadOnlyCollection<ICommandListener> SyncListeners { get; init; }
+    private IReadOnlyCollection<ICommandListener> SyncListeners { get; init; }
 
-    internal IReadOnlyCollection<IAsyncCommandListener> AsyncListeners { get; init; }
+    private IReadOnlyCollection<IAsyncCommandListener> AsyncListeners { get; init; }
+
+    /// <summary>
+    /// Message passing interface for listeners to emit events that the Network can listen to.
+    /// This is intended for use by the INetwork instance itself; events that other subscribers
+    /// would be interested in are emitted by events directly on INetwork.
+    /// </summary>
+    public Subject<object> CommandListenerEvents { get; init; } = new();
 
     public CommandListenerRegistry(IServiceProvider provider)
     {

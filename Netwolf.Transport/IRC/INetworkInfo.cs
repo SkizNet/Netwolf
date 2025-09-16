@@ -130,6 +130,12 @@ public interface INetworkInfo
     bool TryGetEnabledCap(string cap, out string? value);
 
     /// <summary>
+    /// Get all currently-enabled capabilities along with their values (if any).
+    /// </summary>
+    /// <returns></returns>
+    IReadOnlyDictionary<string, string?> GetAllEnabledCaps();
+
+    /// <summary>
     /// Attempt to get the value of an ISUPPORT token.
     /// </summary>
     /// <param name="token">Token name</param>
