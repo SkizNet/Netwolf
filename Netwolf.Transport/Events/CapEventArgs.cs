@@ -33,16 +33,23 @@ public sealed class CapEventArgs
     public string Subcommand { get; init; }
 
     /// <summary>
+    /// Cancellation token for async operations.
+    /// </summary>
+    public CancellationToken Token { get; init; }
+
+    /// <summary>
     /// Construct a new CapEventArgs
     /// </summary>
     /// <param name="network"></param>
     /// <param name="capName"></param>
     /// <param name="subcommand"></param>
-    internal CapEventArgs(INetwork network, string capName, string? capValue, string subcommand)
+    /// <param name="token"></param>
+    public CapEventArgs(INetwork network, string capName, string? capValue, string subcommand, CancellationToken token)
     {
         Network = network;
         CapName = capName;
         CapValue = capValue;
         Subcommand = subcommand;
+        Token = token;
     }
 }

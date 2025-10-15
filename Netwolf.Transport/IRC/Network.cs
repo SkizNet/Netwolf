@@ -9,7 +9,6 @@ using Netwolf.Transport.Exceptions;
 using Netwolf.Transport.Extensions;
 using Netwolf.Transport.Internal;
 using Netwolf.Transport.RateLimiting;
-using Netwolf.Transport.Sasl;
 using Netwolf.Transport.State;
 
 using System.Collections.Immutable;
@@ -17,8 +16,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
-using System.Security.Authentication.ExtendedProtection;
-using System.Text;
 using System.Threading.RateLimiting;
 
 using static Netwolf.Transport.IRC.INetwork;
@@ -32,10 +29,8 @@ public partial class Network : INetwork
 {
     private bool _disposed;
 
-    /// <summary>
-    /// Network options defined by the user
-    /// </summary>
-    protected NetworkOptions Options { get; set; }
+    /// <inheritdoc />
+    public NetworkOptions Options { get; init; }
 
     /// <summary>
     /// Logger for this Network
@@ -45,8 +40,6 @@ public partial class Network : INetwork
     protected ICommandFactory CommandFactory { get; init; }
 
     protected IConnectionFactory ConnectionFactory { get; init; }
-
-    protected ISaslMechanismFactory SaslMechanismFactory { get; init; }
 
     protected IRateLimiter RateLimiter { get; init; }
 
@@ -72,17 +65,15 @@ public partial class Network : INetwork
     /// </summary>
     private TaskCompletionSource? _userRegistrationCompletionSource;
 
-    /// <summary>
-    /// Server we are connected to, null if not connected
-    /// </summary>
-    private ServerRecord? Server { get; set; }
+    /// <inheritdoc />
+    public ServerRecord? Server { get; set; }
 
     private IConnection? _connection;
 
     /// <summary>
     /// A connection to the network
     /// </summary>
-    protected IConnection Connection
+    protected internal IConnection Connection
     {
         get
         {
@@ -182,64 +173,33 @@ public partial class Network : INetwork
     private readonly IDisposable _capEventObserver;
 
     /// <inheritdoc />
-    public CapFilter? ShouldEnableCap { get; set; }
+    public event CapFilterEventHandler? CapFilter;
+
+    /// <inheritdoc />
+    public async ValueTask<bool> ShouldEnableCapAsync(string capName, string? capValue, string subcommand, CancellationToken cancellationToken)
+    {
+        if (CapFilter == null)
+        {
+            return false;
+        }
+
+        CapEventArgs args = new(this, capName, capValue, subcommand, cancellationToken);
+        foreach (var handler in CapFilter.GetInvocationList().Cast<CapFilterEventHandler>())
+        {
+            if (await handler(this, args).ConfigureAwait(false))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /// <inheritdoc />
     public event EventHandler<CapEventArgs>? CapEnabled;
 
     /// <inheritdoc />
     public event EventHandler<CapEventArgs>? CapDisabled;
-
-    /// <summary>
-    /// CAPs that are always enabled if supported by the server, because we support them in this layer
-    /// </summary>
-    private static readonly HashSet<string> DefaultCaps =
-    [
-        "account-notify",
-        "away-notify",
-        "batch",
-        "cap-notify",
-        "chghost",
-        "draft/channel-rename",
-        "draft/multiline",
-        "extended-join",
-        "message-ids",
-        "message-tags",
-        "multi-prefix",
-        "server-time",
-        "setname",
-        "userhost-in-names",
-    ];
-
-    /// <summary>
-    /// SASL mechanisms that are supported by both the server and us.
-    /// We will try these in order of most to least secure.
-    /// If the server doesn't support CAP version 302, this will only be the mechanisms
-    /// selected by the client and doesn't necessarily speak to server support.
-    /// Mechanisms will be removed from this set as they are tried so that we don't re-try them.
-    /// </summary>
-    private HashSet<string> SaslMechs { get; set; } = [];
-
-    /// <summary>
-    /// SASL mechanism that is currently in use, or <c>null</c> if SASL isn't being attempted or failed
-    /// </summary>
-    private ISaslMechanism? SelectedSaslMech { get; set; }
-
-    /// <summary>
-    /// Maximum length of SaslBuffer (64 KiB base64-encoded, 48 KiB after decoding).
-    /// We abort SASL if the server sends more data than this
-    /// </summary>
-    private const int SASL_BUFFER_MAX_LENGTH = 65536;
-
-    /// <summary>
-    /// Buffer 
-    /// </summary>
-    private StringBuilder SaslBuffer { get; set; } = new();
-
-    /// <summary>
-    /// If true, suspend sending CAP END when receiving an ACK until SASL finishes
-    /// </summary>
-    public bool SuspendCapEndForSasl { get; set; } = false;
 
     /// <summary>
     /// Create a new Network that can be connected to.
@@ -253,7 +213,6 @@ public partial class Network : INetwork
     /// <param name="commandFactory"></param>
     /// <param name="connectionFactory"></param>
     /// <param name="rateLimiter"></param>
-    /// <param name="saslMechanismFactory"></param>
     /// <param name="commandListenerRegistry"></param>
     public Network(
         string name,
@@ -262,7 +221,6 @@ public partial class Network : INetwork
         ICommandFactory commandFactory,
         IConnectionFactory connectionFactory,
         IRateLimiter rateLimiter,
-        ISaslMechanismFactory saslMechanismFactory,
         CommandListenerRegistry commandListenerRegistry)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -274,7 +232,6 @@ public partial class Network : INetwork
         CommandFactory = commandFactory;
         ConnectionFactory = connectionFactory;
         RateLimiter = rateLimiter;
-        SaslMechanismFactory = saslMechanismFactory;
         CommandListenerRegistry = commandListenerRegistry;
 
         ResetState();
@@ -290,20 +247,9 @@ public partial class Network : INetwork
         CommandListenerRegistry.RegisterForNetwork(this, _messageLoopTokenSource.Token);
 
         // wire up the CAP events
-        _capEventObserver = CommandListenerRegistry.CommandListenerEvents.OfType<CapEventArgs>()
-            .Subscribe(args =>
-            {
-                switch (args.Subcommand)
-                {
-                    case "ACK":
-                    case "LIST":
-                        CapEnabled?.Invoke(this, args);
-                        break;
-                    case "DEL":
-                        CapDisabled?.Invoke(this, args);
-                        break;
-                }
-            });
+        _capEventObserver = CommandListenerRegistry.CommandListenerEvents
+            .OfType<CapEventArgs>()
+            .Subscribe(HandleCapEvent);
     }
 
 
@@ -314,7 +260,6 @@ public partial class Network : INetwork
     /// <returns>Awaitable ValueTask for the async cleanup operation</returns>
     protected virtual async ValueTask DisposeAsyncCore()
     {
-        SelectedSaslMech?.Dispose();
         _capEventObserver.Dispose();
         _messageLoopTokenSource.Cancel();
         await _messageLoop.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
@@ -337,7 +282,6 @@ public partial class Network : INetwork
         {
             if (disposing)
             {
-                SelectedSaslMech?.Dispose();
                 _capEventObserver.Dispose();
                 _messageLoopTokenSource.Cancel();
                 _messageLoop.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing).GetAwaiter().GetResult();
@@ -864,378 +808,6 @@ public partial class Network : INetwork
 
                 State = State with { ISupport = State.ISupport.SetItems(newISupport).RemoveRange(removedISupport) };
                 break;
-            case "CAP":
-                // CAP negotation
-                await OnCapCommand(command, cancellationToken);
-                break;
-            case "AUTHENTICATE":
-                // SASL
-                OnSaslCommand(command, cancellationToken);
-                break;
-            case "900":
-                // successful SASL, record our account name
-                Account = command.Args[2];
-                break;
-            case "903":
-            case "907":
-                SelectedSaslMech?.Dispose();
-                SelectedSaslMech = null;
-                if (SuspendCapEndForSasl)
-                {
-                    SuspendCapEndForSasl = false;
-                    await UnsafeSendRawAsync("CAP END", cancellationToken);
-                }
-                break;
-            case "904":
-            case "905":
-                // SASL failed, retry with next mech
-                AttemptSasl(cancellationToken);
-                break;
-            case "902":
-            case "906":
-                // SASL failed, don't retry
-                SelectedSaslMech?.Dispose();
-                SelectedSaslMech = null;
-                if (Options.AbortOnSaslFailure)
-                {
-                    Logger.LogWarning("SASL failed with an unrecoverable error; aborting connection");
-                    await DisconnectAsync();
-                }
-                break;
-            case "908":
-                // failed, but will also get a 904, simply update supported mechs
-                {
-                    HashSet<string> mechs = [.. SaslMechs];
-                    mechs.IntersectWith(command.Args[1].Split(','));
-                    if (mechs.Count == 0 && Options.AbortOnSaslFailure)
-                    {
-                        Logger.LogError("Server and client have no SASL mechanisms in common; aborting connection");
-                        await DisconnectAsync();
-                        return;
-                    }
-
-                    SaslMechs = mechs;
-                }
-                break;
-        }
-    }
-
-    private async Task OnCapCommand(ICommand command, CancellationToken cancellationToken)
-    {
-        // figure out which subcommand we have
-        // CAP nickname subcommand args...
-        switch (command.Args[1])
-        {
-            case "LS":
-            case "NEW":
-                {
-                    string caps;
-                    bool final = false;
-                    Dictionary<string, string?> newSupportedCaps = [];
-                    // request supported CAPs; might be multi-line so don't act until we get everything
-                    if (command.Args[1] == "LS" && command.Args[2] == "*")
-                    {
-                        // multiline
-                        caps = command.Args[3];
-                    }
-                    else
-                    {
-                        // final LS
-                        caps = command.Args[2];
-                        final = true;
-                    }
-
-                    foreach (var cap in caps.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-                    {
-                        string key = cap;
-                        string? value = null;
-
-                        if (cap.Contains('='))
-                        {
-                            var bits = cap.Split('=', 2);
-                            key = bits[0];
-                            value = bits[1];
-                        }
-
-                        newSupportedCaps[key] = value;
-                    }
-
-                    State = State with { SupportedCaps = State.SupportedCaps.SetItems(newSupportedCaps) };
-
-                    if (final)
-                    {
-                        List<string> request = [];
-
-                        foreach (var (key, value) in State.SupportedCaps)
-                        {
-                            _capValueCache[key] = value;
-
-                            bool shouldEnable = DefaultCaps.Contains(key);
-                            if (!shouldEnable && ShouldEnableCap != null)
-                            {
-                                var args = new CapEventArgs(this, key, value, command.Args[1]);
-                                shouldEnable = ShouldEnableCap.GetInvocationList().Cast<CapFilter>().Any(f => f(args));
-                            }
-
-                            if (key == "sasl" && Options.UseSasl && (Options.AccountPassword != null || Options.AccountCertificateFile != null) && State.Account == null)
-                            {
-                                // negotiate SASL
-                                HashSet<string> supportedSaslTypes = [.. SaslMechanismFactory.GetSupportedMechanisms(Options, Server!)];
-
-                                if (value != null)
-                                {
-                                    supportedSaslTypes.IntersectWith(value.Split(','));
-                                }
-
-                                supportedSaslTypes.ExceptWith(Options.DisabledSaslMechs);
-
-                                if (value == null || supportedSaslTypes.Count != 0)
-                                {
-                                    request.Add("sasl");
-                                    SaslMechs = supportedSaslTypes;
-                                }
-                                else if (supportedSaslTypes.Count == 0 && Options.AbortOnSaslFailure)
-                                {
-                                    Logger.LogError("Server and client have no SASL mechanisms in common; aborting connection");
-                                    await DisconnectAsync();
-                                    return;
-                                }
-                            }
-                            else if (shouldEnable)
-                            {
-                                request.Add(key);
-                            }
-                        }
-
-                        // handle extremely large cap sets by breaking into multiple CAP REQ commands;
-                        // we want to ensure the server's response (ACK or NAK) fits within 512 bytes with protocol overhead
-                        // :server CAP nick ACK :data\r\n -- 14 bytes of overhead (leaving 498), plus nicklen, plus serverlen
-                        // we reserve another 64 bytes just in case there is other unexpected overhead. better to send an extra
-                        // CAP REQ than to be rejected because the server reply is longer than we anticipated it'd be
-                        // Note: don't use MaxLength here since we're still pre-registration and haven't received ISUPPORT
-                        int maxBytes = 434 - (State.Nick?.Length ?? 1) - (command.Source?.Length ?? 0);
-                        int consumedBytes = 0;
-                        List<string> param = [];
-
-                        foreach (var token in request)
-                        {
-                            if (consumedBytes + token.Length > maxBytes)
-                            {
-                                await UnsafeSendRawAsync($"CAP REQ :{string.Join(" ", param)}", cancellationToken);
-                                consumedBytes = 0;
-                                param.Clear();
-                            }
-
-                            param.Add(token);
-                            consumedBytes += token.Length;
-                        }
-
-                        if (param.Count > 0)
-                        {
-                            await UnsafeSendRawAsync($"CAP REQ :{string.Join(" ", param)}", cancellationToken);
-                        }
-                        else if (!IsConnected)
-                        {
-                            // we don't support any of the server's caps, so end cap negotiation here
-                            await UnsafeSendRawAsync("CAP END", cancellationToken);
-                        }
-                    }
-                }
-
-                break;
-            case "ACK":
-            case "LIST":
-                {
-                    // mark CAPs as enabled client-side, then finish cap negotiation if this was an ACK (not a LIST)
-                    string[] newCaps = command.Args[2].Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                    State = State with { EnabledCaps = State.EnabledCaps.Union(newCaps) };
-
-                    foreach (var cap in newCaps)
-                    {
-                        var args = new CapEventArgs(this, cap, _capValueCache.GetValueOrDefault(cap), command.Args[1]);
-                        _capEventStream.OnNext(args);
-                    }
-
-                    if (command.Args[1] == "ACK" && newCaps.Contains("sasl"))
-                    {
-                        // if we're not registered yet, suspend registration until SASL finishes
-                        SuspendCapEndForSasl = !IsConnected;
-                        AttemptSasl(cancellationToken);
-                    }
-
-                    if (command.Args[1] == "ACK" && !IsConnected && !SuspendCapEndForSasl)
-                    {
-                        await UnsafeSendRawAsync("CAP END", cancellationToken);
-                    }
-                }
-
-                break;
-            case "DEL":
-                {
-                    // mark CAPs as disabled client-side if applicable; don't send CAP END in any event here
-                    string[] removedCaps = command.Args[2].Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                    State = State with { EnabledCaps = State.EnabledCaps.Except(removedCaps) };
-
-                    foreach (var cap in removedCaps)
-                    {
-                        var args = new CapEventArgs(this, cap, _capValueCache.GetValueOrDefault(cap), command.Args[1]);
-                        _capEventStream.OnNext(args);
-                    }
-                }
-
-                break;
-            case "NAK":
-                // we couldn't set CAPs, bail out
-                if (!IsConnected)
-                {
-                    await UnsafeSendRawAsync("CAP END", cancellationToken);
-                }
-
-                break;
-            default:
-                // not something we recognize; log but otherwise ignore
-                Logger.LogInformation("Received unrecognized CAP {Command} from server (potentially broken ircd)", command.Args[1]);
-                break;
-        }
-    }
-    #endregion
-
-    #region SASL
-    private void AttemptSasl(CancellationToken cancellationToken)
-    {
-        foreach (var mech in SaslMechanismFactory.GetSupportedMechanisms(Options, Server!))
-        {
-            if (SaslMechs.Contains(mech))
-            {
-                SelectedSaslMech?.Dispose();
-                SelectedSaslMech = SaslMechanismFactory.CreateMechanism(mech, Options);
-                if (SelectedSaslMech.SupportsChannelBinding)
-                {
-                    // Connection.GetChannelBinding returns null for an unsupported binding type (e.g. Unique on TLS 1.3+)
-                    var uniqueData = Connection.GetChannelBinding(ChannelBindingKind.Unique);
-                    var endpointData = Connection.GetChannelBinding(ChannelBindingKind.Endpoint);
-
-                    if (
-                        !SelectedSaslMech.SetChannelBindingData(ChannelBindingKind.Unique, uniqueData)
-                        && !SelectedSaslMech.SetChannelBindingData(ChannelBindingKind.Endpoint, endpointData))
-                    {
-                        // we want binding but it's not supported; skip this mech
-                        SelectedSaslMech.Dispose();
-                        SelectedSaslMech = null;
-                        SaslMechs.Remove(mech);
-                        continue;
-                    }
-                }
-
-                SaslMechs.Remove(mech);
-                _ = UnsafeSendRawAsync($"AUTHENTICATE {mech}", cancellationToken);
-                return;
-            }
-        }
-
-        // no more mechs in common
-        SelectedSaslMech?.Dispose();
-        SelectedSaslMech = null;
-
-        if (SuspendCapEndForSasl)
-        {
-            if (Options.AbortOnSaslFailure)
-            {
-                Logger.LogError("All SASL mechanisms supported by both server and client failed, aborting connection.");
-                _ = DisconnectAsync();
-                return;
-            }
-
-            SuspendCapEndForSasl = false;
-            _ = UnsafeSendRawAsync("CAP END", cancellationToken);
-        }
-    }
-
-    private void OnSaslCommand(ICommand command, CancellationToken cancellationToken)
-    {
-        bool done = false;
-
-        if (SelectedSaslMech == null)
-        {
-            // unexpected AUTHENTICATE command; ignore
-            return;
-        }
-
-        if (command.Args[0] == "+")
-        {
-            // have full server response, do whatever we need with it
-            done = true;
-        }
-        else
-        {
-            SaslBuffer.Append(command.Args[0]);
-
-            // received the last line of data
-            if (command.Args[0].Length < 400)
-            {
-                done = true;
-            }
-
-            // prevent DOS from malicious servers by making buffer expand forever
-            // if the buffer grows too large, we abort SASL
-            if (SaslBuffer.Length > SASL_BUFFER_MAX_LENGTH)
-            {
-                SaslBuffer.Clear();
-                SelectedSaslMech.Dispose();
-                SelectedSaslMech = null;
-                _ = UnsafeSendRawAsync("AUTHENTICATE *", cancellationToken);
-                return;
-            }
-        }
-
-        if (done)
-        {
-            byte[] data;
-            if (SaslBuffer.Length > 0)
-            {
-                data = Convert.FromBase64String(SaslBuffer.ToString());
-                SaslBuffer.Clear();
-            }
-            else
-            {
-                data = [];
-            }
-
-            bool success = SelectedSaslMech.Authenticate(data, out var responseBytes);
-
-            if (!success)
-            {
-                // abort SASL
-                SelectedSaslMech.Dispose();
-                SelectedSaslMech = null;
-                _ = UnsafeSendRawAsync("AUTHENTICATE *", cancellationToken);
-            }
-            else
-            {
-                // send response
-                if (responseBytes.Length == 0)
-                {
-                    _ = UnsafeSendRawAsync("AUTHENTICATE +", cancellationToken);
-                }
-                else
-                {
-                    var response = Convert.ToBase64String(responseBytes);
-                    int start = 0;
-
-                    do
-                    {
-                        int end = Math.Min(start + 400, response.Length);
-                        _ = UnsafeSendRawAsync($"AUTHENTICATE {response[start..end]}", cancellationToken);
-                        start = end;
-                    } while (start < response.Length);
-
-                    if (response.Length % 400 == 0)
-                    {
-                        // if we sent exactly 400 bytes in the last line, send a blank line to let server know we're done
-                        _ = UnsafeSendRawAsync("AUTHENTICATE +", cancellationToken);
-                    }
-                }
-            }
         }
     }
     #endregion
@@ -1258,6 +830,39 @@ public partial class Network : INetwork
         else
         {
             _userRegistrationCompletionSource.SetCanceled();
+        }
+    }
+
+    private void HandleCapEvent(CapEventArgs args)
+    {
+        switch (args.Subcommand)
+        {
+            case "LS":
+            case "NEW":
+                State = State with { SupportedCaps = State.SupportedCaps.SetItem(args.CapName, args.CapValue) };
+                break;
+            case "ACK":
+            case "LIST":
+                State = State with
+                {
+                    EnabledCaps = State.EnabledCaps.Add(args.CapName),
+                    // the ircd might let us enable a cap it doesn't explicitly advertise...
+                    SupportedCaps = State.SupportedCaps.ContainsKey(args.CapName)
+                        ? State.SupportedCaps
+                        : State.SupportedCaps.Add(args.CapName, null)
+                };
+
+                CapEnabled?.Invoke(this, args);
+                break;
+            case "DEL":
+                State = State with
+                {
+                    SupportedCaps = State.SupportedCaps.Remove(args.CapName),
+                    EnabledCaps = State.EnabledCaps.Remove(args.CapName),
+                };
+
+                CapDisabled?.Invoke(this, args);
+                break;
         }
     }
 
@@ -1416,8 +1021,6 @@ public partial class Network : INetwork
             ImmutableDictionary<string, string?>.Empty,
             ImmutableHashSet<string>.Empty,
             ImmutableDictionary<ISupportToken, string?>.Empty);
-
-        SuspendCapEndForSasl = false;
     }
 
     /// <inheritdoc />

@@ -4,9 +4,7 @@
 using Microsoft.Extensions.Logging;
 
 using Netwolf.Transport.Commands;
-using Netwolf.Transport.Events;
 using Netwolf.Transport.RateLimiting;
-using Netwolf.Transport.Sasl;
 
 namespace Netwolf.Transport.IRC;
 
@@ -20,10 +18,6 @@ internal class NetworkFactory : INetworkFactory
 
     private IRateLimiterFactory RateLimiterFactory { get; init; }
 
-    private ISaslMechanismFactory SaslMechanismFactory { get; init; }
-
-    private NetworkEvents NetworkEvents { get; init; }
-
     private CommandListenerRegistry CommandListenerRegistry { get; init; }
 
     public NetworkFactory(
@@ -31,8 +25,6 @@ internal class NetworkFactory : INetworkFactory
         ICommandFactory commandFactory,
         IConnectionFactory connectionFactory,
         IRateLimiterFactory rateLimiterFactory,
-        ISaslMechanismFactory saslMechanismFactory,
-        NetworkEvents networkEvents,
         CommandListenerRegistry commandListenerRegistry
         )
     {
@@ -40,8 +32,6 @@ internal class NetworkFactory : INetworkFactory
         CommandFactory = commandFactory;
         ConnectionFactory = connectionFactory;
         RateLimiterFactory = rateLimiterFactory;
-        SaslMechanismFactory = saslMechanismFactory;
-        NetworkEvents = networkEvents;
         CommandListenerRegistry = commandListenerRegistry;
     }
 
@@ -54,8 +44,6 @@ internal class NetworkFactory : INetworkFactory
             CommandFactory,
             ConnectionFactory,
             RateLimiterFactory.Create(options),
-            SaslMechanismFactory,
-            CommandListenerRegistry,
-            NetworkEvents);
+            CommandListenerRegistry);
     }
 }

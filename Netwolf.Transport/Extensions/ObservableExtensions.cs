@@ -15,6 +15,7 @@ public static class ObservableExtensions
     /// <typeparam name="TResult"></typeparam>
     /// <param name="observable"></param>
     /// <param name="callback"></param>
+    /// <param name="token"></param>
     /// <returns></returns>
     public static void SubscribeAsync<TResult>(this IObservable<TResult> observable, Func<Task> callback, CancellationToken token)
     {
@@ -22,6 +23,23 @@ public static class ObservableExtensions
             .Select(args => Observable.FromAsync(callback))
             .Concat()
             .Subscribe(token);
+    }
+
+    /// <summary>
+    /// Subscribes an asynchronous callback to an observable, while ensuring that exceptions
+    /// thrown by the callback are properly propagated and that callbacks for subsequent results
+    /// in the observable sequence are not started until the previous callback has completed.
+    /// </summary>
+    /// <typeparam name="TResult"></typeparam>
+    /// <param name="observable"></param>
+    /// <param name="callback"></param>
+    /// <returns></returns>
+    public static IDisposable SubscribeAsync<TResult>(this IObservable<TResult> observable, Func<Task> callback)
+    {
+        return observable
+            .Select(args => Observable.FromAsync(callback))
+            .Concat()
+            .Subscribe();
     }
 
 
@@ -33,6 +51,7 @@ public static class ObservableExtensions
     /// <typeparam name="TResult"></typeparam>
     /// <param name="observable"></param>
     /// <param name="callback"></param>
+    /// <param name="token"></param>
     /// <returns></returns>
     public static void SubscribeAsync<TResult>(this IObservable<TResult> observable, Func<TResult, Task> callback, CancellationToken token)
     {
@@ -40,5 +59,22 @@ public static class ObservableExtensions
             .Select(args => Observable.FromAsync(async () => await callback(args)))
             .Concat()
             .Subscribe(token);
+    }
+
+    /// <summary>
+    /// Subscribes an asynchronous callback to an observable, while ensuring that exceptions
+    /// thrown by the callback are properly propagated and that callbacks for subsequent results
+    /// in the observable sequence are not started until the previous callback has completed.
+    /// </summary>
+    /// <typeparam name="TResult"></typeparam>
+    /// <param name="observable"></param>
+    /// <param name="callback"></param>
+    /// <returns></returns>
+    public static IDisposable SubscribeAsync<TResult>(this IObservable<TResult> observable, Func<TResult, Task> callback)
+    {
+        return observable
+            .Select(args => Observable.FromAsync(async () => await callback(args)))
+            .Concat()
+            .Subscribe();
     }
 }

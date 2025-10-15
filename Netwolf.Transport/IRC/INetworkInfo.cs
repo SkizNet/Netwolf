@@ -130,6 +130,13 @@ public interface INetworkInfo
     bool TryGetEnabledCap(string cap, out string? value);
 
     /// <summary>
+    /// Get all capabilities supported by the network along with their values (if any).
+    /// This includes both enabled capabilities and capabilities that we did not request.
+    /// </summary>
+    /// <returns></returns>
+    IReadOnlyDictionary<string, string?> GetAllSupportedCaps();
+
+    /// <summary>
     /// Get all currently-enabled capabilities along with their values (if any).
     /// </summary>
     /// <returns></returns>

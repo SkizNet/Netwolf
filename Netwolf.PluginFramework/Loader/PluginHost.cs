@@ -34,8 +34,6 @@ internal sealed class PluginHost : IPluginHost, IDisposable
 
     private ICommandHookRegistry HookRegistry { get; init; }
 
-    private NetworkEvents NetworkEvents { get; init; }
-
     private ConcurrentBag<IDisposable> Hooks { get; init; } = [];
 
     private Dictionary<INetwork, IDisposable> Subscriptions { get; init; } = [];
@@ -65,12 +63,10 @@ internal sealed class PluginHost : IPluginHost, IDisposable
 
     public PluginHost(
         ICommandHookRegistry hookRegistry,
-        NetworkEvents networkEvents,
         IPlugin plugin,
         int pluginId)
     {
         HookRegistry = hookRegistry;
-        NetworkEvents = networkEvents;
         Plugin = new(plugin);
         PluginId = pluginId;
 

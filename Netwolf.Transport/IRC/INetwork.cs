@@ -23,6 +23,12 @@ public interface INetwork : IDisposable, IAsyncDisposable
     bool IsConnected { get; }
 
     /// <summary>
+    /// If we are connected, this is the server we are connected to.
+    /// If we are not connected, this will be null.
+    /// </summary>
+    ServerRecord? Server { get; }
+
+    /// <summary>
     /// Event raised whenever we receive a command from the network
     /// </summary>
     IObservable<CommandEventArgs> CommandReceived { get; }
@@ -32,6 +38,11 @@ public interface INetwork : IDisposable, IAsyncDisposable
     /// </summary>
     /// <returns></returns>
     INetworkInfo AsNetworkInfo();
+
+    /// <summary>
+    /// Options used in creating this Network
+    /// </summary>
+    NetworkOptions Options { get; }
 
     /// <summary>
     /// Event raised whenever we first establish a connection to a network.
@@ -60,19 +71,30 @@ public interface INetwork : IDisposable, IAsyncDisposable
     event EventHandler<NetworkEventArgs>? NetworkDisconnected;
 
     /// <summary>
-    /// Delegate type for <see cref="ShouldEnableCap"/>.
+    /// Delegate type for <see cref="CapFilter"/>.
     /// </summary>
     /// <param name="args">Arguments for the filter</param>
     /// <returns></returns>
-    delegate bool CapFilter(CapEventArgs args);
+    delegate ValueTask<bool> CapFilterEventHandler(object? sender, CapEventArgs args);
 
     /// <summary>
-    /// Callback to determine if a non-default CAP should be enabled.
+    /// Event to determine if a non-default CAP should be enabled.
     /// Default CAPs are unconditionally enabled and will not call this method.
     /// This delegate can be chained, and the CAP will be enabled should any of its registered
     /// callbacks returns true.
     /// </summary>
-    public CapFilter? ShouldEnableCap { get; set; }
+    event CapFilterEventHandler? CapFilter;
+
+    /// <summary>
+    /// Invokes <see cref="CapFilter"/> and returns true if any of its registered listeners returns true.
+    /// </summary>
+    /// <param name="capName">Capability name</param>
+    /// <param name="capValue">Capability value, or null if no value was defined</param>
+    /// <param name="subcommand">CAP subcommand being processed</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>true if any event listeners return true, false otherwise</returns>
+    /// <remarks>Not every listener is guaranteed to execute; if one returns true later listeners may not be invoked</remarks>
+    ValueTask<bool> ShouldEnableCapAsync(string capName, string? capValue, string subcommand, CancellationToken cancellationToken);
 
     /// <summary>
     /// Event raised for each CAP that is enabled by the network. This is fired
