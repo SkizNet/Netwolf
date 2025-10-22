@@ -9,6 +9,7 @@ using Netwolf.Transport.Internal;
 using Netwolf.Transport.IRC;
 
 using System.Diagnostics.CodeAnalysis;
+using System.Net;
 using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
@@ -85,11 +86,32 @@ public partial class CommandListenerRegistry : IDisposable
         Justification = "ToList() produces cleaner-looking code than a collection expression here")]
     private List<T> Initialize<T>()
     {
-        return GetCommandListenerTypes()
+        var list = GetCommandListenerTypes()
             .Where(type => typeof(T).IsAssignableFrom(type))
             .Select(type => ActivatorUtilities.CreateInstance(ServiceProvider, type))
             .Cast<T>()
             .ToList();
+
+        foreach (var listener in list)
+        {
+            if (listener is IAsyncCommandListener asyncListener)
+            {
+                Logger.LogInformation(
+                    "Found {Listener} for commands {Command}",
+                    listener.GetType().FullName,
+                    string.Join(", ", asyncListener.CommandFilter));
+            }
+
+            if (listener is ICommandListener syncListener)
+            {
+                Logger.LogInformation(
+                    "Found {Listener} for commands {Command}",
+                    listener.GetType().FullName,
+                    string.Join(", ", syncListener.CommandFilter));
+            }
+        }
+
+        return list;
     }
 
     public void RegisterForNetwork(INetwork network, CancellationToken cancellationToken)

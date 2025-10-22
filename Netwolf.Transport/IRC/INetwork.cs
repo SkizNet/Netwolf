@@ -18,7 +18,7 @@ public interface INetwork : IDisposable, IAsyncDisposable
     string Name { get; }
 
     /// <summary>
-    /// True if we are currently connected to this Network
+    /// True if we are currently connected to this Network and have completed user registration
     /// </summary>
     bool IsConnected { get; }
 

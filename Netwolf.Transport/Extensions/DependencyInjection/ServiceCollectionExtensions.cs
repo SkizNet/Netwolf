@@ -5,8 +5,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Netwolf.Transport.Commands;
-using Netwolf.Transport.Events;
-using Netwolf.Transport.Internal;
 using Netwolf.Transport.IRC;
 using Netwolf.Transport.RateLimiting;
 using Netwolf.Transport.Sasl;
@@ -22,7 +20,9 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddTransportServices(this IServiceCollection services)
     {
         // Client services
-        services.TryAddSingleton<INetworkFactory, NetworkFactory>();
+        services.AddSingleton<NetworkFactory>();
+        services.TryAddSingleton<INetworkFactory>(sp => sp.GetRequiredService<NetworkFactory>());
+        services.TryAddSingleton<INetworkRegistry>(sp => sp.GetRequiredService<NetworkFactory>());
         services.TryAddSingleton<IConnectionFactory, ConnectionFactory>();
         services.TryAddSingleton<IRateLimiterFactory, RateLimiterFactory>();
         services.TryAddSingleton<ISaslMechanismFactory, SaslMechanismFactory>();

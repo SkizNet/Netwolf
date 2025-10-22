@@ -138,7 +138,7 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         DisconnectionSource = new();
 
         // Register our network events
-        Network.ShouldEnableCap += ShouldEnableCap;
+        Network.CapFilter += ShouldEnableCap;
         CommandSubscriptions.Add(Network.CommandReceived.Subscribe(OnCommandReceived));
         Network.NetworkDisconnected += OnDisconnected;
 
@@ -575,9 +575,9 @@ public abstract class Bot : IDisposable, IAsyncDisposable
         return true;
     }
 
-    private bool ShouldEnableCap(CapEventArgs e)
+    private ValueTask<bool> ShouldEnableCap(object? sender, CapEventArgs e)
     {
-        return CapProviders.Any(prov => prov.ShouldEnable(e.CapName, e.CapValue));
+        return new(CapProviders.Any(prov => prov.ShouldEnable(e.CapName, e.CapValue)));
     }
 
     internal async Task ExecuteAsync(CancellationToken stoppingToken)

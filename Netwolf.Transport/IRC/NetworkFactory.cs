@@ -6,9 +6,12 @@ using Microsoft.Extensions.Logging;
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.RateLimiting;
 
+using System.Collections.Concurrent;
+using System.Reactive.Disposables;
+
 namespace Netwolf.Transport.IRC;
 
-internal class NetworkFactory : INetworkFactory
+internal class NetworkFactory : INetworkFactory, INetworkRegistry
 {
     private ILogger<INetwork> Logger { get; init; }
 
@@ -19,6 +22,12 @@ internal class NetworkFactory : INetworkFactory
     private IRateLimiterFactory RateLimiterFactory { get; init; }
 
     private CommandListenerRegistry CommandListenerRegistry { get; init; }
+
+    private ConcurrentDictionary<string, INetwork?> Networks { get; init; } = [];
+
+    public event EventHandler<INetwork>? NetworkCreated;
+
+    public event EventHandler<INetwork>? NetworkDestroyed;
 
     public NetworkFactory(
         ILogger<INetwork> logger,
@@ -37,13 +46,47 @@ internal class NetworkFactory : INetworkFactory
 
     public INetwork Create(string name, NetworkOptions options)
     {
-        return new Network(
+        ArgumentNullException.ThrowIfNull(name);
+        if (!Networks.TryAdd(name, null))
+        {
+            throw new ArgumentException($"A network with the name '{name}' already exists.", nameof(name));
+        }
+
+        var network = new Network(
             name,
             options,
             Logger,
             CommandFactory,
             ConnectionFactory,
             RateLimiterFactory.Create(options),
-            CommandListenerRegistry);
+            CommandListenerRegistry,
+            Disposable.Create(() => RemoveNetwork(name)));
+
+        Networks[name] = network;
+        NetworkCreated?.Invoke(this, network);
+        return network;
+    }
+
+    public INetwork? GetNetwork(string name)
+    {
+        if (Networks.TryGetValue(name, out var network))
+        {
+            return network;
+        }
+
+        return null;
+    }
+
+    public IEnumerable<INetwork> GetAllNetworks()
+    {
+        return Networks.Values.OfType<INetwork>();
+    }
+
+    private void RemoveNetwork(string name)
+    {
+        if (Networks.Remove(name, out var network) && network is not null)
+        {
+            NetworkDestroyed?.Invoke(this, network);
+        }
     }
 }

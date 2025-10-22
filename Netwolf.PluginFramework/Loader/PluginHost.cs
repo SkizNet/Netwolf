@@ -34,6 +34,8 @@ internal sealed class PluginHost : IPluginHost, IDisposable
 
     private ICommandHookRegistry HookRegistry { get; init; }
 
+    private INetworkRegistry NetworkRegistry { get; init; }
+
     private ConcurrentBag<IDisposable> Hooks { get; init; } = [];
 
     private Dictionary<INetwork, IDisposable> Subscriptions { get; init; } = [];
@@ -63,15 +65,17 @@ internal sealed class PluginHost : IPluginHost, IDisposable
 
     public PluginHost(
         ICommandHookRegistry hookRegistry,
+        INetworkRegistry networkRegistry,
         IPlugin plugin,
         int pluginId)
     {
         HookRegistry = hookRegistry;
+        NetworkRegistry = networkRegistry;
         Plugin = new(plugin);
         PluginId = pluginId;
 
-        NetworkEvents.NetworkConnected += OnNetworkConnected;
-        NetworkEvents.NetworkDisconnected += OnNetworkDisconnected;
+        NetworkRegistry.NetworkCreated += OnNetworkCreated;
+        NetworkRegistry.NetworkDestroyed += OnNetworkDestroyed;
     }
 
     public IDisposable HookServer(string command, Func<PluginCommandEventArgs, Task> callback)
@@ -141,10 +145,10 @@ internal sealed class PluginHost : IPluginHost, IDisposable
         return HookTimer(frequency, args => callback(args, pluginData));
     }
 
-    private void OnNetworkConnected(object? sender, NetworkEventArgs e)
+    private void OnNetworkCreated(object? sender, INetwork e)
     {
         // only emit OnNext, we don't want to send OnError/OnCompleted along to plugin listeners
-        var subscription = e.Network.CommandReceived
+        var subscription = e.CommandReceived
             .Select(c => new PluginCommandEventArgs(
                 c.Command,
                 this,
@@ -152,12 +156,12 @@ internal sealed class PluginHost : IPluginHost, IDisposable
                 c.Token))
             .Subscribe(PluginCommandStream.OnNext);
 
-        Subscriptions[e.Network] = subscription;
+        Subscriptions[e] = subscription;
     }
 
-    private void OnNetworkDisconnected(object? sender, NetworkEventArgs e)
+    private void OnNetworkDestroyed(object? sender, INetwork e)
     {
-        if (Subscriptions.Remove(e.Network, out var subscription))
+        if (Subscriptions.Remove(e, out var subscription))
         {
             subscription.Dispose();
         }

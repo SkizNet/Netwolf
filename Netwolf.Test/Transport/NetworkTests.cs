@@ -26,7 +26,8 @@ public class NetworkTests
             RegistrationTimeout = TimeSpan.FromSeconds(7),
             ConnectRetries = 0,
             PrimaryNick = "test",
-            Servers = [new("irc.netwolf.org", 6697)]
+            Servers = [new("irc.netwolf.org", 6697)],
+            UseSasl = false,
         };
     }
 

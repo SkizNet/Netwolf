@@ -88,7 +88,7 @@ internal class FakeConnection : IConnection
         {
             var context = new ServerContext() { Server = Server, User = Server.State[Network][this] };
             var result = await CommandDispatcher!.DispatchAsync(command, context, cancellationToken);
-            (result ?? new NumericResponse(Server.State[Network][this], Numeric.ERR_UNKNOWNCOMMAND)).Send();
+            (result ?? new NumericResponse(Server.State[Network][this], Numeric.ERR_UNKNOWNCOMMAND, [command.Verb])).Send();
         }
         catch (CommandException ex)
         {

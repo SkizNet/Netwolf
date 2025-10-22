@@ -29,6 +29,8 @@ public partial class Network : INetwork
 {
     private bool _disposed;
 
+    private IDisposable? _deregisterTracker;
+
     /// <inheritdoc />
     public NetworkOptions Options { get; init; }
 
@@ -95,50 +97,6 @@ public partial class Network : INetwork
 
     /// <inheritdoc />
     public bool IsConnected => _connection?.IsConnected == true && _userRegistrationCompletionSource == null;
-
-    #region Deprecated state mutators
-    /// <summary>
-    /// Limits for this connection.
-    /// </summary>
-    protected NetworkLimits Limits
-    {
-        get => State.Limits;
-        set => State = State with { Limits = value };
-    }
-
-    /// <summary>
-    /// Nickname for this connection.
-    /// </summary>
-    protected string Nick
-    {
-        get => State.Nick;
-        set => State = State with
-        {
-            Lookup = State.Lookup
-                .Remove(IrcUtil.Casefold(State.Nick, CaseMapping))
-                .Add(IrcUtil.Casefold(value, CaseMapping), State.ClientId),
-            Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Nick = value })
-        };
-    }
-
-    /// <summary>
-    /// Hostname for this connection.
-    /// </summary>
-    protected string Host
-    {
-        get => State.Host;
-        set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Host = value }) };
-    }
-
-    /// <summary>
-    /// Account name for this connection, or null if not logged in.
-    /// </summary>
-    protected string? Account
-    {
-        get => State.Account;
-        set => State = State with { Users = State.Users.SetItem(State.ClientId, State.Users[State.ClientId] with { Account = value }) };
-    }
-    #endregion
 
     /// <summary>
     /// Case mapping in use.
@@ -214,6 +172,7 @@ public partial class Network : INetwork
     /// <param name="connectionFactory"></param>
     /// <param name="rateLimiter"></param>
     /// <param name="commandListenerRegistry"></param>
+    /// <param name="deregisterTracker"></param>
     public Network(
         string name,
         NetworkOptions options,
@@ -221,7 +180,8 @@ public partial class Network : INetwork
         ICommandFactory commandFactory,
         IConnectionFactory connectionFactory,
         IRateLimiter rateLimiter,
-        CommandListenerRegistry commandListenerRegistry)
+        CommandListenerRegistry commandListenerRegistry,
+        IDisposable deregisterTracker)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(options);
@@ -233,6 +193,7 @@ public partial class Network : INetwork
         ConnectionFactory = connectionFactory;
         RateLimiter = rateLimiter;
         CommandListenerRegistry = commandListenerRegistry;
+        _deregisterTracker = deregisterTracker;
 
         ResetState();
 
@@ -260,6 +221,7 @@ public partial class Network : INetwork
     /// <returns>Awaitable ValueTask for the async cleanup operation</returns>
     protected virtual async ValueTask DisposeAsyncCore()
     {
+        _deregisterTracker?.Dispose();
         _capEventObserver.Dispose();
         _messageLoopTokenSource.Cancel();
         await _messageLoop.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
@@ -282,6 +244,7 @@ public partial class Network : INetwork
         {
             if (disposing)
             {
+                _deregisterTracker?.Dispose();
                 _capEventObserver.Dispose();
                 _messageLoopTokenSource.Cancel();
                 _messageLoop.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing).GetAwaiter().GetResult();
@@ -291,6 +254,7 @@ public partial class Network : INetwork
                 _connection?.Dispose();
             }
 
+            _deregisterTracker = null;
             _disposed = true;
         }
     }
@@ -672,7 +636,6 @@ public partial class Network : INetwork
         return Connection.UnsafeSendRawAsync(rawLine, cancellationToken);
     }
 
-    #region Command handling
     private async Task OnCommandReceived(CommandEventArgs args)
     {
         var command = args.Command;
@@ -689,25 +652,6 @@ public partial class Network : INetwork
             // TODO: make use of DeferredCommand here to keep logic together
             switch (command.Verb)
             {
-                case "001":
-                    Nick = command.Args[0];
-                    break;
-                case "432":
-                case "433":
-                    // primary nick didn't work for whatever reason, try secondary
-                    string attempted = command.Args[0];
-                    string secondary = Options.SecondaryNick ?? $"{Options.PrimaryNick}_";
-                    if (attempted == Options.PrimaryNick)
-                    {
-                        await UnsafeSendRawAsync($"NICK {secondary}", cancellationToken);
-                    }
-                    else if (attempted == secondary)
-                    {
-                        // both taken? abort
-                        Logger.LogWarning("Server rejected both primary and secondary nicks.");
-                    }
-
-                    break;
                 case "376":
                 case "422":
                     // got MOTD, we've been registered. But we might still not know our own ident/host,
@@ -717,15 +661,6 @@ public partial class Network : INetwork
                 case "315":
                     // end of WHO, so we've pulled our own client details and can hand back control
                     _userRegistrationCompletionSource!.SetResult();
-                    break;
-                case "410":
-                    // CAP command failed, bail out
-                    // although if it's saying our CAP END failed (broken ircd), don't cause an infinite loop
-                    if (command.Args[1] != "END")
-                    {
-                        await UnsafeSendRawAsync("CAP END", cancellationToken);
-                    }
-
                     break;
             }
         }
@@ -800,7 +735,13 @@ public partial class Network : INetwork
                         case "LINELEN":
                             if (int.TryParse(value, out int lineLen))
                             {
-                                Limits = Limits with { LineLength = Math.Max(lineLen, Limits.LineLength) };
+                                State = State with
+                                {
+                                    Limits = State.Limits with
+                                    {
+                                        LineLength = Math.Max(lineLen, State.Limits.LineLength)
+                                    }
+                                };
                             }
                             break;
                     }
@@ -810,7 +751,6 @@ public partial class Network : INetwork
                 break;
         }
     }
-    #endregion
 
     /// <summary>
     /// Abort user registration if it is currently underway.
@@ -948,8 +888,7 @@ public partial class Network : INetwork
 
         // This is expected to be a mock/stub connection via DI service replacement in the test harness
         _connection = ConnectionFactory.Create(this, Options.Servers[0], Options);
-        Host = host;
-        Account = account;
+        UnsafeUpdateUser(State.Self with { Host = host, Account = account });
     }
 
     /// <summary>

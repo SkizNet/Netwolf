@@ -2,21 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.Events;
+using Netwolf.Transport.Extensions;
 using Netwolf.Transport.IRC;
 using Netwolf.Transport.Sasl;
 using Netwolf.Transport.State;
 
+using System.Reactive.Linq;
 using System.Security.Authentication.ExtendedProtection;
 using System.Text;
 
 namespace Netwolf.Transport.Internal.CommandListeners;
 
 [CommandListener]
-internal class Sasl : IAsyncCommandListener, INetworkInitialization
+internal sealed class Sasl : IAsyncCommandListener, IDisposable
 {
     /// <summary>
     /// Maximum length of SaslBuffer (64 KiB base64-encoded, 48 KiB after decoding).
@@ -29,6 +30,8 @@ internal class Sasl : IAsyncCommandListener, INetworkInitialization
     private CommandListenerRegistry Registry { get; init; }
 
     private ISaslMechanismFactory SaslMechanismFactory { get; init; }
+
+    private IDisposable? _subscription;
 
     /// <summary>
     /// SASL mechanisms that are supported by both the server and us.
@@ -62,18 +65,39 @@ internal class Sasl : IAsyncCommandListener, INetworkInitialization
         "908", // RPL_SASLMECHS
         ];
 
-    public Sasl(ILogger<INetwork> logger, CommandListenerRegistry registry, ISaslMechanismFactory saslMechanismFactory)
+    public Sasl(
+        ILogger<INetwork> logger,
+        CommandListenerRegistry registry,
+        INetworkRegistry networkRegistry,
+        ISaslMechanismFactory saslMechanismFactory)
     {
         Logger = logger;
         Registry = registry;
         SaslMechanismFactory = saslMechanismFactory;
-    }
 
-    public void InitializeForNetwork(INetwork network)
-    {
-        network.NetworkConnecting += InitSaslState;
-        network.NetworkDisconnected += ClearSaslState;
-        network.CapFilter += EnableSasl;
+        networkRegistry.NetworkCreated += (sender, network) =>
+        {
+            InitSaslState(sender, new NetworkEventArgs(network));
+            network.NetworkConnecting += InitSaslState;
+            network.CapFilter += EnableSasl;
+        };
+
+        networkRegistry.NetworkDestroyed += (sender, network) =>
+        {
+            SaslMechs.Remove(network);
+            SelectedSaslMech.Remove(network);
+            SaslBuffer.Remove(network);
+        };
+
+        _subscription = Registry.CommandListenerEvents
+            .OfType<CapEventArgs>()
+            .SubscribeAsync(async args =>
+            {
+                if (args.Subcommand == "ACK" && args.CapName == "sasl" && args.Network.Options.UseSasl)
+                {
+                    await AttemptSasl(args.Network, args.Token);
+                }
+            });
     }
 
     private void InitSaslState(object? sender, NetworkEventArgs args)
@@ -81,13 +105,6 @@ internal class Sasl : IAsyncCommandListener, INetworkInitialization
         SaslMechs[args.Network] = [];
         SelectedSaslMech[args.Network] = null;
         SaslBuffer[args.Network] = new StringBuilder();
-    }
-
-    private void ClearSaslState(object? sender, NetworkEventArgs args)
-    {
-        SaslMechs.Remove(args.Network);
-        SelectedSaslMech.Remove(args.Network);
-        SaslBuffer.Remove(args.Network);
     }
 
     private async ValueTask<bool> EnableSasl(object? sender, CapEventArgs args)
@@ -102,9 +119,15 @@ internal class Sasl : IAsyncCommandListener, INetworkInitialization
         var options = args.Network.Options;
         var state = args.Network.AsNetworkInfo();
 
-        // do we have SASL credentials defined client-side?
-        if (!options.UseSasl && (options.AccountPassword != null || options.AccountCertificateFile != null))
+        if (!options.UseSasl)
         {
+            return false;
+        }
+
+        // do we have SASL credentials defined client-side?
+        if (options.AccountPassword == null && options.AccountCertificateFile == null)
+        {
+            Logger.LogWarning("SASL enabled in network options but no credentials (password or certificate) defined; skipping SASL");
             return false;
         }
 
@@ -259,7 +282,7 @@ internal class Sasl : IAsyncCommandListener, INetworkInitialization
     private async Task UpdateMechs(INetwork network, ICommand command)
     {
         SaslMechs[network].IntersectWith(command.Args[1].Split(','));
-        if (SaslMechs[network].Count == 0 && network.Options.AbortOnSaslFailure && !network.IsConnected)
+        if (SaslMechs[network].Count == 0 && network.Options.UseSasl && network.Options.AbortOnSaslFailure && !network.IsConnected)
         {
             Logger.LogError("Server and client have no SASL mechanisms in common; aborting connection");
             await network.DisconnectAsync();
@@ -353,5 +376,11 @@ internal class Sasl : IAsyncCommandListener, INetworkInitialization
                 }
             }
         }
+    }
+
+    void IDisposable.Dispose()
+    {
+        _subscription?.Dispose();
+        _subscription = null;
     }
 }

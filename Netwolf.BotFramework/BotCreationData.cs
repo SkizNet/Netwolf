@@ -28,6 +28,7 @@ public sealed class BotCreationData
     internal ILogger<Bot> Logger { get; init; }
     internal IOptionsMonitor<BotOptions> OptionsMonitor { get; init; }
     internal INetworkFactory NetworkFactory { get; init; }
+    internal INetworkRegistry NetworkRegistry { get; init; }
     internal ICommandDispatcher<BotCommandResult> CommandDispatcher { get; init; }
     internal ICommandFactory CommandFactory { get; init; }
     internal BotCommandContextFactory BotCommandContextFactory { get; init; }
@@ -42,6 +43,7 @@ public sealed class BotCreationData
         ILogger<Bot> logger,
         IOptionsMonitor<BotOptions> options,
         INetworkFactory networkFactory,
+        INetworkRegistry networkRegistry,
         ICommandDispatcher<BotCommandResult> commandDispatcher,
         ICommandFactory commandFactory,
         BotCommandContextFactory botCommandContextFactory,
@@ -53,6 +55,7 @@ public sealed class BotCreationData
         Logger = logger;
         OptionsMonitor = options;
         NetworkFactory = networkFactory;
+        NetworkRegistry = networkRegistry;
         CommandDispatcher = commandDispatcher;
         CommandFactory = commandFactory;
         BotCommandContextFactory = botCommandContextFactory;
