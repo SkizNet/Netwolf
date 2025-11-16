@@ -79,7 +79,7 @@ public class GeneratorTests
         Assert.AreEqual(42, result.Value);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("123", 123, DisplayName = "positive int")]
     [DataRow("-42", -42, DisplayName = "negative int")]
     [DataRow("", 0, DisplayName = "missing param")]
@@ -107,7 +107,7 @@ public class GeneratorTests
         Assert.AreEqual(42, result.Value);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("CommandName 0", "COMPLEX")]
     [DataRow("SenderNick 0", "test")]
     [DataRow("FullLine 0 0.1 0.2  foo   bar baz  ", "!complex FullLine 0 0.1 0.2  foo   bar baz  ")]
@@ -130,7 +130,7 @@ public class GeneratorTests
         Assert.AreEqual(expected, result.Value);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("CommandName", DisplayName = "No param")]
     [DataRow("CommandName qq", DisplayName = "Invalid param")]
     [DataRow("CommandName -9999999999999", DisplayName = "Below int.MinValue")]
@@ -139,7 +139,7 @@ public class GeneratorTests
     {
         // capture the Task so we can also examine properties on the exception itself to verify the *correct* exception was thrown
         var task = RunTest("complex", param);
-        await Assert.ThrowsExceptionAsync<ValidationException>(() => task);
+        await Assert.ThrowsAsync<ValidationException>(() => task);
         try
         {
             await task;
@@ -150,14 +150,14 @@ public class GeneratorTests
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("CommandName -1", DisplayName = "Too low")]
     [DataRow("CommandName 582", DisplayName = "Too high")]
     public async Task Fail_invalid_range_param(string param)
     {
         // capture the Task so we can also examine properties on the exception itself to verify the *correct* exception was thrown
         var task = RunTest("complex", param);
-        await Assert.ThrowsExceptionAsync<ValidationException>(() => task);
+        await Assert.ThrowsAsync<ValidationException>(() => task);
         try
         {
             await task;

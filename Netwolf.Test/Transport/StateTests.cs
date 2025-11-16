@@ -65,7 +65,7 @@ public class StateTests
         var user = info.GetUserByNick("FOO");
         Assert.IsNotNull(channel);
         Assert.IsNotNull(user);
-        Assert.AreEqual(2, channel.Users.Count);
+        Assert.HasCount(2, channel.Users);
         Assert.AreEqual("foo", user.Nick);
         Assert.AreEqual("~bar", user.Ident);
         Assert.AreEqual("baz/baz", user.Host);
@@ -93,7 +93,7 @@ public class StateTests
         var user = info.GetUserByNick("FOO");
         Assert.IsNotNull(channel);
         Assert.IsNotNull(user);
-        Assert.AreEqual(2, channel.Users.Count);
+        Assert.HasCount(2, channel.Users);
         Assert.AreEqual("foo", user.Nick);
         Assert.AreEqual("~bar", user.Ident);
         Assert.AreEqual("baz/baz", user.Host);
@@ -125,7 +125,7 @@ public class StateTests
         Assert.IsNull(user);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(":a!~a@a.a PART #testing", DisplayName = "PART without reason")]
     [DataRow(":a!~a@a.a PART #testing,#other", DisplayName = "PART multiple channels")]
     [DataRow(":a!~a@a.a PART #testing :part reason", DisplayName = "PART with reason")]
@@ -152,10 +152,10 @@ public class StateTests
         var channel = info.GetChannel("#testing");
         Assert.IsNotNull(channel);
         Assert.IsNull(info.GetUserByNick("a"));
-        Assert.AreEqual(3, channel.Users.Count);
+        Assert.HasCount(3, channel.Users);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(":test!id@127.0.0.1 PART #testing", DisplayName = "PART without reason")]
     [DataRow(":test!id@127.0.0.1 PART #testing,#other", DisplayName = "PART multiple channels")]
     [DataRow(":test!id@127.0.0.1 PART #testing :part reason", DisplayName = "PART with reason")]
@@ -231,7 +231,7 @@ public class StateTests
         Assert.IsNull(channel.Modes['i']);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(":a!~a@a.a RENAME #testing #test2 :", "#test2", DisplayName = "RENAME without reason")]
     [DataRow(":irc.netwolf.org RENAME #testing #test2 :", "#test2", DisplayName = "RENAME from server")]
     [DataRow(":a!~a@a.a RENAME #testing #test2 :reason goes here", "#test2", DisplayName = "RENAME with reason")]
@@ -258,7 +258,7 @@ public class StateTests
         Assert.AreEqual(newChannel, channel.Name);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(":irc.netwolf.org RENAME #test1 #test2 :", DisplayName = "Not joined to source channel")]
     [DataRow(":irc.netwolf.org RENAME #testing foobar :", DisplayName = "Target isn't a channel")]
     [DataRow(":irc.netwolf.org RENAME test #test2 :", DisplayName = "Source isn't a channel")]
@@ -283,7 +283,7 @@ public class StateTests
         CollectionAssert.AreEquivalent(new List<string> { "#testing", "#another" }, state.GetAllChannels().Select(c => c.Name).ToList());
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(":irc.netwolf.org RENAME #another #testing :", DisplayName = "Channel collision")]
     public async Task Throw_on_corrupted_state_renames(string line)
     {
@@ -298,7 +298,7 @@ public class StateTests
         await Assert.ThrowsExactlyAsync<BadStateException>(() => network.ReceiveLineForUnitTests(line));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("a", "b", "b", "ascii", false, DisplayName = "Regular nickchange")]
     [DataRow("a", "a^]", "A^]", "ascii", false, DisplayName = "Regular nickchange (casefolded ascii)")]
     [DataRow("a", "a^]", "A~}", "rfc1459", false, DisplayName = "Regular nickchange (casefolded rfc1459)")]
@@ -326,7 +326,7 @@ public class StateTests
         }
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("NICK foo", DisplayName = "Missing source")]
     [DataRow(":irc.netwolf.org NICK foo", DisplayName = "Server as source")]
     [DataRow(":test!id@127.0.0.1 NICK", DisplayName = "Missing argument")]
@@ -351,7 +351,7 @@ public class StateTests
         Assert.AreEqual("#testing", state.GetAllChannels().Single().Name);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(":a!~a@a.a NICK test", DisplayName = "Nick collision")]
     public async Task Throw_on_corrupted_state_nick_changes(string line)
     {
@@ -407,7 +407,7 @@ public class StateTests
         Assert.IsTrue(network.AsNetworkInfo().GetUserByNick("a")!.IsAway);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("Custom away message", DisplayName = "AWAY with message")]
     [DataRow("", DisplayName = "AWAY without message")]
     public async Task Successfully_other_away_notify(string reason)

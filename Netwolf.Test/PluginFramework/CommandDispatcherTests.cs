@@ -16,7 +16,7 @@ public class CommandDispatcherTests : PluginFrameworkTestBase
         using var scope = provider.CreateScope();
         var dispatcher = scope.ServiceProvider.GetRequiredService<ICommandDispatcher<int>>();
 
-        Assert.AreEqual(0, dispatcher.Commands.Length);
+        Assert.IsEmpty(dispatcher.Commands);
     }
 
     [TestMethod]
@@ -95,7 +95,7 @@ public class CommandDispatcherTests : PluginFrameworkTestBase
         await Assert.ThrowsExactlyAsync<TaskCanceledException>(() => dispatcher.DispatchAsync(testE, context, cts.Token));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(PluginResult.Continue, new int[] { 10, 20, 1 }, DisplayName = "PluginResult.Continue")]
     [DataRow(PluginResult.SuppressDefault, new int[] { 10, 20, 0 }, DisplayName = "PluginResult.SuppressDefault")]
     [DataRow(PluginResult.SuppressPlugins, new int[] { 10, 1 }, DisplayName = "PluginResult.SuppressPlugins")]

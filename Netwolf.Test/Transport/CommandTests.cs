@@ -123,7 +123,7 @@ public class CommandTests
         CommandFactory = Container.GetRequiredService<ICommandFactory>();
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DynamicData(nameof(TestCommandParseData))]
     public void Valid_IRC_lines_parse_successfully(string rawCommand, string? source, string verb, string[] args, object? tagsObject)
     {

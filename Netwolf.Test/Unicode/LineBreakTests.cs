@@ -13,9 +13,9 @@ public class LineBreakTests
     const char NO_BREAK = '×';
     const char CAN_BREAK = '÷';
 
-    [DynamicData(nameof(GetLineBreakTestData), DynamicDataSourceType.Method, DynamicDataDisplayName = nameof(GetLineBreakTestName))]
-    [DataTestMethod]
-    public void Test_split_algorithm(string test, string comment)
+    [DynamicData(nameof(GetLineBreakTestData), DynamicDataDisplayName = nameof(GetLineBreakTestName))]
+    [TestMethod]
+    public void Test_split_algorithm(string test, string _)
     {
         List<bool> expected = [];
         List<bool> actual = [false];
@@ -45,6 +45,8 @@ public class LineBreakTests
 
             actual.Add(true);
         }
+
+        CollectionAssert.AreEqual(expected, actual);
     }
 
     public static IEnumerable<object[]> GetLineBreakTestData()
@@ -65,7 +67,7 @@ public class LineBreakTests
         }
     }
 
-    public static string GetLineBreakTestName(MethodInfo info, object[] row)
+    public static string GetLineBreakTestName(MethodInfo _, object[] row)
     {
         return row[1].ToString()!;
     }

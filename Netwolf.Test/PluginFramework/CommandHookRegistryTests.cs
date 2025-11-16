@@ -49,7 +49,7 @@ public class CommandHookRegistryTests : PluginFrameworkTestBase
         CollectionAssert.AreEquivalent(new string[] { "HOOK1", "HOOK2" }, dispatcher.Commands);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("INVALID", 0)]
     [DataRow("HOOK1", 1)]
     [DataRow("HOOK2", 2)]
