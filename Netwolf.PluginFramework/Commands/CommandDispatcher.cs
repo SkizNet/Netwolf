@@ -4,13 +4,13 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-using Netwolf.PluginFramework.Context;
 using Netwolf.PluginFramework.Exceptions;
 using Netwolf.PluginFramework.Permissions;
 using Netwolf.Transport.Commands;
 using Netwolf.Transport.Context;
 
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Reflection;
 using System.Text.RegularExpressions;
 
@@ -35,9 +35,9 @@ public partial class CommandDispatcher<TResult> : ICommandDispatcher<TResult>
 
     private Dictionary<string, ICommandHandler<TResult>> Commands { get; init; } = [];
 
-    // FIXME: once we're on .NET 10, make use of CompareOptions.NumericOrdering for natural sort order
     ImmutableArray<string> ICommandDispatcher<TResult>.Commands =>
-        [.. Commands.Keys.Union(HookRegistry.GetHookedCommandNames()).Order()];
+        [.. Commands.Keys.Union(HookRegistry.GetHookedCommandNames())
+            .Order(CultureInfo.InvariantCulture.CompareInfo.GetStringComparer(CompareOptions.NumericOrdering))];
 
     public CommandDispatcher(
         IServiceProvider provider,

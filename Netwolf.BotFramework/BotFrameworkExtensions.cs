@@ -16,6 +16,8 @@ using Netwolf.Transport.Commands;
 using Netwolf.Transport.Extensions.DependencyInjection;
 using Netwolf.Transport.IRC;
 
+using System.Collections.Concurrent;
+
 namespace Netwolf.BotFramework;
 
 /// <summary>
@@ -27,7 +29,11 @@ public static class BotFrameworkExtensions
     /// Singleton service instance for BotRegistry; created here instead of via DI activation
     /// so that we can refer to it before the service provider is fully built
     /// </summary>
-    private static readonly Dictionary<IServiceCollection, BotRegistry> _registry = [];
+    /// <remarks>
+    /// This is a ConcurrentDictionary mostly for unit testing running in parallel;
+    /// it isn't expected that end users will be creating multiple service providers with bots from multiple threads concurrently.
+    /// </remarks>
+    private static readonly ConcurrentDictionary<IServiceCollection, BotRegistry> _registry = [];
 
     /// <summary>
     /// Registers a new bot to be executed in the background immediately.
@@ -67,12 +73,8 @@ public static class BotFrameworkExtensions
     private static IBotBuilder AddBot<TBot>(this IServiceCollection services, string botName, bool runImmediately)
         where TBot : Bot
     {
-        if (!_registry.ContainsKey(services))
-        {
-            _registry[services] = new BotRegistry();
-        }
-
-        if (_registry[services].KnownTypes.ContainsKey(botName))
+        BotRegistry value = _registry.GetOrAdd(services, _ => new());
+        if (value.KnownTypes.ContainsKey(botName))
         {
             throw new ArgumentException($"Bot names must be unique; received duplicate bot name {botName}", nameof(botName));
         }
@@ -85,7 +87,7 @@ public static class BotFrameworkExtensions
             services.AddTransportServices();
 
             // below is only called exactly once; TryAdd is not used for this reason
-            services.AddSingleton<BotRegistry>(_registry[services]);
+            services.AddSingleton<BotRegistry>(value);
             services.AddSingleton<IPermissionManager, BotPermissionManager>();
         }
 
@@ -123,8 +125,7 @@ public static class BotFrameworkExtensions
             .BindConfiguration($"Netwolf.Bot:{botName}")
             .ValidateDataAnnotations()
             .ValidateOnStart();
-
-        _registry[services].RegisterType(botName, typeof(TBot), runImmediately);
+        value.RegisterType(botName, typeof(TBot), runImmediately);
         return new BotBuilder(botName, services);
     }
 
