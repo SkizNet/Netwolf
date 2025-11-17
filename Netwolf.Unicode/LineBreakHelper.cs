@@ -3,6 +3,7 @@
 
 using Netwolf.Unicode.Internal;
 
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 
@@ -39,7 +40,7 @@ public static class LineBreakHelper
         // LB8a Do not break after a zero width joiner.
         { (LineBreakClass.Any, LineBreakClass.ZWJ), (null, LineBreakType.Forbidden, null, 810) },
         // LB9 Do not break a combining character sequence; treat it as if it has the line breaking class of the base character in all of the following rules. Treat ZWJ as if it were CM.
-        // handled implicitly because we iterate over grapheme clusters and only consider the first codepoint in the grapheme cluster for this table
+        // handled in SplitText() as this rule cannot be encoded in a pairwise lookup table
         // LB10 Treat any remaining combining mark or ZWJ as AL.
         // directly encoded as additional options in all rules where AL appears further down
         // LB11 Do not break before or after Word joiner and related characters.
@@ -90,14 +91,9 @@ public static class LineBreakHelper
         // LB22 Do not break before ellipses.
         { (LineBreakClass.Any, LineBreakClass.IN), (LineBreakType.Forbidden, null, 2200, null) },
         // LB23 Do not break between digits and letters.
-        // (+ LB10 Treat any remaining combining mark or ZWJ as AL.)
         { (LineBreakClass.AL, LineBreakClass.NU), (LineBreakType.Forbidden, null, 2300, null) },
-        { (LineBreakClass.CM, LineBreakClass.NU), (LineBreakType.Forbidden, null, 2300, null) },
-        { (LineBreakClass.ZWJ, LineBreakClass.NU), (LineBreakType.Forbidden, null, 2300, null) },
         { (LineBreakClass.HL, LineBreakClass.NU), (LineBreakType.Forbidden, null, 2300, null) },
         { (LineBreakClass.NU, LineBreakClass.AL), (LineBreakType.Forbidden, null, 2300, null) },
-        { (LineBreakClass.NU, LineBreakClass.CM), (LineBreakType.Forbidden, null, 2300, null) },
-        { (LineBreakClass.NU, LineBreakClass.ZWJ), (LineBreakType.Forbidden, null, 2300, null) },
         { (LineBreakClass.NU, LineBreakClass.HL), (LineBreakType.Forbidden, null, 2300, null) },
         // LB23a Do not break between numeric prefixes and ideographs, or between ideographs and numeric postfixes.
         { (LineBreakClass.PR, LineBreakClass.ID), (LineBreakType.Forbidden, null, 2310, null) },
@@ -107,19 +103,12 @@ public static class LineBreakHelper
         { (LineBreakClass.EB, LineBreakClass.PO), (LineBreakType.Forbidden, null, 2310, null) },
         { (LineBreakClass.EM, LineBreakClass.PO), (LineBreakType.Forbidden, null, 2310, null) },
         // LB24 Do not break between numeric prefix/postfix and letters, or between letters and prefix/postfix.
-        // (+ LB10 Treat any remaining combining mark or ZWJ as AL.)
         { (LineBreakClass.PR, LineBreakClass.AL), (LineBreakType.Forbidden, null, 2400, null) },
-        { (LineBreakClass.PR, LineBreakClass.CM), (LineBreakType.Forbidden, null, 2400, null) },
-        { (LineBreakClass.PR, LineBreakClass.ZWJ), (LineBreakType.Forbidden, null, 2400, null) },
         { (LineBreakClass.PR, LineBreakClass.HL), (LineBreakType.Forbidden, null, 2400, null) },
         { (LineBreakClass.PO, LineBreakClass.AL), (LineBreakType.Forbidden, null, 2400, null) },
         { (LineBreakClass.PO, LineBreakClass.HL), (LineBreakType.Forbidden, null, 2400, null) },
         { (LineBreakClass.AL, LineBreakClass.PR), (LineBreakType.Forbidden, null, 2400, null) },
-        { (LineBreakClass.CM, LineBreakClass.PR), (LineBreakType.Forbidden, null, 2400, null) },
-        { (LineBreakClass.ZWJ, LineBreakClass.PR), (LineBreakType.Forbidden, null, 2400, null) },
         { (LineBreakClass.AL, LineBreakClass.PO), (LineBreakType.Forbidden, null, 2400, null) },
-        { (LineBreakClass.CM, LineBreakClass.PO), (LineBreakType.Forbidden, null, 2400, null) },
-        { (LineBreakClass.ZWJ, LineBreakClass.PO), (LineBreakType.Forbidden, null, 2400, null) },
         { (LineBreakClass.HL, LineBreakClass.PR), (LineBreakType.Forbidden, null, 2400, null) },
         { (LineBreakClass.HL, LineBreakClass.PO), (LineBreakType.Forbidden, null, 2400, null) },
         // LB25 Do not break numbers
@@ -151,22 +140,9 @@ public static class LineBreakHelper
         { (LineBreakClass.PR, LineBreakClass.H2), (LineBreakType.Forbidden, null, 2700, null) },
         { (LineBreakClass.PR, LineBreakClass.H3), (LineBreakType.Forbidden, null, 2700, null) },
         // LB28 Do not break between alphabetics (“at”).
-        // (+ LB10 Treat any remaining combining mark or ZWJ as AL.)
         { (LineBreakClass.AL, LineBreakClass.AL), (LineBreakType.Forbidden, null, 2800, null) },
-        { (LineBreakClass.AL, LineBreakClass.CM), (LineBreakType.Forbidden, null, 2800, null) },
-        { (LineBreakClass.AL, LineBreakClass.ZWJ), (LineBreakType.Forbidden, null, 2800, null) },
         { (LineBreakClass.AL, LineBreakClass.HL), (LineBreakType.Forbidden, null, 2800, null) },
-        { (LineBreakClass.CM, LineBreakClass.AL), (LineBreakType.Forbidden, null, 2800, null) },
-        { (LineBreakClass.CM, LineBreakClass.CM), (LineBreakType.Forbidden, null, 2800, null) },
-        { (LineBreakClass.CM, LineBreakClass.ZWJ), (LineBreakType.Forbidden, null, 2800, null) },
-        { (LineBreakClass.CM, LineBreakClass.HL), (LineBreakType.Forbidden, null, 2800, null) },
-        { (LineBreakClass.ZWJ, LineBreakClass.AL), (LineBreakType.Forbidden, null, 2800, null) },
-        { (LineBreakClass.ZWJ, LineBreakClass.CM), (LineBreakType.Forbidden, null, 2800, null) },
-        { (LineBreakClass.ZWJ, LineBreakClass.ZWJ), (LineBreakType.Forbidden, null, 2800, null) },
-        { (LineBreakClass.ZWJ, LineBreakClass.HL), (LineBreakType.Forbidden, null, 2800, null) },
         { (LineBreakClass.HL, LineBreakClass.AL), (LineBreakType.Forbidden, null, 2800, null) },
-        { (LineBreakClass.HL, LineBreakClass.CM), (LineBreakType.Forbidden, null, 2800, null) },
-        { (LineBreakClass.HL, LineBreakClass.ZWJ), (LineBreakType.Forbidden, null, 2800, null) },
         { (LineBreakClass.HL, LineBreakClass.HL), (LineBreakType.Forbidden, null, 2800, null) },
         // LB28a Do not break inside the orthographic syllables of Brahmic scripts.
         // Adjustments to accomodate U+25CC DOTTED CIRCLE as well as rules that cannot be encoded in a pairwise lookup table are handled in SplitText()
@@ -177,28 +153,21 @@ public static class LineBreakHelper
         { (LineBreakClass.AK, LineBreakClass.VI), (LineBreakType.Forbidden, null, 2810, null) },
         { (LineBreakClass.AS, LineBreakClass.VI), (LineBreakType.Forbidden, null, 2810, null) },
         // LB29 Do not break between numeric punctuation and alphabetics (“e.g.”).
-        // (+ LB10 Treat any remaining combining mark or ZWJ as AL.)
         { (LineBreakClass.IS, LineBreakClass.AL), (LineBreakType.Forbidden, null, 2900, null) },
-        { (LineBreakClass.IS, LineBreakClass.CM), (LineBreakType.Forbidden, null, 2900, null) },
-        { (LineBreakClass.IS, LineBreakClass.ZWJ), (LineBreakType.Forbidden, null, 2900, null) },
         { (LineBreakClass.IS, LineBreakClass.HL), (LineBreakType.Forbidden, null, 2900, null) },
         // LB30 Do not break between letters, numbers, or ordinary symbols and opening or closing parentheses.
         // Adjustments to accomodate the excluded set of East Asian characters are handled in SplitText()
-        // (+ LB10 Treat any remaining combining mark or ZWJ as AL.)
         { (LineBreakClass.AL, LineBreakClass.OP), (LineBreakType.Forbidden, null, 3000, null) },
-        { (LineBreakClass.CM, LineBreakClass.OP), (LineBreakType.Forbidden, null, 3000, null) },
-        { (LineBreakClass.ZWJ, LineBreakClass.OP), (LineBreakType.Forbidden, null, 3000, null) },
         { (LineBreakClass.HL, LineBreakClass.OP), (LineBreakType.Forbidden, null, 3000, null) },
         { (LineBreakClass.NU, LineBreakClass.OP), (LineBreakType.Forbidden, null, 3000, null) },
         { (LineBreakClass.CP, LineBreakClass.AL), (LineBreakType.Forbidden, null, 3000, null) },
-        { (LineBreakClass.CP, LineBreakClass.CM), (LineBreakType.Forbidden, null, 3000, null) },
-        { (LineBreakClass.CP, LineBreakClass.ZWJ), (LineBreakType.Forbidden, null, 3000, null) },
         { (LineBreakClass.CP, LineBreakClass.HL), (LineBreakType.Forbidden, null, 3000, null) },
         { (LineBreakClass.CP, LineBreakClass.NU), (LineBreakType.Forbidden, null, 3000, null) },
         // LB30a Break between two regional indicator symbols if and only if there are an even number of regional indicators preceding the position of the break.
         // handled in SplitText() as this rule cannot be encoded in a pairwise lookup table
         // LB30b Do not break between an emoji base (or potential emoji) and an emoji modifier.
-        // handled implicitly due to the nature of us iterating over grapheme clusters rather than individual codepoints
+        // partially handled in SplitText()
+        { (LineBreakClass.EB, LineBreakClass.EM), (LineBreakType.Forbidden, null, 3020, null) },
         // LB31 Break everywhere else.
         // handled in Grapheme constructor
     };
@@ -209,80 +178,159 @@ public static class LineBreakHelper
     /// </summary>
     /// <param name="text"></param>
     /// <param name="maxLength"></param>
-    /// <param name="allowOverflow">If true, lines can be longer than <paramref name="maxLength"/> and will instead only be split at break opportunities</param>
     /// <returns>An iterable of the broken-up lines along with whether the line ends with a hard break or a soft break (wrapping)</returns>
-    public static IEnumerable<LineBreakRecord> SplitText(string text, int maxLength, bool allowOverflow)
+    public static IEnumerable<LineBreakRecord> SplitText(string text, int maxLength)
     {
-        List<Grapheme> graphemes =
+        return SplitText(text, maxLength, SplitTextOptions.None);
+    }
+
+    private static void AdjustRules(CodePoint prev, CodePoint cur)
+    {
+        // look up the (prev, cur), (prev, Any), and (Any, cur) pairs
+        var (prevType, curType, prevRule, curRule) = _mapping.GetValueOrDefault((prev.Class, cur.Class));
+        if ((prevRule ?? 99999) < prev.Rule)
+        {
+            prev.Type = prevType!.Value;
+            prev.Rule = prevRule!.Value;
+        }
+
+        if ((curRule ?? 99999) < cur.Rule)
+        {
+            cur.Type = curType!.Value;
+            cur.Rule = curRule!.Value;
+        }
+
+        (prevType, curType, prevRule, curRule) = _mapping.GetValueOrDefault((prev.Class, LineBreakClass.Any));
+        if ((prevRule ?? 99999) < prev.Rule)
+        {
+            prev.Type = prevType!.Value;
+            prev.Rule = prevRule!.Value;
+        }
+
+        if ((curRule ?? 99999) < cur.Rule)
+        {
+            cur.Type = curType!.Value;
+            cur.Rule = curRule!.Value;
+        }
+
+        (prevType, curType, prevRule, curRule) = _mapping.GetValueOrDefault((LineBreakClass.Any, cur.Class));
+        if ((prevRule ?? 99999) < prev.Rule)
+        {
+            prev.Type = prevType!.Value;
+            prev.Rule = prevRule!.Value;
+        }
+
+        if ((curRule ?? 99999) < cur.Rule)
+        {
+            cur.Type = curType!.Value;
+            cur.Rule = curRule!.Value;
+        }
+    }
+
+    /// <summary>
+    /// Split text into multiple lines, where each line is no larger than maxLength bytes when encoded in UTF-8.
+    /// This follows the Unicode line breaking algorithm at https://www.unicode.org/reports/tr14/#Algorithm
+    /// </summary>
+    /// <param name="text"></param>
+    /// <param name="maxLength"></param>
+    /// <param name="options">Options to modify the algorithm result</param>
+    /// <returns>An iterable of the broken-up lines along with whether the line ends with a hard break or a soft break (wrapping)</returns>
+    public static IEnumerable<LineBreakRecord> SplitText(string text, int maxLength, SplitTextOptions options)
+    {
+        List<CodePoint> codePoints =
         [
-            new(String.Empty, LineBreakClass.StartOfText)
+            new(null, LineBreakClass.StartOfText)
         ];
 
-        // iterate over grapheme clusters, using the first codepoint (aka Rune) in the cluster to determine line break class
-        var enumerator = StringInfo.GetTextElementEnumerator(text);
-        var prev = graphemes[0];
+        var lb9classes = new LineBreakClass[] { LineBreakClass.SOT, LineBreakClass.BK, LineBreakClass.CR, LineBreakClass.LF, LineBreakClass.NL, LineBreakClass.SP, LineBreakClass.ZW };
+
+        // iterate over codepoints to determine line break class
+        var enumerator = text.EnumerateRunes();
+        var prev = codePoints[0];
         while (enumerator.MoveNext())
         {
-            string grapheme = enumerator.GetTextElement();
-            Grapheme cur = new(grapheme);
+            CodePoint cur = new(enumerator.Current);
 
-            // look up the (prev, cur), (prev, Any), and (Any, cur) pairs
-            var (prevType, curType, prevRule, curRule) = _mapping.GetValueOrDefault((prev.Class, cur.Class));
-            if ((prevRule ?? 99999) < prev.Rule)
+            // Do an initial set of pairwise lookups, and then handle LB9 and LB10
+            // LB9 and LB10 can adjust the classes, so we do another set of lookups afterwards
+            AdjustRules(prev, cur);
+
+            // LB9 Do not break a combining character sequence; treat it as if it has the line breaking class of the base character in all of the following rules. Treat ZWJ as if it were CM.
+            if (prev.Rule > 900 && !lb9classes.Contains(prev.Class) && (cur.Class == LineBreakClass.CM || cur.Class == LineBreakClass.ZWJ))
             {
-                prev.Type = prevType!.Value;
-                prev.Rule = prevRule!.Value;
+                cur.OverrideClass = prev.Class;
+                cur.OverrideRune = prev.Rune;
+                prev.Rule = 900;
+                prev.Type = LineBreakType.Forbidden;
+                cur.Rule = 3100;
+                cur.Type = LineBreakType.Optional;
             }
 
-            if ((curRule ?? 99999) < cur.Rule)
+            // LB10 Treat any remaining combining mark or ZWJ as AL.
+            if (cur.Class == LineBreakClass.CM || cur.Class == LineBreakClass.ZWJ)
             {
-                cur.Type = curType!.Value;
-                cur.Rule = curRule!.Value;
+                cur.OverrideClass = LineBreakClass.AL;
+                cur.OverrideRune = new('A');
+                if (prev.Rule > 1000)
+                {
+                    prev.Rule = 3100;
+                    prev.Type = LineBreakType.Optional;
+                }
+                
+                if (cur.Rule > 1000)
+                {
+                    cur.Rule = 3100;
+                    cur.Type = LineBreakType.Optional;
+                }
             }
 
-            (prevType, curType, prevRule, curRule) = _mapping.GetValueOrDefault((prev.Class, LineBreakClass.Any));
-            if ((prevRule ?? 99999) < prev.Rule)
+            // if LB9 or LB10 modified the class, do another lookup
+            if (prev.OverrideClass.HasValue || cur.OverrideClass.HasValue)
             {
-                prev.Type = prevType!.Value;
-                prev.Rule = prevRule!.Value;
+                AdjustRules(prev, cur);
             }
 
-            if ((curRule ?? 99999) < cur.Rule)
-            {
-                cur.Type = curType!.Value;
-                cur.Rule = curRule!.Value;
-            }
-
-            (prevType, curType, prevRule, curRule) = _mapping.GetValueOrDefault((LineBreakClass.Any, cur.Class));
-            if ((prevRule ?? 99999) < prev.Rule)
-            {
-                prev.Type = prevType!.Value;
-                prev.Rule = prevRule!.Value;
-            }
-
-            if ((curRule ?? 99999) < cur.Rule)
-            {
-                cur.Type = curType!.Value;
-                cur.Rule = curRule!.Value;
-            }
-
-            graphemes.Add(cur);
+            codePoints.Add(cur);
             prev = cur;
         }
 
         // handle rules that we couldn't handle above
+        LineBreakClass[] lb12classes = [LineBreakClass.SP, LineBreakClass.BA, LineBreakClass.HY, LineBreakClass.HH];
+        LineBreakClass[] lb15aclasses = [LineBreakClass.StartOfText, LineBreakClass.BK, LineBreakClass.CR, LineBreakClass.LF, LineBreakClass.NL, LineBreakClass.OP, LineBreakClass.QU, LineBreakClass.GL, LineBreakClass.SP, LineBreakClass.ZW];
+        LineBreakClass[] lb15bclasses = [LineBreakClass.SP, LineBreakClass.GL, LineBreakClass.WJ, LineBreakClass.CL, LineBreakClass.QU, LineBreakClass.CP, LineBreakClass.EX, LineBreakClass.IS, LineBreakClass.SY, LineBreakClass.BK, LineBreakClass.CR, LineBreakClass.LF, LineBreakClass.NL, LineBreakClass.ZW];
+        LineBreakClass[] lb20aclasses = [LineBreakClass.StartOfText, LineBreakClass.BK, LineBreakClass.CR, LineBreakClass.LF, LineBreakClass.NL, LineBreakClass.SP, LineBreakClass.ZW, LineBreakClass.CB, LineBreakClass.GL];
+        LineBreakClass[] lb25classes = [LineBreakClass.PO, LineBreakClass.PR];
+        EastAsianWidth[] eaWidths = [EastAsianWidth.F, EastAsianWidth.W, EastAsianWidth.H];
+
+        // for the first loop we only handle rules before LB9, as these rules require examining every character
         int state = 0;
-        var lb12classes = new LineBreakClass[] { LineBreakClass.SP, LineBreakClass.BA, LineBreakClass.HY, LineBreakClass.HH };
-        var lb15aclasses = new LineBreakClass[] { LineBreakClass.StartOfText, LineBreakClass.BK, LineBreakClass.CR, LineBreakClass.LF, LineBreakClass.NL, LineBreakClass.OP, LineBreakClass.QU, LineBreakClass.GL, LineBreakClass.SP, LineBreakClass.ZW };
-        var lb15bclasses = new LineBreakClass[] { LineBreakClass.SP, LineBreakClass.GL, LineBreakClass.WJ, LineBreakClass.CL, LineBreakClass.QU, LineBreakClass.CP, LineBreakClass.EX, LineBreakClass.IS, LineBreakClass.SY, LineBreakClass.BK, LineBreakClass.CR, LineBreakClass.LF, LineBreakClass.NL, LineBreakClass.ZW };
-        var lb20aclasses = new LineBreakClass[] { LineBreakClass.StartOfText, LineBreakClass.BK, LineBreakClass.CR, LineBreakClass.LF, LineBreakClass.NL, LineBreakClass.SP, LineBreakClass.ZW, LineBreakClass.CB, LineBreakClass.GL };
-        var eaWidths = new EastAsianWidth[] { EastAsianWidth.F, EastAsianWidth.W, EastAsianWidth.H };
-        prev = graphemes[0];
-        for (var i = 1; i < graphemes.Count; ++i)
+        for (var i = 1; i < codePoints.Count; ++i)
         {
-            var cur = graphemes[i];
-            var next = (i < graphemes.Count - 1) ? graphemes[i + 1] : null;
-            var next2 = (i < graphemes.Count - 2) ? graphemes[i + 2] : null;
+            var cur = codePoints[i];
+            state = (state, cur.Class) switch
+            {
+                (0x08, LineBreakClass.SP) => 0x08,
+                (_, LineBreakClass.ZW) => 0x08,
+                (_, _) => 0
+            };
+
+            // LB8 Break before any character following a zero-width space, even if one or more spaces intervene.
+            if (state == 0x08 && cur.Rule > 800)
+            {
+                cur.Type = LineBreakType.Optional;
+                cur.Rule = 800;
+            }
+        }
+
+        // for the second loop we skip over every character marked by LB9 as if they didn't exist
+        var filtered = codePoints.Where(c => c.Rule != 900).ToList();
+        state = 0;
+        prev = filtered[0];
+        for (var i = 1; i < filtered.Count; ++i)
+        {
+            var cur = filtered[i];
+            var next = (i < filtered.Count - 1) ? filtered[i + 1] : null;
+            var next2 = (i < filtered.Count - 2) ? filtered[i + 2] : null;
             state = (state, cur.Class) switch
             {
                 (0x08, LineBreakClass.SP) => 0x08,
@@ -294,22 +342,17 @@ public static class LineBreakHelper
                 (0x1700, LineBreakClass.SP) => 0x17,
                 (0x17, LineBreakClass.B2) => 0x1700,
                 (0x1700, LineBreakClass.B2) => 0x1700,
-                (0x25, LineBreakClass.SY) => 0x25,
-                (0x25, LineBreakClass.IS) => 0x25,
-                (0x2525, LineBreakClass.SY) => 0x25,
-                (0x2525, LineBreakClass.IS) => 0x25,
-                (0x25, LineBreakClass.NU) => 0x2525,
-                (0x25, LineBreakClass.CL) => 0x2500,
-                (0x25, LineBreakClass.CP) => 0x2500,
-                (0x25, LineBreakClass.PO) => 0x2500,
-                (0x25, LineBreakClass.PR) => 0x2500,
+                (0x2525, LineBreakClass.SY) => 0x2525,
+                (0x2525, LineBreakClass.IS) => 0x2525,
+                (0x2525, LineBreakClass.CL) => 0x2500,
+                (0x2525, LineBreakClass.CP) => 0x2500,
                 (0x30, LineBreakClass.RI) => 0x3000,
                 (_, LineBreakClass.ZW) => 0x08,
                 (_, LineBreakClass.OP) => 0x14,
                 (_, LineBreakClass.CL) => 0x16,
                 (_, LineBreakClass.CP) => 0x16,
                 (_, LineBreakClass.B2) => 0x17,
-                (_, LineBreakClass.NU) => 0x25,
+                (_, LineBreakClass.NU) => 0x2525,
                 (_, LineBreakClass.RI) => 0x30,
                 (_, _) => 0
             };
@@ -322,13 +365,6 @@ public static class LineBreakHelper
 
             byte low = unchecked((byte)(state & 0xff));
             byte high = unchecked((byte)(state >> 8));
-
-            // LB8 Break before any character following a zero-width space, even if one or more spaces intervene.
-            if (low == 0x08 && cur.Rule > 800)
-            {
-                cur.Type = LineBreakType.Optional;
-                cur.Rule = 800;
-            }
 
             // LB12a Do not break before NBSP and related characters, except after spaces and hyphens.
             if (cur.Class == LineBreakClass.GL && prev.Rule > 1210 && !lb12classes.Contains(prev.Class))
@@ -393,7 +429,7 @@ public static class LineBreakHelper
             }
 
             // LB19a Unless surrounded by East Asian characters, do not break either side of any unresolved quotation marks.
-            bool isEastAsian(Grapheme g) => eaWidths.Contains(UnicodeProperty.GetEastAsianWidth(g.Rune));
+            bool isEastAsian(CodePoint c) => eaWidths.Contains(UnicodeProperty.GetEastAsianWidth(c.Rune));
             if (prev.Rule > 1910 && cur.Class == LineBreakClass.QU)
             {
                 if (!isEastAsian(prev) || next == null || !isEastAsian(next))
@@ -427,33 +463,26 @@ public static class LineBreakHelper
             }
 
             // LB25 Do not break numbers
-            if (high == 0x25)
+            if (cur.Rule > 2500 && low == 0x25 && next?.Class == LineBreakClass.NU)
             {
-                var lb25prev = new LineBreakClass[] { LineBreakClass.PO, LineBreakClass.PR, LineBreakClass.NU };
-                if (prev.Rule > 2500 && lb25prev.Contains(cur.Class))
-                {
-                    prev.Type = LineBreakType.Forbidden;
-                    prev.Rule = 2500;
-                }
-
-                if (cur.Rule > 2500 && (cur.Class == LineBreakClass.CL || cur.Class == LineBreakClass.CP) && next != null && (next.Class == LineBreakClass.PO || next.Class == LineBreakClass.PR))
-                {
-                    cur.Type = LineBreakType.Forbidden;
-                    cur.Rule = 2500;
-                }
+                cur.Type = LineBreakType.Forbidden;
+                cur.Rule = 2500;
             }
 
-            if (prev.Rule > 2500 && cur.Class == LineBreakClass.OP && (prev.Class == LineBreakClass.PO || prev.Class == LineBreakClass.PR))
+            if (cur.Rule > 2500 && high == 0x25 && next != null && lb25classes.Contains(next.Class))
             {
-                if (next?.Class == LineBreakClass.NU || (next?.Class == LineBreakClass.IS && next2?.Class == LineBreakClass.NU))
-                {
-                    prev.Type = LineBreakType.Forbidden;
-                    prev.Rule = 2500;
-                }
+                cur.Type = LineBreakType.Forbidden;
+                cur.Rule = 2500;
+            }
+
+            if (prev.Rule > 2500 && lb25classes.Contains(prev.Class) && cur.Class == LineBreakClass.OP && (next?.Class == LineBreakClass.NU || (next?.Class == LineBreakClass.IS && next2?.Class == LineBreakClass.NU)))
+            {
+                prev.Type = LineBreakType.Forbidden;
+                prev.Rule = 2500;
             }
 
             // LB28a Do not break inside the orthographic syllables of Brahmic scripts.
-            static bool isAkAsCirc(Grapheme g) => g.Class == LineBreakClass.AK || g.Class == LineBreakClass.AS || g.Rune.Value == 0x25cc;
+            static bool isAkAsCirc(CodePoint c) => c.Class == LineBreakClass.AK || c.Class == LineBreakClass.AS || c.Rune.Value == 0x25cc;
             if (prev.Rule > 2810)
             {
                 if ((prev.Class == LineBreakClass.AP && isAkAsCirc(cur))
@@ -482,13 +511,13 @@ public static class LineBreakHelper
                 }
             }
 
-            if (cur.Rule == 3000 && cur.Class == LineBreakClass.CP)
+            if (prev.Rule == 3000 && prev.Class == LineBreakClass.CP)
             {
-                var width = UnicodeProperty.GetEastAsianWidth(cur.Rune);
+                var width = UnicodeProperty.GetEastAsianWidth(prev.Rune);
                 if (eaWidths.Contains(width))
                 {
-                    cur.Type = LineBreakType.Optional;
-                    cur.Rule = 3100;
+                    prev.Type = LineBreakType.Optional;
+                    prev.Rule = 3100;
                 }
             }
 
@@ -499,16 +528,23 @@ public static class LineBreakHelper
                 prev.Rule = 3010;
             }
 
+            // LB30b Do not break between an emoji base (or potential emoji) and an emoji modifier.
+            if (prev.Rule > 3020 && cur.Class == LineBreakClass.EM && Rune.GetUnicodeCategory(prev.Rune) == UnicodeCategory.OtherNotAssigned && UnicodeProperty.IsExtendedPictographic(prev.Rune))
+            {
+                prev.Type = LineBreakType.Forbidden;
+                prev.Rule = 3020;
+            }
+
             prev = cur;
         }
 
         // Add end of text signal (which simplifies a bit of logic below)
-        graphemes.Add(new(String.Empty, LineBreakClass.EndOfText, LineBreakType.Mandatory, 300));
+        codePoints.Add(new(null, LineBreakClass.EndOfText, LineBreakType.Mandatory, 300));
 
         int currentLength = 0;
         int thresholdLength = Math.Min(0, maxLength - 24);
         var preThreshold = new StringBuilder();
-        Grapheme? threshold = null;
+        CodePoint? threshold = null;
         int thresholdIndex = 0;
         var postThreshold = new StringBuilder();
 
@@ -519,14 +555,26 @@ public static class LineBreakHelper
         // grapheme that fits. Because we injected an end of text marker above, we are guaranteed that this
         // list ends with a mandatory line break and as such all lines are properly accounted for without
         // requiring logic outside of the main loop.
-        for (int i = 1; i < graphemes.Count; ++i)
+        for (int i = 1; i < codePoints.Count; ++i)
         {
-            var cur = graphemes[i];
+            var cur = codePoints[i];
 
             // is cur a hard break? We don't add hard breaks to the resultant string so these are effectively
             // 0-length control codes instead.
             if (cur.Type == LineBreakType.Mandatory)
             {
+                if (cur.Class != LineBreakClass.EndOfText && options.HasFlag(SplitTextOptions.IncludeBreakCharacters))
+                {
+                    if (threshold == null)
+                    {
+                        preThreshold.Append(cur.Value);
+                    }
+                    else
+                    {
+                        postThreshold.Append(cur.Value);
+                    }
+                }
+
                 // don't add an extra blank line at the end if we ended with a mandatory line break and then
                 // found our end of text marker
                 if (cur.Class != LineBreakClass.EndOfText || currentLength > 0)
@@ -543,7 +591,7 @@ public static class LineBreakHelper
             }
 
             // skip over other line break characters that are forbidden breaks (i.e. CR when followed by LF)
-            if (cur.Class == LineBreakClass.CR)
+            if (!options.HasFlag(SplitTextOptions.IncludeBreakCharacters) && cur.Class == LineBreakClass.CR && cur.Type == LineBreakType.Forbidden)
             {
                 continue;
             }
@@ -558,7 +606,7 @@ public static class LineBreakHelper
                     i = thresholdIndex;
                 }
 
-                if (preThreshold.Length > 0 && (!allowOverflow || threshold != null))
+                if (preThreshold.Length > 0 && (!options.HasFlag(SplitTextOptions.AllowOverflow) || threshold != null))
                 {
                     yield return new(preThreshold.ToString(), false);
                     preThreshold.Clear();
@@ -591,18 +639,19 @@ public static class LineBreakHelper
         }
     }
 
-    private class Grapheme
+    [DebuggerDisplay("U+{RuneDebugDisplay,nq} {ClassDebugDisplay,nq} {Type} [{Rule}]")]
+    private class CodePoint
     {
-        public Grapheme(string value, LineBreakClass? lineBreakClass = null)
+        public CodePoint(Rune? value, LineBreakClass? lineBreakClass = null)
             : this(value, lineBreakClass, LineBreakType.Optional, 3100) { }
 
-        public Grapheme(string value, LineBreakClass? lineBreakClass, LineBreakType lineBreakType, int rule)
+        public CodePoint(Rune? value, LineBreakClass? lineBreakClass, LineBreakType lineBreakType, int rule)
         {
-            Rune = value.EnumerateRunes().FirstOrDefault();
+            OriginalRune = value ?? default;
             lineBreakClass ??= UnicodeProperty.GetLineBreakClass(Rune);
 
-            Value = value;
-            Class = lineBreakClass switch
+            Value = Rune.ToString();
+            OriginalClass = lineBreakClass switch
             {
                 LineBreakClass.AI => LineBreakClass.AL,
                 LineBreakClass.SG => LineBreakClass.AL,
@@ -619,16 +668,28 @@ public static class LineBreakHelper
 
             Type = lineBreakType;
             Rule = rule;
-            Length = value.EncodeUtf8().Length;
+            Length = Value.EncodeUtf8().Length;
         }
+
+        private string RuneDebugDisplay => OriginalRune.Value.ToString("X4");
+
+        private string ClassDebugDisplay => OverrideClass != null ? $"{OverrideClass}* ({OriginalClass})" : OriginalClass.ToString();
 
         public string Value { get; init; }
 
-        public Rune Rune { get; init; }
+        private Rune OriginalRune { get; init; }
+
+        public Rune? OverrideRune { get; set; }
+
+        public Rune Rune => OverrideRune ?? OriginalRune;
 
         public int Length { get; init; }
 
-        public LineBreakClass Class { get; init; }
+        private LineBreakClass OriginalClass { get; init; }
+
+        public LineBreakClass? OverrideClass { get; set; }
+
+        public LineBreakClass Class => OverrideClass ?? OriginalClass;
 
         public LineBreakType Type { get; set; }
 

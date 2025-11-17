@@ -13,6 +13,8 @@ internal static partial class UnicodeProperty
 
     internal static partial bool IsDefaultIgnorableCodePoint(Rune rune);
 
+    internal static partial bool IsExtendedPictographic(Rune rune);
+
     internal static partial HangulSyllableType GetHangulSyllableType(Rune rune);
 
     internal static partial BidiClass GetBidiClass(Rune rune);
@@ -40,7 +42,7 @@ internal static partial class UnicodeProperty
             throw new ArgumentException("Value outside of Unicode range(0x0000 - 0x10FFFD)", nameof(value));
         }
 
-        while (end > start)
+        while (end >= start)
         {
             if (value < database[cur].Item1)
             {

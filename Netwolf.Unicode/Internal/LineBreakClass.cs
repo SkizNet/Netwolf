@@ -104,9 +104,11 @@ internal enum LineBreakClass
     VI = 419,
     Virama = VI,
     // start of text marker
-    StartOfText = 501,
+    SOT = 501,
+    StartOfText = SOT,
     // end of text marker
-    EndOfText = 502,
+    EOT = 502,
+    EndOfText = EOT,
     // special marker for wildcard rules
     Any = 503,
 }

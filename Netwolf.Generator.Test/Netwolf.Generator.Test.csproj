@@ -46,6 +46,10 @@
       <LogicalName>Netwolf.Generator.Test.EastAsianWidth.txt</LogicalName>
       <Visible>false</Visible>
     </EmbeddedResource>
+    <EmbeddedResource Include="..\Netwolf.Unicode\Data\emoji-data.txt">
+      <LogicalName>Netwolf.Generator.Test.emoji-data.txt</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
     <EmbeddedResource Include="..\Netwolf.Unicode\Data\HangulSyllableType.txt">
       <LogicalName>Netwolf.Generator.Test.HangulSyllableType.txt</LogicalName>
       <Visible>false</Visible>

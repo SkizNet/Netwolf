@@ -12,6 +12,7 @@
     <None Remove="Data\DerivedCoreProperties.txt" />
     <None Remove="Data\DerivedJoiningType.txt" />
     <None Remove="Data\EastAsianWidth.txt" />
+    <None Remove="Data\emoji-data.txt" />
     <None Remove="Data\HangulSyllableType.txt" />
     <None Remove="Data\LineBreak.txt" />
     <None Remove="Data\PropList.txt" />
@@ -25,6 +26,7 @@
     <AdditionalFiles Include="Data\DerivedCoreProperties.txt" />
     <AdditionalFiles Include="Data\DerivedJoiningType.txt" />
     <AdditionalFiles Include="Data\EastAsianWidth.txt" />
+    <AdditionalFiles Include="Data\emoji-data.txt" />
     <AdditionalFiles Include="Data\HangulSyllableType.txt" />
     <AdditionalFiles Include="Data\LineBreak.txt" />
     <AdditionalFiles Include="Data\PropList.txt" />

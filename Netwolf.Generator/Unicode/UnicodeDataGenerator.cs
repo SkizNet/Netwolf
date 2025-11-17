@@ -23,6 +23,7 @@ public class UnicodeDataGenerator : IIncrementalGenerator
         "Join_Control",
         "Noncharacter_Code_Point",
         "Default_Ignorable_Code_Point",
+        "Extended_Pictographic",
     ];
 
     public static StringBuilder GetDecompositionSourceText(ImmutableArray<DecompositionMapping?> mappings)
@@ -269,7 +270,7 @@ namespace Netwolf.Unicode.Internal
             .Collect();
 
         var props = context.AdditionalTextsProvider
-            .Where(static text => text.Path.EndsWith("PropList.txt") || text.Path.EndsWith("DerivedCoreProperties.txt"))
+            .Where(static text => text.Path.EndsWith("PropList.txt") || text.Path.EndsWith("DerivedCoreProperties.txt") || text.Path.EndsWith("emoji-data.txt"))
             .Combine(assembly)
             .Where(static model => model.Right == "Netwolf.Unicode")
             .SelectMany(static (model, token) => model.Left.GetText(token)?.ToString().Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries) ?? [])

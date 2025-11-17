@@ -292,7 +292,7 @@ public partial class CommandFactory : ICommandFactory
             multilineEnabled = false;
         }
 
-        var lines = LineBreakHelper.SplitText(text, maxlen, false);
+        var lines = LineBreakHelper.SplitText(text, maxlen);
 
         string batchId = Guid.NewGuid().ToString();
         int batchLines = 0;

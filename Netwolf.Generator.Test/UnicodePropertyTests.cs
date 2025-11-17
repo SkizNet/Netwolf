@@ -43,6 +43,7 @@ namespace Netwolf.Unicode.Internal
         internal static partial bool IsJoinControl(Rune rune);
         internal static partial bool IsNoncharacterCodePoint(Rune rune);
         internal static partial bool IsDefaultIgnorableCodePoint(Rune rune);
+        internal static partial bool IsExtendedPictographic(Rune rune);
         internal static partial BidiClass GetBidiClass(Rune rune);
         internal static partial HangulSyllableType GetHangulSyllableType(Rune rune);
         internal static partial CombiningClass GetCombiningClass(Rune rune);
@@ -72,6 +73,7 @@ namespace Netwolf.Unicode.Internal
                 new EmbeddedAdditionalText("DerivedCoreProperties.txt"),
                 new EmbeddedAdditionalText("DerivedJoiningType.txt"),
                 new EmbeddedAdditionalText("EastAsianWidth.txt"),
+                new EmbeddedAdditionalText("emoji-data.txt"),
                 new EmbeddedAdditionalText("HangulSyllableType.txt"),
                 new EmbeddedAdditionalText("LineBreak.txt"),
                 new EmbeddedAdditionalText("PropList.txt"),
@@ -82,7 +84,7 @@ namespace Netwolf.Unicode.Internal
 
         var outputDiagnostics = output.GetDiagnostics();
         Assert.IsEmpty(outputDiagnostics, "Diagnostics were created while compiling generated source.");
-        // 9 source files specified above, plus 8 generated files (PropList and DerivedCoreProperties both go to the same file)
+        // 9 source files specified above, plus 8 generated files (PropList/DerivedCoreProperties/emoji-data all go to the same file)
         Assert.AreEqual(17, output.SyntaxTrees.Count());
 
         using MemoryStream assemblyStream = new();

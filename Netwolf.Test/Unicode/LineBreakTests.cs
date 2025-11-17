@@ -34,12 +34,22 @@ public class LineBreakTests
         }
 
         // this should split on every break opportunity (both optional and mandatory)
-        var lines = LineBreakHelper.SplitText(sb.ToString(), 1, true);
+        var lines = LineBreakHelper.SplitText(sb.ToString(), 1, SplitTextOptions.AllowOverflow | SplitTextOptions.IncludeBreakCharacters);
 
         foreach (var (line, _) in lines)
         {
-            for (var i = 0; i < line.Length - 1; ++i)
+            var enumerator = line.EnumerateRunes();
+            bool first = true;
+
+            while (enumerator.MoveNext())
             {
+                if (first)
+                {
+                    // skip the first character (the number of non-breaks in the string is one fewer than the number of grapheme clusters in the string)
+                    first = false;
+                    continue;
+                }
+
                 actual.Add(false);
             }
 
