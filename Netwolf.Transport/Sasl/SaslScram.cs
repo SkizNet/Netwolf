@@ -408,6 +408,17 @@ public sealed class SaslScram : ISaslMechanism
         return !Plus || data != null;
     }
 
+#if DEBUG
+    /// <summary>
+    /// Override the randomly-generated nonce with a static one for unit testing purposes.
+    /// </summary>
+    /// <param name="nonce"></param>
+    internal void SetNonceForUnitTests(string nonce)
+    {
+        Nonce = nonce;
+    }
+#endif
+
     public void Dispose()
     {
         EndpointBindingData?.Dispose();

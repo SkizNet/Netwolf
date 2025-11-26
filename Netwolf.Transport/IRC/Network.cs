@@ -868,6 +868,7 @@ public partial class Network : INetwork
         }
     }
 
+#if DEBUG
     /// <summary>
     /// Mark the network as connected and fully registered without utilizing the underlying Connection.
     /// This method is intended for unit tests where we can avoid having a full IRC protocol registration,
@@ -931,6 +932,7 @@ public partial class Network : INetwork
             subscription.Dispose();
         }
     }
+#endif
 
     [MemberNotNull(nameof(State))]
     [SuppressMessage("Style", "IDE0301:Simplify collection initialization",
